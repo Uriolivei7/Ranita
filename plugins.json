@@ -1,0 +1,295 @@
+[
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18616,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime",
+            "OVA"
+        ],
+        "version": 5,
+        "internalName": "AnimeflvnetProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeflvnetProvider.cs3",
+        "name": "AnimeflvnetProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18480,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "AnimeioProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeioProvider.cs3",
+        "name": "AnimeioProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 13475,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime"
+        ],
+        "version": 1,
+        "internalName": "AnimejlProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimejlProvider.cs3",
+        "name": "AnimejlProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 23799,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 2,
+        "internalName": "AnizoneProvider",
+        "description": "Anizone.to Anime subtitulado y con multiples doblajes",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnizoneProvider.cs3",
+        "name": "AnizoneProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 22487,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "Cuevana3Provider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Cuevana3Provider.cs3",
+        "name": "Cuevana3Provider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 12475,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Cartoon"
+        ],
+        "version": 21,
+        "internalName": "LacartoonsProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/LacartoonsProvider.cs3",
+        "name": "LacartoonsProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 14911,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Anime",
+            "OVA"
+        ],
+        "version": 2,
+        "internalName": "LatanimeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/LatanimeProvider.cs3",
+        "name": "LatanimeProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 22399,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "OtakuversoProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OtakuversoProvider.cs3",
+        "name": "OtakuversoProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18970,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 5,
+        "internalName": "PelispediaProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelispediaProvider.cs3",
+        "name": "PelispediaProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 21509,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "PlushdProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlushdProvider.cs3",
+        "name": "PlushdProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 28383,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "SoloLatinoProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SoloLatinoProvider.cs3",
+        "name": "SoloLatinoProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tioanime.com&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18457,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "Anime",
+            "OVA"
+        ],
+        "version": 3,
+        "internalName": "TioanimeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TioanimeProvider.cs3",
+        "name": "TioanimeProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 25884,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "VeranimesProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VeranimesProvider.cs3",
+        "name": "VeranimesProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 20275,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "VerseriesonlineProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VerseriesonlineProvider.cs3",
+        "name": "VerseriesonlineProvider"
+    }
+]
