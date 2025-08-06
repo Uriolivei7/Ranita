@@ -301,7 +301,7 @@ class VerAnimesProvider : MainAPI() {
                 null
             }
         }
-        Log.d("VerAnimesProvider", "load - Total de recomendaciones encontradas: ${recommendations.size} (No se mostrarán en la UI de CloudStream debido a la API).")
+        Log.d("VerAnimesProvider", "load - Total de recomendaciones encontradas: ${recommendations.size} ")
 
         val episodesMap = mutableMapOf<DubStatus, List<Episode>>()
         if (allEpisodes.isNotEmpty()) {

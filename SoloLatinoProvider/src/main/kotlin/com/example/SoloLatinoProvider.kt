@@ -565,14 +565,15 @@ class SoloLatinoProvider : MainAPI() {
 
             val secretKey = "Ak7qrvvH4WKYxV2OgaeHAEg2a5eh16vE"
 
-            val foundEmbed69Links = mutableListOf<String>()
+            val decryptedLinks = mutableListOf<String>()
+
             for (entry in dataLinkEntries) {
                 for (embed in entry.sortedEmbeds) {
                     if (embed.type == "video") {
                         val decryptedLink = decryptLink(embed.link, secretKey)
                         if (decryptedLink != null) {
                             Log.d("SoloLatino", "Link desencriptado para ${embed.servername}: $decryptedLink")
-                            foundEmbed69Links.add(decryptedLink)
+                            decryptedLinks.add(decryptedLink)
                         } else {
                             Log.e("SoloLatino", "Falló la desencriptación para ${embed.servername} con enlace: ${embed.link}")
                         }
@@ -582,10 +583,9 @@ class SoloLatinoProvider : MainAPI() {
                 }
             }
 
-            if (foundEmbed69Links.isNotEmpty()) {
-                foundEmbed69Links.apmap { playerUrl ->
-                    Log.d("SoloLatino", "Cargando extractor para link desencriptado (embed69.org): $playerUrl")
-                    loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
+            if (decryptedLinks.isNotEmpty()) {
+                for (link in decryptedLinks) {
+                    loadExtractor(fixUrl(link), initialIframeSrc, subtitleCallback, callback)
                 }
                 return true
             } else {
