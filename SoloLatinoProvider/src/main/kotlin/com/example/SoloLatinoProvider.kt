@@ -478,7 +478,6 @@ class SoloLatinoProvider : MainAPI() {
                 if (foundXupalaceLinks.isNotEmpty()) {
                     foundXupalaceLinks.apmap { playerUrl ->
                         Log.d("SoloLatino", "Cargando extractor para link de Xupalace (go_to_playerVast): $playerUrl")
-                        // Aquí se eliminó la lógica específica de player-cdn.com
                         loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
                     }
                     return true
@@ -565,15 +564,20 @@ class SoloLatinoProvider : MainAPI() {
 
             val secretKey = "Ak7qrvvH4WKYxV2OgaeHAEg2a5eh16vE"
 
-            val decryptedLinks = mutableListOf<String>()
-
+            var linksFound = false
             for (entry in dataLinkEntries) {
                 for (embed in entry.sortedEmbeds) {
                     if (embed.type == "video") {
                         val decryptedLink = decryptLink(embed.link, secretKey)
                         if (decryptedLink != null) {
                             Log.d("SoloLatino", "Link desencriptado para ${embed.servername}: $decryptedLink")
-                            decryptedLinks.add(decryptedLink)
+                            val success = loadExtractor(fixUrl(decryptedLink), initialIframeSrc, subtitleCallback) { link ->
+                                linksFound = true
+                                callback(link)
+                            }
+                            if (!success) {
+                                Log.w("SoloLatino", "loadExtractor falló para el enlace de ${embed.servername}.")
+                            }
                         } else {
                             Log.e("SoloLatino", "Falló la desencriptación para ${embed.servername} con enlace: ${embed.link}")
                         }
@@ -583,15 +587,7 @@ class SoloLatinoProvider : MainAPI() {
                 }
             }
 
-            if (decryptedLinks.isNotEmpty()) {
-                for (link in decryptedLinks) {
-                    loadExtractor(fixUrl(link), initialIframeSrc, subtitleCallback, callback)
-                }
-                return true
-            } else {
-                Log.d("SoloLatino", "No se encontraron enlaces de video desencriptados de embed69.org.")
-                return false
-            }
+            return linksFound
         }
         else if (finalIframeSrc.contains("fembed.com") || finalIframeSrc.contains("streamlare.com") || finalIframeSrc.contains("player.sololatino.net")) {
             Log.d("SoloLatino", "loadLinks - Detectado reproductor directo (Fembed/Streamlare/player.sololatino.net): $finalIframeSrc")
