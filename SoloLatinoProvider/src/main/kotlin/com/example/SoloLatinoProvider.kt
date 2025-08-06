@@ -581,7 +581,13 @@ class SoloLatinoProvider : MainAPI() {
                         if (decryptedLink != null) {
                             Log.d("SoloLatino", "Link desencriptado para ${embed.servername}: $decryptedLink")
                             val job = async {
-                                loadExtractor(fixUrl(decryptedLink), initialIframeSrc, subtitleCallback, callback)
+                                // Lógica especial para Vidhide
+                                if (embed.servername.equals("vidhide", ignoreCase = true)) {
+                                    Log.d("SoloLatino", "Detectado Vidhide. Se usará un Referer especial para el extractor.")
+                                    loadExtractor(fixUrl(decryptedLink), "https://embed69.org/", subtitleCallback, callback)
+                                } else {
+                                    loadExtractor(fixUrl(decryptedLink), initialIframeSrc, subtitleCallback, callback)
+                                }
                             }
                             jobs.add(job)
                         } else {
