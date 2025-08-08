@@ -1,0 +1,309 @@
+package com.example
+
+import android.util.Log
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import kotlin.collections.ArrayList
+import kotlinx.coroutines.delay
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.ShowStatus
+import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.utils.loadExtractor
+import java.net.URLDecoder
+// Importa la clase Base64 de Android
+import android.util.Base64 as AndroidBase64
+
+
+class KatanimeProvider : MainAPI() {
+    override var mainUrl = "https://katanime.net"
+    override var name = "Katanime"
+    override val supportedTypes = setOf(
+        TvType.Anime,
+    )
+
+    override var lang = "es"
+
+    override val hasMainPage = true
+    override val hasChromecastSupport = true
+    override val hasDownloadSupport = true
+
+    // El nuevo sitio no parece usar Cloudflare.
+    // private val cfKiller = CloudflareKiller()
+
+    private fun extractAnimeItem(element: Element): AnimeSearchResponse? {
+        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
+        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
+        val link = linkElement?.attr("href")
+        val title = titleElement?.text()?.trim()
+        val posterUrl = element.selectFirst("img.lozad")?.attr("data-src")
+        val yearText = element.selectFirst("div._2y8kd")?.text()?.trim()
+        val year = yearText?.takeLast(4)?.toIntOrNull()
+
+        if (title != null && link != null) {
+            return newAnimeSearchResponse(
+                title,
+                fixUrl(link)
+            ) {
+                this.type = TvType.Anime
+                this.posterUrl = posterUrl
+                this.year = year
+            }
+        }
+        return null
+    }
+
+    private fun extractSearchItem(element: Element): AnimeSearchResponse? {
+        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
+        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
+        val link = linkElement?.attr("href")
+        val title = titleElement?.text()?.trim()
+        val posterUrl = element.selectFirst("img.EB2Aw._eoev")?.attr("src")
+        val yearText = element.selectFirst("div._2y8kd:not(.etag)")?.text()?.trim()
+        val year = yearText?.toIntOrNull()
+
+        if (title != null && link != null) {
+            return newAnimeSearchResponse(
+                title,
+                fixUrl(link)
+            ) {
+                this.type = TvType.Anime
+                this.posterUrl = posterUrl
+                this.year = year
+            }
+        }
+        return null
+    }
+
+    private fun extractEpisodeItem(element: Element): AnimeSearchResponse? {
+        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
+        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
+        val link = linkElement?.attr("href")
+        val title = titleElement?.text()?.trim()
+        val posterUrl = element.selectFirst("img.lozad")?.attr("data-src")
+
+        if (title != null && link != null) {
+            return newAnimeSearchResponse(
+                title,
+                fixUrl(link).substringBefore("/capitulo/", "")
+            ) {
+                this.type = TvType.Anime
+                this.posterUrl = posterUrl
+            }
+        }
+        return null
+    }
+
+    private suspend fun safeAppGet(
+        url: String,
+        retries: Int = 3,
+        delayMs: Long = 2000L,
+        timeoutMs: Long = 15000L
+    ): String? {
+        for (i in 0 until retries) {
+            try {
+                val res = app.get(url, timeout = timeoutMs)
+                if (res.isSuccessful) return res.text
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "safeAppGet error for URL: $url: ${e.message}", e)
+            }
+            if (i < retries - 1) delay(delayMs)
+        }
+        return null
+    }
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val items = ArrayList<HomePageList>()
+        val url = mainUrl
+        val html = safeAppGet(url) ?: return null
+        val doc = Jsoup.parse(html)
+
+        // Capítulos recientes
+        doc.selectFirst("div#content-left div#article-div")?.let { container ->
+            val animes = container.select("div._135yj._2FQAt.chap").mapNotNull { extractEpisodeItem(it) }
+            if (animes.isNotEmpty()) items.add(HomePageList("Capítulos recientes", animes))
+        }
+
+        // Animes populares (widget derecho)
+        doc.selectFirst("div.content-right div._type3")?.parent()?.let { container ->
+            val animes = container.select("div._type3").mapNotNull { extractAnimeItem(it) }
+            if (animes.isNotEmpty()) items.add(HomePageList("Animes populares", animes))
+        }
+
+        // Animes recientes
+        doc.selectFirst("div#content-full div#article-div")?.let { container ->
+            val animes = container.select("div._135yj._2FQAt.extra").mapNotNull { extractAnimeItem(it) }
+            if (animes.isNotEmpty()) items.add(HomePageList("Animes recientes", animes))
+        }
+
+        return HomePageResponse(items)
+    }
+
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/buscar?q=$query"
+        val html = safeAppGet(url) ?: return emptyList()
+        val doc = Jsoup.parse(html)
+
+        return doc.select("div._135yj._2FQAt.full._2mJki").mapNotNull {
+            extractSearchItem(it)
+        }
+    }
+
+    data class EpisodeLoadData(
+        val episodeUrl: String,
+    )
+
+    override suspend fun load(url: String): LoadResponse? {
+        val html = safeAppGet(url) ?: return null
+        val doc = Jsoup.parse(html)
+
+        val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
+        val poster = doc.selectFirst("div#anime-thumb")?.attr("style")
+            ?.substringAfter("url('")?.substringBefore("')")?.trim() ?: ""
+        val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
+        val tags = doc.select("div.anime-genres a").map { it.text() }
+        val yearText = doc.selectFirst("div.details-by")?.text()?.substringAfter("•")?.trim()
+        val year = yearText?.takeLast(4)?.toIntOrNull()
+        val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
+
+        val allEpisodes = ArrayList<Episode>()
+
+        // La nueva página carga los episodios dinámicamente, por lo que debemos obtener la URL de la API
+        val episodeListUrlElement = doc.selectFirst("div#c_list")
+        val episodeListApiUrl = episodeListUrlElement?.attr("data-url")
+
+        if (!episodeListApiUrl.isNullOrBlank()) {
+            val episodesHtml = safeAppGet(episodeListApiUrl)
+            if (episodesHtml != null) {
+                val episodesDoc = Jsoup.parse(episodesHtml)
+                episodesDoc.select("div._135yj._2FQAt.chap").mapNotNull { element ->
+                    val epLinkElement = element.selectFirst("a._1A2Dc._38LRT")
+                    val epUrl = fixUrl(epLinkElement?.attr("href") ?: "")
+                    val epNumText = element.selectFirst("span._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
+                    val epNum = epNumText.toIntOrNull()
+                    val epTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim() ?: ""
+
+                    if (epUrl.isNotBlank() && epNum != null) {
+                        val episodeData = EpisodeLoadData(epUrl)
+                        allEpisodes.add(newEpisode(episodeData.toJson()) {
+                            this.name = epTitle
+                            this.episode = epNum
+                        })
+                    } else null
+                }
+            } else {
+                Log.e("KatanimeProvider", "Fallo al obtener el HTML de los episodios desde la API: $episodeListApiUrl")
+            }
+        }
+
+        val recommendations = doc.select("div#slidebar-anime div.tab div._type3.np").mapNotNull { element ->
+            val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
+            val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
+            val recPoster = element.selectFirst("img.lozad")?.attr("data-src")
+            val recYearText = element.selectFirst("div._2y8kd")?.text()?.trim()
+            val recYear = recYearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
+
+            if (recLink != null && recTitle != null) {
+                newAnimeSearchResponse(
+                    recTitle,
+                    fixUrl(recLink)
+                ) {
+                    this.posterUrl = recPoster
+                    this.year = recYear
+                }
+            } else null
+        }
+
+        return newTvSeriesLoadResponse(
+            name = title,
+            url = url,
+            type = TvType.Anime,
+            episodes = allEpisodes.reversed()
+        ) {
+            this.posterUrl = poster
+            this.backgroundPosterUrl = poster
+            this.plot = description
+            this.tags = tags
+            this.year = year
+            this.recommendations = recommendations
+            //this.status = status
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
+        val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
+
+        Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
+
+        val html = safeAppGet(episodeUrl) ?: run {
+            Log.e("KatanimeProvider", "loadLinks - Fallo al obtener HTML para: $episodeUrl")
+            return false
+        }
+
+        val doc = Jsoup.parse(html)
+        val serversElement = doc.selectFirst("ul.nav.nav-tabs.list-server") ?: return false
+        val servers = serversElement.select("li a")
+
+        var linksFound = false
+        servers.amap { serverLink ->
+            val serverId = serverLink.attr("data-id")
+            val serverName = serverLink.text().trim()
+            val serverUrl = "$mainUrl/ajax/server/$serverId"
+
+            val sourceResponse = try {
+                app.get(serverUrl, referer = episodeUrl).text
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "Error fetching source for server $serverName: ${e.message}")
+                null
+            }
+
+            if (sourceResponse.isNullOrBlank()) return@amap
+
+            try {
+                val sourceJson = tryParseJson<Map<String, String>>(sourceResponse)
+                val iframeUrl = sourceJson?.get("src")
+                if (!iframeUrl.isNullOrBlank()) {
+                    Log.d("KatanimeProvider", "loadLinks - Found source: $iframeUrl from server: $serverName")
+
+                    // Usar android.util.Base64 para compatibilidad
+                    val decodedUrl = if (iframeUrl.startsWith("http")) iframeUrl else String(AndroidBase64.decode(iframeUrl, AndroidBase64.DEFAULT))
+
+                    loadExtractor(decodedUrl, episodeUrl, subtitleCallback, callback)
+                    linksFound = true
+                }
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "Error parsing source JSON from server $serverName: ${e.message}")
+            }
+        }
+        return linksFound
+    }
+
+    private fun parseStatus(statusString: String): ShowStatus {
+        return when (statusString.lowercase()) {
+            "finalizado" -> ShowStatus.Completed
+            "en emision" -> ShowStatus.Ongoing
+            "en emision - " -> ShowStatus.Ongoing // Manejar el caso del guion
+            else -> ShowStatus.Ongoing
+        }
+    }
+
+    private fun fixUrl(url: String): String {
+        return if (url.startsWith("/")) {
+            mainUrl + url
+        } else {
+            url
+        }
+    }
+}
