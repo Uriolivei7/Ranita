@@ -222,7 +222,7 @@ class KatanimeProvider : MainAPI() {
                 Log.e("KatanimeProvider", "Fallo al obtener el HTML de los episodios desde la API: $episodeListApiUrl")
             }
         }
-
+//Yeji
         val recommendations = doc.select("div#slidebar-anime div.tab div._type3.np").mapNotNull { element ->
             val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
             val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
