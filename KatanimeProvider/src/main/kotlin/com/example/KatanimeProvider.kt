@@ -287,7 +287,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -314,9 +314,6 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank()) {
                     try {
-                        // **NUEVA LÍNEA:** Registramos el payload para depurar el error
-                        Log.d("KatanimeProvider", "Raw payload for $playerName: $playerPayload")
-
                         val token = doc.select("meta[name='csrf-token']").attr("content")
 
                         val requestBody = FormBody.Builder()
@@ -332,7 +329,8 @@ class KatanimeProvider : MainAPI() {
                             )
                         )
 
-                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP)
+                        // MODIFICADO: Usamos el flag NO_PADDING
+                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_PADDING)
 
                         if (decryptionKey.isEmpty()) {
                             Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
@@ -341,7 +339,8 @@ class KatanimeProvider : MainAPI() {
 
                         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
-                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
+                        // MODIFICADO: Usamos el flag NO_PADDING
+                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_PADDING))
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
                         val iv = encryptedData?.iv
