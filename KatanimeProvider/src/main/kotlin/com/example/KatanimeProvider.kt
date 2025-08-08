@@ -330,16 +330,31 @@ class KatanimeProvider : MainAPI() {
                             cookies = response.cookies
                         )
 
+                        Log.d("KatanimeProvider", "Respuesta cruda del POST para $playerName: ${playerResponse.text}")
+
                         var iframeUrl: String? = null
 
-                        // Intenta analizar la respuesta como JSON
+                        // 1. Intentar analizar la respuesta como JSON
                         val playerJson = playerResponse.parsedSafe<PlayerJson>()
                         iframeUrl = playerJson?.iframe ?: playerJson?.source ?: playerJson?.url
 
-                        // Si el JSON falla, asume que la respuesta es el HTML directamente
-                        if (iframeUrl == null) {
-                            val playerDoc = Jsoup.parse(playerResponse.text)
-                            iframeUrl = playerDoc.selectFirst("iframe")?.attr("src")
+                        // 2. Si el JSON no funciona, intentar decodificar la respuesta como Base64
+                        if (iframeUrl.isNullOrBlank()) {
+                            try {
+                                val decodedText = String(AndroidBase64.decode(playerResponse.text, AndroidBase64.DEFAULT))
+                                Log.d("KatanimeProvider", "Respuesta decodificada de Base64: $decodedText")
+
+                                // Buscar un iframe en el texto decodificado
+                                if (decodedText.contains("<iframe")) {
+                                    val decodedDoc = Jsoup.parse(decodedText)
+                                    iframeUrl = decodedDoc.selectFirst("iframe")?.attr("src")
+                                } else if (decodedText.startsWith("http")) {
+                                    // Si es una URL directa
+                                    iframeUrl = decodedText
+                                }
+                            } catch (e: Exception) {
+                                Log.e("KatanimeProvider", "No se pudo decodificar la respuesta como Base64: ${e.message}")
+                            }
                         }
 
                         if (!iframeUrl.isNullOrBlank()) {
