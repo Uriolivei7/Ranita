@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+import android.net.Uri
 
 
 class KatanimeProvider : MainAPI() {
@@ -317,8 +318,9 @@ class KatanimeProvider : MainAPI() {
                         "Referer" to episodeUrl
                     )
 
-                    // Construimos la URL de la petición GET
-                    val getUrl = "$playerUri?data=$playerPayload"
+                    // *** Cambio clave: Codificar el playerPayload para la URL
+                    val encodedPayload = Uri.encode(playerPayload)
+                    val getUrl = "$playerUri?data=$encodedPayload"
 
                     try {
                         val playerResponse = app.get(
