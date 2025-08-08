@@ -173,12 +173,34 @@ class KatanimeProvider : MainAPI() {
 
         val allEpisodes = ArrayList<Episode>()
 
-        // La nueva página carga los episodios dinámicamente, por lo que debemos obtener la URL de la API
+        // Extraer el token de la página. El token se encuentra en un input oculto.
+        val token = doc.selectFirst("input[name=_token]")?.attr("value")
+
         val episodeListUrlElement = doc.selectFirst("div#c_list")
         val episodeListApiUrl = episodeListUrlElement?.attr("data-url")
 
-        if (!episodeListApiUrl.isNullOrBlank()) {
-            val episodesHtml = safeAppGet(episodeListApiUrl)
+        if (!episodeListApiUrl.isNullOrBlank() && !token.isNullOrBlank()) {
+            val headers = mapOf(
+                "Accept" to "application/json, text/javascript, */*; q=0.01",
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With" to "XMLHttpRequest",
+                "Referer" to url,
+                "Origin" to mainUrl
+            )
+
+            // Se envía una solicitud POST con los datos del token y la página
+            val data = mapOf(
+                "_token" to token,
+                "pagina" to "1"
+            )
+
+            val episodesHtml = try {
+                app.post(episodeListApiUrl, headers = headers, data = data).text
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
+                null
+            }
+
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
                 episodesDoc.select("div._135yj._2FQAt.chap").mapNotNull { element ->
