@@ -308,8 +308,8 @@ class KatanimeProvider : MainAPI() {
 
         val scriptText = app.get(fullScriptUrl).text
 
-        // Usar una expresión regular para encontrar la clave de forma precisa
-        val decryptionKey = """p\.push\('key','(.*?)'\)""".toRegex().find(scriptText)?.groupValues?.get(1)?.toByteArray()
+        // Usar una nueva expresión regular para encontrar la clave
+        val decryptionKey = """t\.key=\['.*?',.*?'(.*?)'\]""".toRegex().find(scriptText)?.groupValues?.get(1)?.toByteArray()
 
         if (decryptionKey == null) {
             Log.e("KatanimeProvider", "No se pudo encontrar la clave de desencriptación en el script.")
