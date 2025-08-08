@@ -287,7 +287,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-
+//Yeji
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -298,7 +298,7 @@ class KatanimeProvider : MainAPI() {
         val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
         val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
-        Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
+        Log.d("KatanimeProvider", "loadLinks - URL a cargar: https://katanime.net/capitulo/wotaku-ni-koi-wa-muzukashii-1/")
 
         val response = app.get(episodeUrl)
         val doc = response.document
