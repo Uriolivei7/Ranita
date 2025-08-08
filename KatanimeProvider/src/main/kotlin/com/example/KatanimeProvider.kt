@@ -287,103 +287,101 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        Log.d("KatanimeProvider", "Iniciando loadLinks para data: $data")
-        val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
-        val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
-        Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    Log.d("KatanimeProvider", "Iniciando loadLinks para data: $data")
+    val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
+    val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
-        val response = app.get(episodeUrl)
-        val doc = response.document
+    Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
 
-        val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
+    val response = app.get(episodeUrl)
+    val doc = response.document
 
-        var linksFound = false
+    val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
-        if (players.isNotEmpty()) {
-            players.amap { player ->
-                val playerName = player.attr("data-player-name")
-                val playerPayload = player.attr("data-player")
+    var linksFound = false
 
-                if (playerPayload.isNotBlank()) {
-                    try {
-                        // Obtener el token CSRF para la solicitud
-                        val token = doc.select("meta[name='csrf-token']").attr("content")
+    if (players.isNotEmpty()) {
+        players.amap { player ->
+            val playerName = player.attr("data-player-name")
+            val playerPayload = player.attr("data-player")
 
-                        // Crear el cuerpo de la solicitud con FormBody
-                        val requestBody = FormBody.Builder()
-                            .add("player", playerPayload)
-                            .build()
+            if (playerPayload.isNotBlank()) {
+                try {
+                    val token = doc.select("meta[name='csrf-token']").attr("content")
 
-                        val keyResponse = app.post(
-                            url = "https://katanime.net/t",
-                            requestBody = requestBody,
-                            headers = mapOf(
-                                "x-csrf-token" to token,
-                                "referer" to "https://katanime.net"
-                            )
+                    val requestBody = FormBody.Builder()
+                        .add("player", playerPayload)
+                        .build()
+
+                    val keyResponse = app.post(
+                        url = "https://katanime.net/t",
+                        requestBody = requestBody,
+                        headers = mapOf(
+                            "x-csrf-token" to token,
+                            "referer" to "https://katanime.net"
                         )
+                    )
 
-                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP)
+                    val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP)
 
-                        if (decryptionKey.isEmpty()) {
-                            Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
-                            return@amap
-                        }
-
-                        Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
-
-                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
-                        val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
-
-                        val iv = encryptedData?.iv
-                        val value = encryptedData?.value
-
-                        if (iv != null && value != null) {
-                            val keySpec = SecretKeySpec(decryptionKey, "AES")
-                            val ivSpec = IvParameterSpec(AndroidBase64.decode(iv, AndroidBase64.DEFAULT))
-
-                            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-                            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-
-                            val decryptedValue = cipher.doFinal(AndroidBase64.decode(value, AndroidBase64.DEFAULT))
-                            val decryptedHtml = String(decryptedValue, Charsets.UTF_8)
-
-                            Log.d("KatanimeProvider", "Decrypted HTML for $playerName: $decryptedHtml")
-
-                            val decryptedDoc = Jsoup.parse(decryptedHtml)
-                            val iframeUrl = decryptedDoc.selectFirst("iframe")?.attr("src")
-
-                            if (!iframeUrl.isNullOrBlank()) {
-                                Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
-                                loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
-                                linksFound = true
-                            } else {
-                                Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el HTML desencriptado de $playerName.")
-                            }
-
-                        } else {
-                            Log.e("KatanimeProvider", "loadLinks - El payload decodificado no contiene 'iv' o 'value'.")
-                        }
-                    } catch (e: Exception) {
-                        Log.e("KatanimeProvider", "Error al procesar el payload de $playerName: ${e.message}")
+                    if (decryptionKey.isEmpty()) {
+                        Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
+                        return@amap
                     }
+
+                    Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
+
+                    val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
+                    val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
+
+                    val iv = encryptedData?.iv
+                    val value = encryptedData?.value
+
+                    if (iv != null && value != null) {
+                        val keySpec = SecretKeySpec(decryptionKey, "AES")
+                        val ivSpec = IvParameterSpec(AndroidBase64.decode(iv, AndroidBase64.DEFAULT))
+
+                        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+
+                        val decryptedValue = cipher.doFinal(AndroidBase64.decode(value, AndroidBase64.DEFAULT))
+                        val decryptedHtml = String(decryptedValue, Charsets.UTF_8)
+
+                        Log.d("KatanimeProvider", "Decrypted HTML for $playerName: $decryptedHtml")
+
+                        val decryptedDoc = Jsoup.parse(decryptedHtml)
+                        val iframeUrl = decryptedDoc.selectFirst("iframe")?.attr("src")
+
+                        if (!iframeUrl.isNullOrBlank()) {
+                            Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
+                            loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+                            linksFound = true
+                        } else {
+                            Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el HTML desencriptado de $playerName.")
+                        }
+
+                    } else {
+                        Log.e("KatanimeProvider", "loadLinks - El payload decodificado no contiene 'iv' o 'value'.")
+                    }
+                } catch (e: Exception) {
+                    Log.e("KatanimeProvider", "Error al procesar el payload de $playerName: ${e.message}")
                 }
             }
-        } else {
-            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
         }
-
-        Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
-        return linksFound
+    } else {
+        Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
     }
+
+    Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
+    return linksFound
+}
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
