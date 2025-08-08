@@ -307,7 +307,14 @@ class KatanimeProvider : MainAPI() {
         val fullScriptUrl = "https://katanime.net$scriptUrl"
 
         val scriptText = app.get(fullScriptUrl).text
-        val decryptionKey = scriptText.substringAfter("key='").substringBefore("'").toByteArray()
+
+        // Usar una expresión regular para encontrar la clave de forma precisa
+        val decryptionKey = """p\.push\('key','(.*?)'\)""".toRegex().find(scriptText)?.groupValues?.get(1)?.toByteArray()
+
+        if (decryptionKey == null) {
+            Log.e("KatanimeProvider", "No se pudo encontrar la clave de desencriptación en el script.")
+            return false
+        }
 
         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
@@ -323,7 +330,7 @@ class KatanimeProvider : MainAPI() {
                 if (playerPayload.isNotBlank()) {
                     try {
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
-                        Log.d("KatanimeProvider", "Decoded payload for $playerName: $decodedPayload")
+                        // Log.d("KatanimeProvider", "Decoded payload for $playerName: $decodedPayload")
 
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
