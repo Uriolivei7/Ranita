@@ -2,8 +2,6 @@ package com.example
 
 import android.util.Log
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.network.CloudflareKiller
-import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.Jsoup
@@ -15,17 +13,15 @@ import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.utils.loadExtractor
-import java.net.URLDecoder
 import android.util.Base64 as AndroidBase64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
-import android.net.Uri
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import okhttp3.FormBody
+import javax.crypto.Cipher.DECRYPT_MODE
 
 
 class KatanimeProvider : MainAPI() {
@@ -177,15 +173,6 @@ class KatanimeProvider : MainAPI() {
         @JsonProperty("last") val last: Map<String, String>? = null
     )
 
-    data class VideoData(
-        @JsonProperty("iframe") val iframe: String?
-    )
-
-    data class PlayerEncryptedData(
-        @JsonProperty("iv") val iv: String?,
-        @JsonProperty("value") val value: String?
-    )
-
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
 
@@ -287,7 +274,12 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
+
+    data class PlayerEncryptedData(
+        @JsonProperty("iv") val iv: String?,
+        @JsonProperty("value") val value: String?
+    )
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -329,7 +321,9 @@ class KatanimeProvider : MainAPI() {
                             )
                         )
 
-                        // MODIFICADO: Usamos un flag más robusto (NO_WRAP | URL_SAFE)
+                        // **NUEVA LÍNEA:** Registramos la clave antes de decodificarla
+                        Log.d("KatanimeProvider", "Raw key for $playerName: ${keyResponse.text}")
+
                         val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
 
                         if (decryptionKey.isEmpty()) {
@@ -339,7 +333,6 @@ class KatanimeProvider : MainAPI() {
 
                         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
-                        // MODIFICADO: Usamos un flag más robusto (NO_WRAP | URL_SAFE)
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE))
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
@@ -351,7 +344,7 @@ class KatanimeProvider : MainAPI() {
                             val ivSpec = IvParameterSpec(AndroidBase64.decode(iv, AndroidBase64.DEFAULT))
 
                             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-                            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+                            cipher.init(DECRYPT_MODE, keySpec, ivSpec)
 
                             val decryptedValue = cipher.doFinal(AndroidBase64.decode(value, AndroidBase64.DEFAULT))
                             val decryptedHtml = String(decryptedValue, Charsets.UTF_8)
