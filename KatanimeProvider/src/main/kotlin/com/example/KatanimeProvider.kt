@@ -204,15 +204,16 @@ class KatanimeProvider : MainAPI() {
 
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
-                val episodeElements = episodesDoc.select("div.box-list.col-sm-6") // Corregido: Este es el nuevo selector
+                // CORRECCIÓN: Nuevo selector para los episodios, basado en el HTML
+                val episodeElements = episodesDoc.select("div._135yj._2FQAt.chap")
                 Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
 
                 episodeElements.mapNotNull { element ->
                     val epLinkElement = element.selectFirst("a._1A2Dc._38LRT")
                     val epUrl = fixUrl(epLinkElement?.attr("href") ?: "")
-                    val epNumText = element.selectFirst("div._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
+                    val epNumText = element.selectFirst("span._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
                     val epNum = epNumText.toIntOrNull()
-                    val epTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim() ?: ""
+                    val epTitle = element.selectFirst("div._2NNxg a")?.text()?.trim() ?: ""
 
                     if (epUrl.isNotBlank() && epNum != null) {
                         val episodeData = EpisodeLoadData(epUrl)
