@@ -57,26 +57,6 @@ class KatanimeProvider : MainAPI() {
         return null
     }
 
-    private fun extractEpisodeItem(element: Element): AnimeSearchResponse? {
-        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
-        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
-        val link = linkElement?.attr("href")
-        val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img.lozad")?.attr("data-src")
-
-        if (title != null && link != null) {
-            val animeUrl = fixUrl(link).substringBefore("/capitulo/", "")
-            return newAnimeSearchResponse(
-                title,
-                animeUrl
-            ) {
-                this.type = TvType.Anime
-                this.posterUrl = posterUrl
-            }
-        }
-        return null
-    }
-
     private fun extractSearchItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
@@ -125,7 +105,23 @@ class KatanimeProvider : MainAPI() {
 
         // Capítulos recientes
         doc.selectFirst("div#content-left div#article-div")?.let { container ->
-            val animes = container.select("div._135yj._2FQAt.chap").mapNotNull { extractEpisodeItem(it) }
+            val animes = container.select("div._135yj._2FQAt.chap").mapNotNull {
+                val linkElement = it.selectFirst("a._1A2Dc._38LRT")
+                val link = linkElement?.attr("href")
+                val titleElement = it.selectFirst("div._2NNxg a._2uHIS")
+                val title = titleElement?.text()?.trim()
+                val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
+                if (title != null && link != null) {
+                    val animeUrl = fixUrl(link).substringBefore("/capitulo/", "")
+                    newAnimeSearchResponse(
+                        title,
+                        animeUrl
+                    ) {
+                        this.type = TvType.Anime
+                        this.posterUrl = posterUrl
+                    }
+                } else null
+            }
             if (animes.isNotEmpty()) items.add(HomePageList("Capítulos recientes", animes))
         }
 
@@ -173,9 +169,7 @@ class KatanimeProvider : MainAPI() {
 
         val allEpisodes = ArrayList<Episode>()
 
-        // Extraer el token de la página. El token se encuentra en un input oculto.
         val token = doc.selectFirst("input[name=_token]")?.attr("value")
-
         val episodeListUrlElement = doc.selectFirst("div#c_list")
         val episodeListApiUrl = episodeListUrlElement?.attr("data-url")
 
@@ -188,7 +182,6 @@ class KatanimeProvider : MainAPI() {
                 "Origin" to mainUrl
             )
 
-            // Se envía una solicitud POST con los datos del token y la página
             val data = mapOf(
                 "_token" to token,
                 "pagina" to "1"
@@ -223,7 +216,7 @@ class KatanimeProvider : MainAPI() {
             }
         }
 //Yeji
-        val recommendations = doc.select("div#slidebar-anime div.tab div._type3.np").mapNotNull { element ->
+        val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
             val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
             val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
             val recPoster = element.selectFirst("img.lozad")?.attr("data-src")
