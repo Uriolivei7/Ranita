@@ -106,18 +106,20 @@ class KatanimeProvider : MainAPI() {
         // Capítulos recientes
         doc.selectFirst("div#content-left div#article-div")?.let { container ->
             val animes = container.select("div._135yj._2FQAt.chap").mapNotNull {
-                // Corrección: El enlace del anime está en la etiqueta 'a' que contiene la imagen
-                val linkElement = it.selectFirst("a._1A2Dc._38LRT")
-                val link = linkElement?.attr("href")
-                val title = it.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim() // Se obtiene el título de forma independiente
+                val titleElement = it.selectFirst("div._2NNxg a")
+                val link = titleElement?.attr("href")
+                val title = titleElement?.text()?.trim()
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
 
                 if (title != null && link != null) {
-                    // Ahora cortamos la URL para ir a la página del anime
-                    val animeUrl = link.substringBeforeLast("/capitulo-")
+                    // Obtener el nombre del anime de la URL del capítulo
+                    // Ejemplo: https://katanime.net/capitulo/dandadan-2nd-season-6/ -> https://katanime.net/anime/dandadan-2nd-season/
+                    val animeSlug = link.substringAfter("/capitulo/").substringBeforeLast("-").substringBeforeLast("/")
+                    val animeUrl = "$mainUrl/anime/$animeSlug/"
+
                     newAnimeSearchResponse(
                         title,
-                        fixUrl(animeUrl)
+                        animeUrl
                     ) {
                         this.type = TvType.Anime
                         this.posterUrl = posterUrl
