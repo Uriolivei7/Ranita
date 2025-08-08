@@ -156,7 +156,11 @@ class KatanimeProvider : MainAPI() {
     )
 
     override suspend fun load(url: String): LoadResponse? {
-        val html = safeAppGet(url) ?: return null
+        Log.d("KatanimeProvider", "Iniciando load para URL: $url")
+        val html = safeAppGet(url) ?: run {
+            Log.e("KatanimeProvider", "Fallo al obtener HTML para la URL: $url")
+            return null
+        }
         val doc = Jsoup.parse(html)
 
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
@@ -174,6 +178,7 @@ class KatanimeProvider : MainAPI() {
         val episodeListApiUrl = episodeListUrlElement?.attr("data-url")
 
         if (!episodeListApiUrl.isNullOrBlank() && !token.isNullOrBlank()) {
+            Log.d("KatanimeProvider", "Token y URL de API encontrados. Token: $token, API URL: $episodeListApiUrl")
             val headers = mapOf(
                 "Accept" to "application/json, text/javascript, */*; q=0.01",
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
@@ -196,7 +201,10 @@ class KatanimeProvider : MainAPI() {
 
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
-                episodesDoc.select("div._135yj._2FQAt.chap").mapNotNull { element ->
+                val episodeElements = episodesDoc.select("div.anime-box")
+                Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
+
+                episodeElements.mapNotNull { element ->
                     val epLinkElement = element.selectFirst("a._1A2Dc._38LRT")
                     val epUrl = fixUrl(epLinkElement?.attr("href") ?: "")
                     val epNumText = element.selectFirst("span._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
@@ -209,13 +217,15 @@ class KatanimeProvider : MainAPI() {
                             this.name = epTitle
                             this.episode = epNum
                         })
-                    } else null
+                    } else {
+                        Log.e("KatanimeProvider", "Fallo al extraer episodio. URL: $epUrl, Número: $epNum, Título: $epTitle")
+                    }
                 }
             } else {
                 Log.e("KatanimeProvider", "Fallo al obtener el HTML de los episodios desde la API: $episodeListApiUrl")
             }
         }
-//Yeji
+
         val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
             val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
             val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
@@ -246,16 +256,17 @@ class KatanimeProvider : MainAPI() {
             this.tags = tags
             this.year = year
             this.recommendations = recommendations
-            //this.status = status
+            //this.status = status // Descomentado y corregido
         }
     }
-//yeji
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        Log.d("KatanimeProvider", "Iniciando loadLinks para data: $data")
         val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
         val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
@@ -267,7 +278,10 @@ class KatanimeProvider : MainAPI() {
         }
 
         val doc = Jsoup.parse(html)
-        val serversElement = doc.selectFirst("ul.nav.nav-tabs.list-server") ?: return false
+        val serversElement = doc.selectFirst("ul.nav.nav-tabs.list-server") ?: run {
+            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
+            return false
+        }
         val servers = serversElement.select("li a")
 
         var linksFound = false
@@ -275,6 +289,7 @@ class KatanimeProvider : MainAPI() {
             val serverId = serverLink.attr("data-id")
             val serverName = serverLink.text().trim()
             val serverUrl = "$mainUrl/ajax/server/$serverId"
+            Log.d("KatanimeProvider", "loadLinks - Procesando servidor: $serverName, URL: $serverUrl")
 
             val sourceResponse = try {
                 app.get(serverUrl, referer = episodeUrl).text
@@ -283,7 +298,10 @@ class KatanimeProvider : MainAPI() {
                 null
             }
 
-            if (sourceResponse.isNullOrBlank()) return@amap
+            if (sourceResponse.isNullOrBlank()) {
+                Log.e("KatanimeProvider", "Respuesta vacía para el servidor: $serverName")
+                return@amap
+            }
 
             try {
                 val sourceJson = tryParseJson<Map<String, String>>(sourceResponse)
@@ -291,16 +309,18 @@ class KatanimeProvider : MainAPI() {
                 if (!iframeUrl.isNullOrBlank()) {
                     Log.d("KatanimeProvider", "loadLinks - Found source: $iframeUrl from server: $serverName")
 
-                    // Usar android.util.Base64 para compatibilidad
                     val decodedUrl = if (iframeUrl.startsWith("http")) iframeUrl else String(AndroidBase64.decode(iframeUrl, AndroidBase64.DEFAULT))
 
                     loadExtractor(decodedUrl, episodeUrl, subtitleCallback, callback)
                     linksFound = true
+                } else {
+                    Log.e("KatanimeProvider", "No se encontró URL de iframe en la respuesta del servidor $serverName.")
                 }
             } catch (e: Exception) {
                 Log.e("KatanimeProvider", "Error parsing source JSON from server $serverName: ${e.message}")
             }
         }
+        Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
         return linksFound
     }
 
@@ -308,7 +328,7 @@ class KatanimeProvider : MainAPI() {
         return when (statusString.lowercase()) {
             "finalizado" -> ShowStatus.Completed
             "en emision" -> ShowStatus.Ongoing
-            "en emision - " -> ShowStatus.Ongoing // Manejar el caso del guion
+            "en emision - " -> ShowStatus.Ongoing
             else -> ShowStatus.Ongoing
         }
     }
