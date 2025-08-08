@@ -22,6 +22,9 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import android.net.Uri
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 
 class KatanimeProvider : MainAPI() {
@@ -36,9 +39,6 @@ class KatanimeProvider : MainAPI() {
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
-
-    // El nuevo sitio no parece usar Cloudflare.
-    // private val cfKiller = CloudflareKiller()
 
     private fun extractAnimeItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
@@ -134,13 +134,11 @@ class KatanimeProvider : MainAPI() {
             if (animes.isNotEmpty()) items.add(HomePageList("Capítulos recientes", animes))
         }
 
-        // Animes populares (widget derecho)
         doc.selectFirst("div.content-right div#widget")?.let { container ->
             val animes = container.select("div._type3").mapNotNull { extractAnimeItem(it) }
             if (animes.isNotEmpty()) items.add(HomePageList("Animes populares", animes))
         }
 
-        // Animes recientes (sección completa)
         doc.selectFirst("div#content-full div#article-div.recientes")?.let { container ->
             val animes = container.select("div._135yj._2FQAt.extra").mapNotNull { extractAnimeItem(it) }
             if (animes.isNotEmpty()) items.add(HomePageList("Animes recientes", animes))
@@ -178,21 +176,13 @@ class KatanimeProvider : MainAPI() {
         @JsonProperty("last") val last: Map<String, String>? = null
     )
 
-    data class PlayerJson(
-        @JsonProperty("iframe") val iframe: String?,
-        @JsonProperty("source") val source: String?,
-        @JsonProperty("url") val url: String?
-    )
-
-    data class PlayerData(
-        @JsonProperty("iframe") val iframe: String?,
-        @JsonProperty("source") val source: String?,
-        @JsonProperty("url") val url: String?,
-        @JsonProperty("video") val video: VideoData?
-    )
-
     data class VideoData(
         @JsonProperty("iframe") val iframe: String?
+    )
+
+    data class PlayerEncryptedData(
+        @JsonProperty("iv") val iv: String?,
+        @JsonProperty("value") val value: String?
     )
 
     override suspend fun load(url: String): LoadResponse? {
@@ -317,26 +307,47 @@ class KatanimeProvider : MainAPI() {
         var linksFound = false
 
         if (players.isNotEmpty()) {
+            val decryptionKey = "l83k4a5d8j32d1h4".toByteArray() // Clave obtenida del sitio web
+
             players.amap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
                 if (playerPayload.isNotBlank()) {
                     try {
-                        // Decodificamos el Base64 directamente
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
                         Log.d("KatanimeProvider", "Decoded payload for $playerName: $decodedPayload")
 
-                        val playerData = tryParseJson<PlayerData>(decodedPayload)
+                        val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
-                        val iframeUrl = playerData?.video?.iframe ?: playerData?.iframe ?: playerData?.source ?: playerData?.url
+                        val iv = encryptedData?.iv
+                        val value = encryptedData?.value
 
-                        if (!iframeUrl.isNullOrBlank()) {
-                            Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
-                            loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
-                            linksFound = true
+                        if (iv != null && value != null) {
+                            val keySpec = SecretKeySpec(decryptionKey, "AES")
+                            val ivSpec = IvParameterSpec(AndroidBase64.decode(iv, AndroidBase64.DEFAULT))
+
+                            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+
+                            val decryptedValue = cipher.doFinal(AndroidBase64.decode(value, AndroidBase64.DEFAULT))
+                            val decryptedHtml = String(decryptedValue, Charsets.UTF_8)
+
+                            Log.d("KatanimeProvider", "Decrypted HTML for $playerName: $decryptedHtml")
+
+                            val decryptedDoc = Jsoup.parse(decryptedHtml)
+                            val iframeUrl = decryptedDoc.selectFirst("iframe")?.attr("src")
+
+                            if (!iframeUrl.isNullOrBlank()) {
+                                Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
+                                loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+                                linksFound = true
+                            } else {
+                                Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el HTML desencriptado de $playerName.")
+                            }
+
                         } else {
-                            Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el payload decodificado de $playerName.")
+                            Log.e("KatanimeProvider", "loadLinks - El payload decodificado no contiene 'iv' o 'value'.")
                         }
                     } catch (e: Exception) {
                         Log.e("KatanimeProvider", "Error al procesar el payload de $playerName: ${e.message}")
@@ -350,7 +361,6 @@ class KatanimeProvider : MainAPI() {
         Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
         return linksFound
     }
-
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
