@@ -299,14 +299,16 @@ class KatanimeProvider : MainAPI() {
 
         Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
 
-        val response = app.get(episodeUrl)
-        val doc = response.document
+        val playerUrl = "https://katanime.net/reproductor?url=${AndroidBase64.encodeToString(episodeUrl.toByteArray(), AndroidBase64.NO_WRAP)}"
+        val playerResponse = app.get(playerUrl)
+        val playerDoc = playerResponse.document
 
-        val scriptUrl = doc.select("script[src^=\"/player/.\"]").attr("src")
+        val scriptUrl = playerDoc.select("script[src^=\"/player/.\"]").attr("src")
         val fullScriptUrl = "https://katanime.net$scriptUrl"
 
         val scriptText = app.get(fullScriptUrl).text
 
+        // Usar una expresión regular para encontrar la clave
         val decryptionKey = """t\.key='(.*?)'""".toRegex().find(scriptText)?.groupValues?.get(1)?.toByteArray()
 
         if (decryptionKey == null) {
@@ -316,6 +318,9 @@ class KatanimeProvider : MainAPI() {
 
         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
+        // El doc original sigue siendo necesario para los players
+        val response = app.get(episodeUrl)
+        val doc = response.document
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
         var linksFound = false
@@ -328,7 +333,6 @@ class KatanimeProvider : MainAPI() {
                 if (playerPayload.isNotBlank()) {
                     try {
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
-                        // Log.d("KatanimeProvider", "Decoded payload for $playerName: $decodedPayload")
 
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
