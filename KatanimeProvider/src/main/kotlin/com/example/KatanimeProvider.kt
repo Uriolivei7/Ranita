@@ -112,7 +112,7 @@ class KatanimeProvider : MainAPI() {
                 val title = titleElement?.text()?.trim()
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
                 if (title != null && link != null) {
-                    val animeUrl = fixUrl(link).substringBeforeLast("/capitulo-")
+                    val animeUrl = fixUrl(link).substringBeforeLast("/capitulo-") // Corregido: ir a la URL del anime
                     newAnimeSearchResponse(
                         title,
                         animeUrl
@@ -201,8 +201,7 @@ class KatanimeProvider : MainAPI() {
 
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
-                // CORRECCIÓN: Nuevo selector para los episodios
-                val episodeElements = episodesDoc.select("div.box-list.col-sm-6")
+                val episodeElements = episodesDoc.select("div.box-list.col-sm-6") // Corregido: Este es el nuevo selector
                 Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
 
                 episodeElements.mapNotNull { element ->
