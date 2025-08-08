@@ -17,6 +17,7 @@ import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.net.URLDecoder
 import android.util.Base64 as AndroidBase64
+import com.fasterxml.jackson.annotation.JsonProperty
 
 
 class KatanimeProvider : MainAPI() {
@@ -158,6 +159,21 @@ class KatanimeProvider : MainAPI() {
         val episodeUrl: String,
     )
 
+    data class EpisodeData (
+        @JsonProperty("numero") val numero: String? = null,
+        @JsonProperty("url") val url: String? = null
+    )
+
+    data class EpisodePage (
+        @JsonProperty("current_page") val current_page: Int? = null,
+        @JsonProperty("data") val data: List<EpisodeData> = emptyList(),
+    )
+
+    data class EpisodesJson (
+        @JsonProperty("ep") val ep: EpisodePage,
+        @JsonProperty("last") val last: Map<String, String>? = null
+    )
+
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
         val html = safeAppGet(url) ?: run {
@@ -202,30 +218,33 @@ class KatanimeProvider : MainAPI() {
                 null
             }
 
-            if (episodesHtml != null) {
-                val episodesDoc = Jsoup.parse(episodesHtml)
-                // CORRECCIÓN: Usar los selectores correctos para la respuesta de la API
-                val episodeElements = episodesDoc.select("a.item-list.chap")
-                Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
+            val episodesJson = try {
+                app.post(episodeListApiUrl, headers = headers, data = data).parsed<EpisodesJson>()
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
+                null
+            }
 
-                episodeElements.mapNotNull { element ->
-                    val epUrl = fixUrl(element.attr("href") ?: "")
-                    val epNumText = element.selectFirst("span.cap_num")?.text()?.replace("Capítulo", "")?.trim() ?: ""
-                    val epNum = epNumText.toIntOrNull()
-                    val epTitle = element.selectFirst("div.tt-cap")?.text()?.trim() ?: ""
+            if (episodesJson != null) {
+                val episodes = episodesJson.ep.data
+                Log.d("KatanimeProvider", "Se encontraron ${episodes.size} elementos de episodios.")
+
+                episodes.mapNotNull { episode ->
+                    val epUrl = fixUrl(episode.url ?: "")
+                    val epNum = episode.numero?.toIntOrNull()
 
                     if (epUrl.isNotBlank() && epNum != null) {
                         val episodeData = EpisodeLoadData(epUrl)
                         allEpisodes.add(newEpisode(episodeData.toJson()) {
-                            this.name = epTitle
+                            this.name = "Episodio $epNum" // El título "Episodio X" no está en el JSON, así que lo generamos.
                             this.episode = epNum
                         })
                     } else {
-                        Log.e("KatanimeProvider", "Fallo al extraer episodio. URL: $epUrl, Número: $epNum, Título: $epTitle")
+                        Log.e("KatanimeProvider", "Fallo al extraer episodio. URL: $epUrl, Número: $epNum")
                     }
                 }
             } else {
-                Log.e("KatanimeProvider", "Fallo al obtener el HTML de los episodios desde la API: $episodeListApiUrl")
+                Log.e("KatanimeProvider", "Fallo al obtener los episodios desde la API: $episodeListApiUrl")
             }
         }
 
