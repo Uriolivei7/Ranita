@@ -106,15 +106,18 @@ class KatanimeProvider : MainAPI() {
         // Capítulos recientes
         doc.selectFirst("div#content-left div#article-div")?.let { container ->
             val animes = container.select("div._135yj._2FQAt.chap").mapNotNull {
-                val linkElement = it.selectFirst("div._2NNxg a") // Selector corregido
+                // Corrección: El enlace del anime está en la etiqueta 'a' que contiene la imagen
+                val linkElement = it.selectFirst("a._1A2Dc._38LRT")
                 val link = linkElement?.attr("href")
-                val title = linkElement?.text()?.trim()
+                val title = it.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim() // Se obtiene el título de forma independiente
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
+
                 if (title != null && link != null) {
-                    val animeUrl = fixUrl(link)
+                    // Ahora cortamos la URL para ir a la página del anime
+                    val animeUrl = link.substringBeforeLast("/capitulo-")
                     newAnimeSearchResponse(
                         title,
-                        animeUrl
+                        fixUrl(animeUrl)
                     ) {
                         this.type = TvType.Anime
                         this.posterUrl = posterUrl
