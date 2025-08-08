@@ -18,6 +18,7 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import java.net.URLDecoder
 import android.util.Base64 as AndroidBase64
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.app
 
 
 class KatanimeProvider : MainAPI() {
@@ -176,10 +177,10 @@ class KatanimeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
-        val html = safeAppGet(url) ?: run {
-            Log.e("KatanimeProvider", "Fallo al obtener HTML para la URL: $url")
-            return null
-        }
+
+        // Petición GET avanzada para obtener las cookies de sesión
+        val response = app.get(url)
+        val html = response.text
         val doc = Jsoup.parse(html)
 
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
@@ -210,10 +211,12 @@ class KatanimeProvider : MainAPI() {
             )
 
             try {
+                // Petición POST con las cookies de la respuesta GET anterior
                 val episodesJson = app.post(
                     episodeListApiUrl,
                     headers = headers,
-                    data = data
+                    data = data,
+                    cookies = response.cookies
                 ).parsed<EpisodesJson>()
 
                 val episodes = episodesJson.ep.data
