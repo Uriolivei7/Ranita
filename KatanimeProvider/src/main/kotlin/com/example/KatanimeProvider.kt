@@ -302,13 +302,20 @@ class KatanimeProvider : MainAPI() {
         val response = app.get(episodeUrl)
         val doc = response.document
 
+        // Nuevo paso: Obtener la clave de desencriptación del script
+        val scriptUrl = doc.select("script[src^=\"/player/.\"]").attr("src")
+        val fullScriptUrl = "https://katanime.net$scriptUrl"
+
+        val scriptText = app.get(fullScriptUrl).text
+        val decryptionKey = scriptText.substringAfter("key='").substringBefore("'").toByteArray()
+
+        Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
+
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
         var linksFound = false
 
         if (players.isNotEmpty()) {
-            val decryptionKey = "l83k4a5d8j32d1h4".toByteArray() // Clave obtenida del sitio web
-
             players.amap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
