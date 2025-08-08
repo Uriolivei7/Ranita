@@ -287,7 +287,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -329,9 +329,8 @@ class KatanimeProvider : MainAPI() {
                             )
                         )
 
-                        // MODIFICADO: Limpiamos la clave antes de decodificarla
-                        val cleanedKey = keyResponse.text.replace("\\s".toRegex(), "")
-                        val decryptionKey = AndroidBase64.decode(cleanedKey, AndroidBase64.NO_PADDING)
+                        // MODIFICADO: Usamos un flag más robusto (NO_WRAP | URL_SAFE)
+                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
 
                         if (decryptionKey.isEmpty()) {
                             Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
@@ -340,9 +339,8 @@ class KatanimeProvider : MainAPI() {
 
                         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
-                        // MODIFICADO: Limpiamos el payload antes de decodificarlo
-                        val cleanedPayload = playerPayload.replace("\\s".toRegex(), "")
-                        val decodedPayload = String(AndroidBase64.decode(cleanedPayload, AndroidBase64.NO_PADDING))
+                        // MODIFICADO: Usamos un flag más robusto (NO_WRAP | URL_SAFE)
+                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE))
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
                         val iv = encryptedData?.iv
