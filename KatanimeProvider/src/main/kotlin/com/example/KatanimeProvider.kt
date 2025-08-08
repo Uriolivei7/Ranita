@@ -25,6 +25,7 @@ import android.net.Uri
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import okhttp3.FormBody
 
 
 class KatanimeProvider : MainAPI() {
@@ -299,28 +300,9 @@ class KatanimeProvider : MainAPI() {
 
         Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
 
-        val playerUrl = "https://katanime.net/reproductor?url=${AndroidBase64.encodeToString(episodeUrl.toByteArray(), AndroidBase64.NO_WRAP)}"
-        val playerResponse = app.get(playerUrl)
-        val playerDoc = playerResponse.document
-
-        val scriptUrl = playerDoc.select("script[src^=\"/player/.\"]").attr("src")
-        val fullScriptUrl = "https://katanime.net$scriptUrl"
-
-        val scriptText = app.get(fullScriptUrl).text
-
-        // Usar una expresión regular para encontrar la clave
-        val decryptionKey = """t\.key='(.*?)'""".toRegex().find(scriptText)?.groupValues?.get(1)?.toByteArray()
-
-        if (decryptionKey == null) {
-            Log.e("KatanimeProvider", "No se pudo encontrar la clave de desencriptación en el script.")
-            return false
-        }
-
-        Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
-
-        // El doc original sigue siendo necesario para los players
         val response = app.get(episodeUrl)
         val doc = response.document
+
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
         var linksFound = false
@@ -332,8 +314,33 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank()) {
                     try {
-                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
+                        // Obtener el token CSRF para la solicitud
+                        val token = doc.select("meta[name='csrf-token']").attr("content")
 
+                        // Crear el cuerpo de la solicitud con FormBody
+                        val requestBody = FormBody.Builder()
+                            .add("player", playerPayload)
+                            .build()
+
+                        val keyResponse = app.post(
+                            url = "https://katanime.net/t",
+                            requestBody = requestBody,
+                            headers = mapOf(
+                                "x-csrf-token" to token,
+                                "referer" to "https://katanime.net"
+                            )
+                        )
+
+                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP)
+
+                        if (decryptionKey.isEmpty()) {
+                            Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
+                            return@amap
+                        }
+
+                        Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
+
+                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
 
                         val iv = encryptedData?.iv
