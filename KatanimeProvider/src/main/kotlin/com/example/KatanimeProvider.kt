@@ -178,7 +178,9 @@ class KatanimeProvider : MainAPI() {
     )
 
     data class PlayerJson (
-        @JsonProperty("iframe") val iframe: String?
+        @JsonProperty("iframe") val iframe: String?,
+        @JsonProperty("source") val source: String?,
+        @JsonProperty("url") val url: String?
     )
 
     override suspend fun load(url: String): LoadResponse? {
@@ -328,11 +330,21 @@ class KatanimeProvider : MainAPI() {
                             cookies = response.cookies
                         )
 
+                        var iframeUrl: String? = null
+
+                        // Intenta analizar la respuesta como JSON
                         val playerJson = playerResponse.parsedSafe<PlayerJson>()
-                        val iframeUrl = playerJson?.iframe
+                        iframeUrl = playerJson?.iframe ?: playerJson?.source ?: playerJson?.url
+
+                        // Si el JSON falla, asume que la respuesta es el HTML directamente
+                        if (iframeUrl == null) {
+                            val playerDoc = Jsoup.parse(playerResponse.text)
+                            iframeUrl = playerDoc.selectFirst("iframe")?.attr("src")
+                        }
 
                         if (!iframeUrl.isNullOrBlank()) {
                             Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
+                            // Aquí llamamos al extractor para obtener los links
                             loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
                             linksFound = true
                         } else {
