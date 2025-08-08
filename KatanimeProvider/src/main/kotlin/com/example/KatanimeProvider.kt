@@ -211,15 +211,12 @@ class KatanimeProvider : MainAPI() {
                 "pagina" to "1"
             )
 
-            val episodesHtml = try {
-                app.post(episodeListApiUrl, headers = headers, data = data).text
-            } catch (e: Exception) {
-                Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
-                null
-            }
-
             val episodesJson = try {
-                app.post(episodeListApiUrl, headers = headers, data = data).parsed<EpisodesJson>()
+                app.post(
+                    episodeListApiUrl,
+                    headers = headers,
+                    data = data
+                ).parsed<EpisodesJson>()
             } catch (e: Exception) {
                 Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
                 null
@@ -236,7 +233,7 @@ class KatanimeProvider : MainAPI() {
                     if (epUrl.isNotBlank() && epNum != null) {
                         val episodeData = EpisodeLoadData(epUrl)
                         allEpisodes.add(newEpisode(episodeData.toJson()) {
-                            this.name = "Episodio $epNum" // El título "Episodio X" no está en el JSON, así que lo generamos.
+                            this.name = "Episodio $epNum"
                             this.episode = epNum
                         })
                     } else {
