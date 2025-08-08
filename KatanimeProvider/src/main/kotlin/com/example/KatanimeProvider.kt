@@ -19,6 +19,8 @@ import java.net.URLDecoder
 import android.util.Base64 as AndroidBase64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
 
 
 class KatanimeProvider : MainAPI() {
@@ -175,6 +177,10 @@ class KatanimeProvider : MainAPI() {
         @JsonProperty("last") val last: Map<String, String>? = null
     )
 
+    data class PlayerJson (
+        @JsonProperty("iframe") val iframe: String?
+    )
+
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
 
@@ -291,54 +297,56 @@ class KatanimeProvider : MainAPI() {
 
         Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
 
-        val html = safeAppGet(episodeUrl) ?: run {
-            Log.e("KatanimeProvider", "loadLinks - Fallo al obtener HTML para: $episodeUrl")
-            return false
-        }
+        val response = app.get(episodeUrl)
+        val doc = response.document
 
-        val doc = Jsoup.parse(html)
-        val serversElement = doc.selectFirst("ul.nav.nav-tabs.list-server") ?: run {
-            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
-            return false
-        }
-        val servers = serversElement.select("li a")
+        val playerUri = doc.select("section#player_section").attr("data-player-uri")
+        val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
         var linksFound = false
-        servers.amap { serverLink ->
-            val serverId = serverLink.attr("data-id")
-            val serverName = serverLink.text().trim()
-            val serverUrl = "$mainUrl/ajax/server/$serverId"
-            Log.d("KatanimeProvider", "loadLinks - Procesando servidor: $serverName, URL: $serverUrl")
 
-            val sourceResponse = try {
-                app.get(serverUrl, referer = episodeUrl).text
-            } catch (e: Exception) {
-                Log.e("KatanimeProvider", "Error fetching source for server $serverName: ${e.message}")
-                null
-            }
+        if (players.isNotEmpty() && playerUri.isNotBlank()) {
+            players.amap { player ->
+                val playerName = player.attr("data-player-name")
+                val playerPayload = player.attr("data-player")
 
-            if (sourceResponse.isNullOrBlank()) {
-                Log.e("KatanimeProvider", "Respuesta vacía para el servidor: $serverName")
-                return@amap
-            }
+                if (playerPayload.isNotBlank()) {
+                    val postHeaders = mapOf(
+                        "Accept" to "application/json, text/javascript, */*; q=0.01",
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Referer" to episodeUrl
+                    )
 
-            try {
-                val sourceJson = tryParseJson<Map<String, String>>(sourceResponse)
-                val iframeUrl = sourceJson?.get("src")
-                if (!iframeUrl.isNullOrBlank()) {
-                    Log.d("KatanimeProvider", "loadLinks - Found source: $iframeUrl from server: $serverName")
+                    val postData = mapOf("data" to playerPayload)
 
-                    val decodedUrl = if (iframeUrl.startsWith("http")) iframeUrl else String(AndroidBase64.decode(iframeUrl, AndroidBase64.DEFAULT))
+                    try {
+                        val playerResponse = app.post(
+                            playerUri,
+                            headers = postHeaders,
+                            data = postData,
+                            cookies = response.cookies
+                        )
 
-                    loadExtractor(decodedUrl, episodeUrl, subtitleCallback, callback)
-                    linksFound = true
-                } else {
-                    Log.e("KatanimeProvider", "No se encontró URL de iframe en la respuesta del servidor $serverName.")
+                        val playerJson = playerResponse.parsedSafe<PlayerJson>()
+                        val iframeUrl = playerJson?.iframe
+
+                        if (!iframeUrl.isNullOrBlank()) {
+                            Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
+                            loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+                            linksFound = true
+                        } else {
+                            Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en la respuesta de $playerName.")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("KatanimeProvider", "Error al procesar el reproductor $playerName: ${e.message}")
+                    }
                 }
-            } catch (e: Exception) {
-                Log.e("KatanimeProvider", "Error parsing source JSON from server $serverName: ${e.message}")
             }
+        } else {
+            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores o playerUri.")
         }
+
         Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
         return linksFound
     }
