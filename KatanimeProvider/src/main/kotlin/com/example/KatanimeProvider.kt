@@ -106,7 +106,7 @@ class KatanimeProvider : MainAPI() {
         // Capítulos recientes
         doc.selectFirst("div#content-left div#article-div")?.let { container ->
             val animes = container.select("div._135yj._2FQAt.chap").mapNotNull {
-                val linkElement = it.selectFirst("div._2NNxg a._2uHIS") // Aquí se extrae el enlace al anime
+                val linkElement = it.selectFirst("div._2NNxg a") // Selector corregido
                 val link = linkElement?.attr("href")
                 val title = linkElement?.text()?.trim()
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
@@ -138,7 +138,6 @@ class KatanimeProvider : MainAPI() {
 
         return HomePageResponse(items)
     }
-
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/buscar?q=$query"
