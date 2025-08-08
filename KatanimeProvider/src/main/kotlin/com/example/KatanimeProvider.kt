@@ -190,13 +190,11 @@ class KatanimeProvider : MainAPI() {
         val year = yearText?.takeLast(4)?.toIntOrNull()
         val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
 
-        val allEpisodes = ArrayList<Episode>()
-
         val token = doc.selectFirst("input[name=_token]")?.attr("value")
         val episodeListUrlElement = doc.selectFirst("div#c_list")
         val episodeListApiUrl = episodeListUrlElement?.attr("data-url")
 
-        if (!episodeListApiUrl.isNullOrBlank() && !token.isNullOrBlank()) {
+        val allEpisodes = if (!episodeListApiUrl.isNullOrBlank() && !token.isNullOrBlank()) {
             Log.d("KatanimeProvider", "Token y URL de API encontrados. Token: $token, API URL: $episodeListApiUrl")
             val headers = mapOf(
                 "Accept" to "application/json, text/javascript, */*; q=0.01",
@@ -211,18 +209,13 @@ class KatanimeProvider : MainAPI() {
                 "pagina" to "1"
             )
 
-            val episodesJson = try {
-                app.post(
+            try {
+                val episodesJson = app.post(
                     episodeListApiUrl,
                     headers = headers,
                     data = data
                 ).parsed<EpisodesJson>()
-            } catch (e: Exception) {
-                Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
-                null
-            }
 
-            if (episodesJson != null) {
                 val episodes = episodesJson.ep.data
                 Log.d("KatanimeProvider", "Se encontraron ${episodes.size} elementos de episodios.")
 
@@ -232,17 +225,21 @@ class KatanimeProvider : MainAPI() {
 
                     if (epUrl.isNotBlank() && epNum != null) {
                         val episodeData = EpisodeLoadData(epUrl)
-                        allEpisodes.add(newEpisode(episodeData.toJson()) {
+                        newEpisode(episodeData.toJson()) {
                             this.name = "Episodio $epNum"
                             this.episode = epNum
-                        })
+                        }
                     } else {
                         Log.e("KatanimeProvider", "Fallo al extraer episodio. URL: $epUrl, Número: $epNum")
+                        null
                     }
                 }
-            } else {
-                Log.e("KatanimeProvider", "Fallo al obtener los episodios desde la API: $episodeListApiUrl")
+            } catch (e: Exception) {
+                Log.e("KatanimeProvider", "Fallo al obtener los episodios: ${e.message}")
+                emptyList()
             }
+        } else {
+            emptyList()
         }
 
         val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
@@ -275,7 +272,7 @@ class KatanimeProvider : MainAPI() {
             this.tags = tags
             this.year = year
             this.recommendations = recommendations
-            //this.status = status // Descomentado y corregido
+            //this.status = status
         }
     }
 
