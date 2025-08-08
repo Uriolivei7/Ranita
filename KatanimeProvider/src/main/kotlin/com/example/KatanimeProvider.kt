@@ -177,7 +177,7 @@ class KatanimeProvider : MainAPI() {
         @JsonProperty("last") val last: Map<String, String>? = null
     )
 
-    data class PlayerJson (
+    data class PlayerJson(
         @JsonProperty("iframe") val iframe: String?,
         @JsonProperty("source") val source: String?,
         @JsonProperty("url") val url: String?
@@ -186,7 +186,6 @@ class KatanimeProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
 
-        // Petición GET avanzada para obtener las cookies de sesión
         val response = app.get(url)
         val html = response.text
         val doc = Jsoup.parse(html)
@@ -219,7 +218,6 @@ class KatanimeProvider : MainAPI() {
             )
 
             try {
-                // Petición POST con las cookies de la respuesta GET anterior
                 val episodesJson = app.post(
                     episodeListApiUrl,
                     headers = headers,
@@ -313,24 +311,23 @@ class KatanimeProvider : MainAPI() {
                 val playerPayload = player.attr("data-player")
 
                 if (playerPayload.isNotBlank()) {
-                    val postHeaders = mapOf(
+                    val getHeaders = mapOf(
                         "Accept" to "application/json, text/javascript, */*; q=0.01",
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
                         "X-Requested-With" to "XMLHttpRequest",
                         "Referer" to episodeUrl
                     )
 
-                    val postData = mapOf("data" to playerPayload)
+                    // Construimos la URL de la petición GET
+                    val getUrl = "$playerUri?data=$playerPayload"
 
                     try {
-                        val playerResponse = app.post(
-                            playerUri,
-                            headers = postHeaders,
-                            data = postData,
+                        val playerResponse = app.get(
+                            getUrl,
+                            headers = getHeaders,
                             cookies = response.cookies
                         )
 
-                        Log.d("KatanimeProvider", "Respuesta cruda del POST para $playerName: ${playerResponse.text}")
+                        Log.d("KatanimeProvider", "Respuesta cruda del GET para $playerName: ${playerResponse.text}")
 
                         var iframeUrl: String? = null
 
