@@ -210,29 +210,10 @@
     "fileSize": 19000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OtakustvProvider.cs3",
-    "status": 1,
-    "version": 4,
-    "apiVersion": 12,
-    "name": "OtakusTV",
-    "internalName": "OtakustvProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para www1.otakustv.com",
-    "tvTypes": [
-      "Anime",
-      "Ova"
-    ],
-    "iconUrl": "https://www1.otakustv.com/favicon.png",
-    "language": "es",
-    "fileSize": 25000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OtakuversoProvider.cs3",
     "status": 1,
     "version": 4,
-    "apiVersion": 13,
+    "apiVersion": 12,
     "name": "Otakuverso",
     "internalName": "OtakuversoProvider",
     "authors": [
@@ -251,7 +232,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VeranimesProvider.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 14,
+    "apiVersion": 13,
     "name": "VerAnimes",
     "internalName": "VeranimesProvider",
     "authors": [
@@ -270,7 +251,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
     "status": 0,
     "version": 2,
-    "apiVersion": 15,
+    "apiVersion": 14,
     "name": "Doramasflix",
     "internalName": "DoramasflixProvider",
     "authors": [
