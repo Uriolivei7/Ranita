@@ -16,7 +16,6 @@ import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.net.URLDecoder
-// Importa la clase Base64 de Android
 import android.util.Base64 as AndroidBase64
 
 
@@ -58,12 +57,32 @@ class KatanimeProvider : MainAPI() {
         return null
     }
 
+    private fun extractEpisodeItem(element: Element): AnimeSearchResponse? {
+        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
+        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
+        val link = linkElement?.attr("href")
+        val title = titleElement?.text()?.trim()
+        val posterUrl = element.selectFirst("img.lozad")?.attr("data-src")
+
+        if (title != null && link != null) {
+            val animeUrl = fixUrl(link).substringBefore("/capitulo/", "")
+            return newAnimeSearchResponse(
+                title,
+                animeUrl
+            ) {
+                this.type = TvType.Anime
+                this.posterUrl = posterUrl
+            }
+        }
+        return null
+    }
+
     private fun extractSearchItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
         val link = linkElement?.attr("href")
         val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img.EB2Aw._eoev")?.attr("src")
+        val posterUrl = element.selectFirst("img")?.attr("src")
         val yearText = element.selectFirst("div._2y8kd:not(.etag)")?.text()?.trim()
         val year = yearText?.toIntOrNull()
 
@@ -75,25 +94,6 @@ class KatanimeProvider : MainAPI() {
                 this.type = TvType.Anime
                 this.posterUrl = posterUrl
                 this.year = year
-            }
-        }
-        return null
-    }
-
-    private fun extractEpisodeItem(element: Element): AnimeSearchResponse? {
-        val linkElement = element.selectFirst("a._1A2Dc._38LRT")
-        val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
-        val link = linkElement?.attr("href")
-        val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img.lozad")?.attr("data-src")
-
-        if (title != null && link != null) {
-            return newAnimeSearchResponse(
-                title,
-                fixUrl(link).substringBefore("/capitulo/", "")
-            ) {
-                this.type = TvType.Anime
-                this.posterUrl = posterUrl
             }
         }
         return null
@@ -130,13 +130,13 @@ class KatanimeProvider : MainAPI() {
         }
 
         // Animes populares (widget derecho)
-        doc.selectFirst("div.content-right div._type3")?.parent()?.let { container ->
+        doc.selectFirst("div.content-right div#widget")?.let { container ->
             val animes = container.select("div._type3").mapNotNull { extractAnimeItem(it) }
             if (animes.isNotEmpty()) items.add(HomePageList("Animes populares", animes))
         }
 
-        // Animes recientes
-        doc.selectFirst("div#content-full div#article-div")?.let { container ->
+        // Animes recientes (sección completa)
+        doc.selectFirst("div#content-full div#article-div.recientes")?.let { container ->
             val animes = container.select("div._135yj._2FQAt.extra").mapNotNull { extractAnimeItem(it) }
             if (animes.isNotEmpty()) items.add(HomePageList("Animes recientes", animes))
         }
@@ -164,8 +164,7 @@ class KatanimeProvider : MainAPI() {
         val doc = Jsoup.parse(html)
 
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
-        val poster = doc.selectFirst("div#anime-thumb")?.attr("style")
-            ?.substringAfter("url('")?.substringBefore("')")?.trim() ?: ""
+        val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src") ?: ""
         val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
         val tags = doc.select("div.anime-genres a").map { it.text() }
         val yearText = doc.selectFirst("div.details-by")?.text()?.substringAfter("•")?.trim()
