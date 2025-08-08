@@ -201,7 +201,7 @@ class KatanimeProvider : MainAPI() {
 
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
-                val episodeElements = episodesDoc.select("div.anime-box")
+                val episodeElements = episodesDoc.select("div.box-list.col-sm-6") // Selector corregido
                 Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
 
                 episodeElements.mapNotNull { element ->
