@@ -184,6 +184,12 @@ class KatanimeProvider : MainAPI() {
         @JsonProperty("url") val url: String?
     )
 
+    data class PlayerData(
+        @JsonProperty("iframe") val iframe: String?,
+        @JsonProperty("source") val source: String?,
+        @JsonProperty("url") val url: String?
+    )
+
     override suspend fun load(url: String): LoadResponse? {
         Log.d("KatanimeProvider", "Iniciando load para URL: $url")
 
@@ -301,60 +307,23 @@ class KatanimeProvider : MainAPI() {
         val response = app.get(episodeUrl)
         val doc = response.document
 
-        val playerUri = doc.select("section#player_section").attr("data-player-uri")
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
 
         var linksFound = false
 
-        if (players.isNotEmpty() && playerUri.isNotBlank()) {
+        if (players.isNotEmpty()) {
             players.amap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
                 if (playerPayload.isNotBlank()) {
-                    val getHeaders = mapOf(
-                        "Accept" to "application/json, text/javascript, */*; q=0.01",
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "Referer" to episodeUrl
-                    )
-
-                    // *** Cambio clave: Codificar el playerPayload para la URL
-                    val encodedPayload = Uri.encode(playerPayload)
-                    val getUrl = "$playerUri?data=$encodedPayload"
-
                     try {
-                        val playerResponse = app.get(
-                            getUrl,
-                            headers = getHeaders,
-                            cookies = response.cookies
-                        )
+                        // Decodificar el Base64 directamente de data-player
+                        val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.DEFAULT))
 
-                        Log.d("KatanimeProvider", "Respuesta cruda del GET para $playerName: ${playerResponse.text}")
-
-                        var iframeUrl: String? = null
-
-                        // 1. Intentar analizar la respuesta como JSON
-                        val playerJson = playerResponse.parsedSafe<PlayerJson>()
-                        iframeUrl = playerJson?.iframe ?: playerJson?.source ?: playerJson?.url
-
-                        // 2. Si el JSON no funciona, intentar decodificar la respuesta como Base64
-                        if (iframeUrl.isNullOrBlank()) {
-                            try {
-                                val decodedText = String(AndroidBase64.decode(playerResponse.text, AndroidBase64.DEFAULT))
-                                Log.d("KatanimeProvider", "Respuesta decodificada de Base64: $decodedText")
-
-                                // Buscar un iframe en el texto decodificado
-                                if (decodedText.contains("<iframe")) {
-                                    val decodedDoc = Jsoup.parse(decodedText)
-                                    iframeUrl = decodedDoc.selectFirst("iframe")?.attr("src")
-                                } else if (decodedText.startsWith("http")) {
-                                    // Si es una URL directa
-                                    iframeUrl = decodedText
-                                }
-                            } catch (e: Exception) {
-                                Log.e("KatanimeProvider", "No se pudo decodificar la respuesta como Base64: ${e.message}")
-                            }
-                        }
+                        // Convertir el texto decodificado en un objeto JSON
+                        val playerData = tryParseJson<PlayerData>(decodedPayload)
+                        val iframeUrl = playerData?.iframe ?: playerData?.source ?: playerData?.url
 
                         if (!iframeUrl.isNullOrBlank()) {
                             Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
@@ -362,20 +331,21 @@ class KatanimeProvider : MainAPI() {
                             loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
                             linksFound = true
                         } else {
-                            Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en la respuesta de $playerName.")
+                            Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el payload decodificado de $playerName.")
                         }
                     } catch (e: Exception) {
-                        Log.e("KatanimeProvider", "Error al procesar el reproductor $playerName: ${e.message}")
+                        Log.e("KatanimeProvider", "Error al procesar el payload de $playerName: ${e.message}")
                     }
                 }
             }
         } else {
-            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores o playerUri.")
+            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
         return linksFound
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
