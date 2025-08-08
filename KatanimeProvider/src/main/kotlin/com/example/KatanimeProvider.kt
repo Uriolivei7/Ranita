@@ -112,7 +112,7 @@ class KatanimeProvider : MainAPI() {
                 val title = titleElement?.text()?.trim()
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
                 if (title != null && link != null) {
-                    val animeUrl = fixUrl(link).substringBefore("/capitulo/", "")
+                    val animeUrl = fixUrl(link).substringBeforeLast("/capitulo-")
                     newAnimeSearchResponse(
                         title,
                         animeUrl
@@ -201,13 +201,14 @@ class KatanimeProvider : MainAPI() {
 
             if (episodesHtml != null) {
                 val episodesDoc = Jsoup.parse(episodesHtml)
-                val episodeElements = episodesDoc.select("div.box-list.col-sm-6") // Selector corregido
+                // CORRECCIÓN: Nuevo selector para los episodios
+                val episodeElements = episodesDoc.select("div.box-list.col-sm-6")
                 Log.d("KatanimeProvider", "Se encontraron ${episodeElements.size} elementos de episodios.")
 
                 episodeElements.mapNotNull { element ->
                     val epLinkElement = element.selectFirst("a._1A2Dc._38LRT")
                     val epUrl = fixUrl(epLinkElement?.attr("href") ?: "")
-                    val epNumText = element.selectFirst("span._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
+                    val epNumText = element.selectFirst("div._2y8kd.etag")?.text()?.replace("Capítulo", "")?.trim() ?: ""
                     val epNum = epNumText.toIntOrNull()
                     val epTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim() ?: ""
 
