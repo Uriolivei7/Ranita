@@ -284,7 +284,6 @@ class KatanimeProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("KatanimeProvider", "Iniciando loadLinks para data: $data")
         val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
         val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
@@ -294,10 +293,7 @@ class KatanimeProvider : MainAPI() {
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
-        val allowedPlayers = listOf(
-            "Mega", "FileMoon", "StreamW", "Hexupload", "YourUpload", "MixDrop",
-            "Mp4Upload", "Mediafire", "SendVid", "VidGuard", "Streamtape", "LuluStream"
-        )
+        val allowedPlayers = listOf("FileMoon", "Mp4Upload")
 
         if (players.isNotEmpty()) {
             players.apmap { player ->
@@ -306,32 +302,41 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
-
                         val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
-                        Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
+                        val iframeResponse = app.get(iframeUrl)
+                        val iframeDoc = iframeResponse.document
 
-                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback) { link ->
-                            Log.d("KatanimeProvider", "ExtractorLink generado: ${link.url}")
-                            callback(link)
+                        // Extraer el src del iframe real
+                        val videoFrame = iframeDoc.select("iframe").attr("src")
+                        if (videoFrame.isNotBlank()) {
+                            callback(
+                                newExtractorLink(
+                                    source = "Katanime",
+                                    name = playerName,
+                                    url = videoFrame,
+                                    type = if (videoFrame.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                ) {
+                                    headers = mapOf("Referer" to iframeUrl)
+                                    quality = -1
+                                }
+                            )
                             linksFound = true
+                        } else {
+                            Log.e("KatanimeProvider", "No se encontró iframe src para $playerName")
                         }
 
                     } catch (e: Exception) {
                         Log.e("KatanimeProvider", "Error al procesar $playerName: ${e.message}")
                     }
-                } else {
-                    Log.d("KatanimeProvider", "Ignorando jugador no permitido: $playerName")
                 }
             }
-        } else {
-            Log.e("KatanimeProvider", "No se encontraron servidores.")
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
-//Yeji
+
+    //Yeji
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
             "finalizado" -> ShowStatus.Completed
