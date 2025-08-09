@@ -294,49 +294,26 @@ class KatanimeProvider : MainAPI() {
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
+        // Lista de jugadores permitidos. Es buena práctica mantenerla.
         val allowedPlayers = listOf("FileMoon", "Mp4Upload")
-
 
         if (players.isNotEmpty()) {
             players.apmap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
+                // Solo procesamos los jugadores que están en nuestra lista
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
+                        // Construimos la URL del iframe. Es la que Cloudstream necesita.
                         val iframeUrl = "https://katanime.net/reproductor?url=${Uri.encode(playerPayload)}"
-                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+                        Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
+                        Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
 
-                        val iframeResponse = app.get(iframeUrl)
-                        val iframeDoc = iframeResponse.document
-
-                        // Log para inspeccionar el HTML si lo necesitas
-                        Log.d("KatanimeProvider", "HTML del iframe: ${iframeDoc.outerHtml()}")
-
-                        val videoFrame = playerPayload
-                        Log.d("KatanimeProvider", "Enlace extraído: $videoFrame")
-
-                        val qualityText = "HD"
-                        val qualityValue = parseQuality(qualityText)
-
-                        if (videoFrame.isNotBlank()) {
-                            callback(
-                                newExtractorLink(
-                                    source = "Katanime",
-                                    name = playerName,
-                                    url = videoFrame,
-                                    type = if (videoFrame.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                ) {
-                                    headers = mapOf(
-                                        "Referer" to iframeUrl,
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                                    )
-                                    quality = qualityValue
-                                }
-                            )
+                        // Llamamos a loadExtractor y dependemos de él para manejar la extracción
+                        if (loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)) {
                             linksFound = true
-                        } else {
-                            Log.e("KatanimeProvider", "No se encontró iframe src para $playerName")
+                            Log.d("KatanimeProvider", "Enlaces encontrados por loadExtractor para $playerName")
                         }
 
                     } catch (e: Exception) {
@@ -347,6 +324,7 @@ class KatanimeProvider : MainAPI() {
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
+        // Devolvemos si se encontró al menos un enlace
         return linksFound
     }
     //Yeji
@@ -358,17 +336,6 @@ class KatanimeProvider : MainAPI() {
             else -> ShowStatus.Ongoing
         }
     }
-
-    private fun parseQuality(qualityString: String): Int {
-        return when (qualityString.lowercase()) {
-            "360p" -> Qualities.P360.value
-            "480p" -> Qualities.P480.value
-            "720p", "hd" -> Qualities.P720.value
-            "1080p", "fullhd", "full hd" -> Qualities.P1080.value
-            else -> Qualities.Unknown.value
-        }
-    }
-
 
     private fun fixUrl(url: String): String {
         return if (url.startsWith("/")) {
