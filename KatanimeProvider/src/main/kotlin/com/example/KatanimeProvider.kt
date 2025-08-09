@@ -274,7 +274,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-
+//Yeji
     data class PlayerEncryptedData(
         @JsonProperty("iv") val iv: String?,
         @JsonProperty("value") val value: String?
@@ -295,7 +295,6 @@ class KatanimeProvider : MainAPI() {
         val response = app.get(episodeUrl)
         val doc = response.document
 
-        // **LÍNEA MODIFICADA:** Nuevo patrón para encontrar la clave
         val keyScript = doc.select("script:containsData(var\\s+key\\s*=\\s*')").firstOrNull()
         val decryptionKeyBase64 = keyScript?.html()?.let {
             "var\\s+key\\s*=\\s*'(.*?)'".toRegex().find(it)?.groupValues?.get(1)
@@ -305,6 +304,8 @@ class KatanimeProvider : MainAPI() {
             Log.e("KatanimeProvider", "No se encontró la clave de desencriptación en el HTML.")
             return false
         }
+
+        Log.d("KatanimeProvider", "Clave Base64 encontrada: $decryptionKeyBase64")
 
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
@@ -316,11 +317,17 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank()) {
                     try {
+                        Log.d("KatanimeProvider", "Procesando jugador: $playerName")
+                        Log.d("KatanimeProvider", "Payload Base64: $playerPayload")
+
                         val decryptionKey = AndroidBase64.decode(decryptionKeyBase64, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
-                        Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
+                        Log.d("KatanimeProvider", "Clave de desencriptación decodificada exitosamente.")
 
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE))
+                        Log.d("KatanimeProvider", "Payload decodificado exitosamente.")
+
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
+                        Log.d("KatanimeProvider", "JSON del payload parseado. IV: ${encryptedData?.iv}, Value: ${encryptedData?.value}")
 
                         val iv = encryptedData?.iv
                         val value = encryptedData?.value
