@@ -310,25 +310,22 @@ class KatanimeProvider : MainAPI() {
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
+        val allowedPlayers = listOf("Fembed", "StreamSB", "Doodstream") // Puedes cambiar esta lista
+
         if (players.isNotEmpty()) {
             players.amap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
-                if (playerPayload.isNotBlank()) {
+                if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        Log.d("KatanimeProvider", "Procesando jugador: $playerName")
+                        Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
                         Log.d("KatanimeProvider", "Payload Base64: $playerPayload")
 
                         val decryptionKey = AndroidBase64.decode(decryptionKeyBase64, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
-                        Log.d("KatanimeProvider", "Clave de desencriptación decodificada exitosamente.")
-
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE))
-                        Log.d("KatanimeProvider", "Payload decodificado exitosamente.")
 
                         val encryptedData = tryParseJson<PlayerEncryptedData>(decodedPayload)
-                        Log.d("KatanimeProvider", "JSON del payload parseado. IV: ${encryptedData?.iv}, Value: ${encryptedData?.value}")
-
                         val iv = encryptedData?.iv
                         val value = encryptedData?.value
 
@@ -342,34 +339,35 @@ class KatanimeProvider : MainAPI() {
                             val decryptedValue = cipher.doFinal(AndroidBase64.decode(value, AndroidBase64.DEFAULT))
                             val decryptedHtml = String(decryptedValue, Charsets.UTF_8)
 
-                            Log.d("KatanimeProvider", "Decrypted HTML for $playerName: $decryptedHtml")
-
                             val decryptedDoc = Jsoup.parse(decryptedHtml)
                             val iframeUrl = decryptedDoc.selectFirst("iframe")?.attr("src")
 
                             if (!iframeUrl.isNullOrBlank()) {
-                                Log.d("KatanimeProvider", "loadLinks - Encontrado iframe de $playerName: $iframeUrl")
+                                Log.d("KatanimeProvider", "✅ iframe encontrado para $playerName: $iframeUrl")
                                 loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
                                 linksFound = true
                             } else {
-                                Log.e("KatanimeProvider", "loadLinks - No se encontró URL de iframe en el HTML desencriptado de $playerName.")
+                                Log.e("KatanimeProvider", "❌ No se encontró iframe en el HTML desencriptado de $playerName.")
                             }
 
                         } else {
-                            Log.e("KatanimeProvider", "loadLinks - El payload decodificado no contiene 'iv' o 'value'.")
+                            Log.e("KatanimeProvider", "❌ El payload decodificado no contiene 'iv' o 'value'.")
                         }
                     } catch (e: Exception) {
-                        Log.e("KatanimeProvider", "Error al procesar el payload de $playerName: ${e.message}")
+                        Log.e("KatanimeProvider", "⚠️ Error al procesar el payload de $playerName: ${e.message}")
                     }
+                } else {
+                    Log.d("KatanimeProvider", "⏩ Ignorando jugador no permitido: $playerName")
                 }
             }
         } else {
-            Log.e("KatanimeProvider", "loadLinks - No se encontraron servidores.")
+            Log.e("KatanimeProvider", "❌ No se encontraron servidores.")
         }
 
-        Log.d("KatanimeProvider", "Finalizando loadLinks. Enlaces encontrados: $linksFound")
+        Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
