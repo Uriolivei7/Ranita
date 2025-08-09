@@ -25,6 +25,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import okhttp3.FormBody
 import javax.crypto.Cipher.DECRYPT_MODE
+import android.net.Uri
 
 
 class KatanimeProvider : MainAPI() {
@@ -302,11 +303,14 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
+                        val iframeUrl = "https://katanime.net/reproductor?url=${Uri.encode(playerPayload)}"
                         val iframeResponse = app.get(iframeUrl)
                         val iframeDoc = iframeResponse.document
 
-                        val videoFrame = iframeDoc.select("div#player iframe").attr("src")
+                        // Log para inspeccionar el HTML si lo necesitas
+                        Log.d("KatanimeProvider", "HTML del iframe: ${iframeDoc.outerHtml()}")
+
+                        val videoFrame = iframeDoc.select("iframe").firstOrNull()?.attr("src") ?: ""
                         if (videoFrame.isNotBlank()) {
                             callback(
                                 newExtractorLink(
@@ -334,6 +338,7 @@ class KatanimeProvider : MainAPI() {
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
+
 
     //Yeji
     private fun parseStatus(statusString: String): ShowStatus {
