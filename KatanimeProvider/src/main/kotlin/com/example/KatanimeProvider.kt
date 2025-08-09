@@ -310,7 +310,8 @@ class KatanimeProvider : MainAPI() {
                         // Log para inspeccionar el HTML si lo necesitas
                         Log.d("KatanimeProvider", "HTML del iframe: ${iframeDoc.outerHtml()}")
 
-                        val videoFrame = iframeDoc.select("iframe").firstOrNull()?.attr("src") ?: ""
+                        val videoFrame = playerPayload
+
                         if (videoFrame.isNotBlank()) {
                             callback(
                                 newExtractorLink(
