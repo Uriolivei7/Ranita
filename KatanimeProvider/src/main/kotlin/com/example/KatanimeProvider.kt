@@ -296,6 +296,7 @@ class KatanimeProvider : MainAPI() {
 
         val allowedPlayers = listOf("FileMoon", "Mp4Upload")
 
+
         if (players.isNotEmpty()) {
             players.apmap { player ->
                 val playerName = player.attr("data-player-name")
@@ -311,6 +312,10 @@ class KatanimeProvider : MainAPI() {
                         Log.d("KatanimeProvider", "HTML del iframe: ${iframeDoc.outerHtml()}")
 
                         val videoFrame = playerPayload
+                        Log.d("KatanimeProvider", "Enlace extraído: $videoFrame")
+
+                        val qualityText = "HD"
+                        val qualityValue = parseQuality(qualityText)
 
                         if (videoFrame.isNotBlank()) {
                             callback(
@@ -320,8 +325,11 @@ class KatanimeProvider : MainAPI() {
                                     url = videoFrame,
                                     type = if (videoFrame.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                                 ) {
-                                    headers = mapOf("Referer" to iframeUrl)
-                                    quality = -1
+                                    headers = mapOf(
+                                        "Referer" to iframeUrl,
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                                    )
+                                    quality = qualityValue
                                 }
                             )
                             linksFound = true
@@ -339,8 +347,6 @@ class KatanimeProvider : MainAPI() {
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
-
-
     //Yeji
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
@@ -350,6 +356,17 @@ class KatanimeProvider : MainAPI() {
             else -> ShowStatus.Ongoing
         }
     }
+
+    private fun parseQuality(qualityString: String): Int {
+        return when (qualityString.lowercase()) {
+            "360p" -> Qualities.P360.value
+            "480p" -> Qualities.P480.value
+            "720p", "hd" -> Qualities.P720.value
+            "1080p", "fullhd", "full hd" -> Qualities.P1080.value
+            else -> Qualities.Unknown.value
+        }
+    }
+
 
     private fun fixUrl(url: String): String {
         return if (url.startsWith("/")) {
