@@ -274,7 +274,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
+
     data class PlayerEncryptedData(
         @JsonProperty("iv") val iv: String?,
         @JsonProperty("value") val value: String?
@@ -295,10 +295,11 @@ class KatanimeProvider : MainAPI() {
         val response = app.get(episodeUrl)
         val doc = response.document
 
-        // Nuevo método para obtener la clave de desencriptación del HTML
-        val keyScript = doc.select("script").firstOrNull { it.html().contains("var key = '") }
-        val keyRegex = "var key = '(.*?)'".toRegex()
-        val decryptionKeyBase64 = keyScript?.html()?.let { keyRegex.find(it)?.groupValues?.get(1) }
+        // **LÍNEA MODIFICADA:** Nuevo patrón para encontrar la clave
+        val keyScript = doc.select("script:containsData(var\\s+key\\s*=\\s*')").firstOrNull()
+        val decryptionKeyBase64 = keyScript?.html()?.let {
+            "var\\s+key\\s*=\\s*'(.*?)'".toRegex().find(it)?.groupValues?.get(1)
+        }
 
         if (decryptionKeyBase64.isNullOrBlank()) {
             Log.e("KatanimeProvider", "No se encontró la clave de desencriptación en el HTML.")
