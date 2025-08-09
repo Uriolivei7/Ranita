@@ -274,7 +274,7 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-
+//Yeji
     data class PlayerEncryptedData(
         @JsonProperty("iv") val iv: String?,
         @JsonProperty("value") val value: String?
@@ -290,13 +290,22 @@ class KatanimeProvider : MainAPI() {
         val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
         val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
 
-        Log.d("KatanimeProvider", "loadLinks - URL a cargar: https://katanime.net/capitulo/wotaku-ni-koi-wa-muzukashii-1/")
+        Log.d("KatanimeProvider", "loadLinks - URL a cargar: $episodeUrl")
 
         val response = app.get(episodeUrl)
         val doc = response.document
 
-        val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
+        // Nuevo método para obtener la clave de desencriptación del HTML
+        val keyScript = doc.select("script").firstOrNull { it.html().contains("var key = '") }
+        val keyRegex = "var key = '(.*?)'".toRegex()
+        val decryptionKeyBase64 = keyScript?.html()?.let { keyRegex.find(it)?.groupValues?.get(1) }
 
+        if (decryptionKeyBase64.isNullOrBlank()) {
+            Log.e("KatanimeProvider", "No se encontró la clave de desencriptación en el HTML.")
+            return false
+        }
+
+        val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
         if (players.isNotEmpty()) {
@@ -306,31 +315,7 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank()) {
                     try {
-                        val token = doc.select("meta[name='csrf-token']").attr("content")
-
-                        val requestBody = FormBody.Builder()
-                            .add("player", playerPayload)
-                            .build()
-
-                        val keyResponse = app.post(
-                            url = "https://katanime.net/t",
-                            requestBody = requestBody,
-                            headers = mapOf(
-                                "x-csrf-token" to token,
-                                "referer" to "https://katanime.net"
-                            )
-                        )
-
-                        // **NUEVA LÍNEA:** Registramos la clave antes de decodificarla
-                        Log.d("KatanimeProvider", "Raw key for $playerName: ${keyResponse.text}")
-
-                        val decryptionKey = AndroidBase64.decode(keyResponse.text, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
-
-                        if (decryptionKey.isEmpty()) {
-                            Log.e("KatanimeProvider", "No se pudo obtener la clave de desencriptación.")
-                            return@amap
-                        }
-
+                        val decryptionKey = AndroidBase64.decode(decryptionKeyBase64, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE)
                         Log.d("KatanimeProvider", "Clave de desencriptación obtenida: ${String(decryptionKey)}")
 
                         val decodedPayload = String(AndroidBase64.decode(playerPayload, AndroidBase64.NO_WRAP or AndroidBase64.URL_SAFE))
