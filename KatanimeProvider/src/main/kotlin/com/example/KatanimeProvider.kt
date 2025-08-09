@@ -306,8 +306,7 @@ class KatanimeProvider : MainAPI() {
                         val iframeResponse = app.get(iframeUrl)
                         val iframeDoc = iframeResponse.document
 
-                        // Extraer el src del iframe real
-                        val videoFrame = iframeDoc.select("iframe").attr("src")
+                        val videoFrame = iframeDoc.select("div#player iframe").attr("src")
                         if (videoFrame.isNotBlank()) {
                             callback(
                                 newExtractorLink(
