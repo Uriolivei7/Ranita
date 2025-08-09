@@ -311,9 +311,11 @@ class KatanimeProvider : MainAPI() {
                         val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
                         Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
 
-                        // Usa el extractor de Cloudstream si el reproductor es compatible
-                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
-                        linksFound = true
+                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback) { link ->
+                            Log.d("KatanimeProvider", "ExtractorLink generado: ${link.url}")
+                            callback(link)
+                            linksFound = true
+                        }
 
                     } catch (e: Exception) {
                         Log.e("KatanimeProvider", "Error al procesar $playerName: ${e.message}")
@@ -329,7 +331,7 @@ class KatanimeProvider : MainAPI() {
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
-
+//Yeji
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
             "finalizado" -> ShowStatus.Completed
