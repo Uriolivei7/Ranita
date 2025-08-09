@@ -309,33 +309,11 @@ class KatanimeProvider : MainAPI() {
                         Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
 
                         val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
-                        Log.d("KatanimeProvider", " iframe generado: $iframeUrl")
+                        Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
 
-                        val iframeResponse = app.get(iframeUrl, referer = episodeUrl)
-                        val iframeDoc = iframeResponse.document
-
-                        // Intenta extraer el src del iframe o video
-                        val videoSrc = iframeDoc.selectFirst("iframe, video")?.attr("src")
-                            ?: iframeDoc.selectFirst("source")?.attr("src")
-
-                        if (!videoSrc.isNullOrBlank()) {
-                            callback(
-                                newExtractorLink(
-                                    source = "Katanime",
-                                    name = "Katanime - $playerName",
-                                    url = videoSrc,
-                                    type = if (videoSrc.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                ) {
-                                    headers = mapOf("Referer" to iframeUrl)
-                                    quality = getQualityFromName(videoSrc)
-                                    //isM3u8 = videoSrc.contains(".m3u8")
-                                }
-                            )
-                            linksFound = true
-                        }
-                        else {
-                            Log.w("KatanimeProvider", "No se encontró src en iframe para $playerName")
-                        }
+                        // Usa el extractor de Cloudstream si el reproductor es compatible
+                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+                        linksFound = true
 
                     } catch (e: Exception) {
                         Log.e("KatanimeProvider", "Error al procesar $playerName: ${e.message}")
@@ -352,7 +330,6 @@ class KatanimeProvider : MainAPI() {
         return linksFound
     }
 
-
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
             "finalizado" -> ShowStatus.Completed
@@ -361,18 +338,6 @@ class KatanimeProvider : MainAPI() {
             else -> ShowStatus.Ongoing
         }
     }
-
-    fun getQualityFromName(name: String?): Int {
-        if (name == null) return -1
-        return when {
-            name.contains("1080", true) -> 1080
-            name.contains("720", true) -> 720
-            name.contains("480", true) -> 480
-            name.contains("360", true) -> 360
-            else -> -1
-        }
-    }
-
 
     private fun fixUrl(url: String): String {
         return if (url.startsWith("/")) {
