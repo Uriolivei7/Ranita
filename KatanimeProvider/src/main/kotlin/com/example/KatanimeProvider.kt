@@ -274,11 +274,6 @@ class KatanimeProvider : MainAPI() {
             //this.status = status
         }
     }
-//Yeji
-    data class PlayerEncryptedData(
-        @JsonProperty("iv") val iv: String?,
-        @JsonProperty("value") val value: String?
-    )
 
     override suspend fun loadLinks(
         data: String,
@@ -296,7 +291,10 @@ class KatanimeProvider : MainAPI() {
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
-        val allowedPlayers = listOf("Fembed", "StreamSB", "Doodstream", "Mega", "MixDrop", "FileMoon", "YourUpload", "Hexupload", "StreamW")
+        val allowedPlayers = listOf(
+            "Mega", "FileMoon", "StreamW", "Hexupload", "YourUpload", "MixDrop",
+            "Mp4Upload", "Mediafire", "SendVid", "VidGuard", "Streamtape", "LuluStream"
+        )
 
         if (players.isNotEmpty()) {
             players.amap { player ->
@@ -308,20 +306,20 @@ class KatanimeProvider : MainAPI() {
                         Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
 
                         val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
-                        Log.d("KatanimeProvider", "✅ iframe generado: $iframeUrl")
+                        Log.d("KatanimeProvider", " iframe generado: $iframeUrl")
 
                         loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
                         linksFound = true
 
                     } catch (e: Exception) {
-                        Log.e("KatanimeProvider", "⚠️ Error al generar iframe para $playerName: ${e.message}")
+                        Log.e("KatanimeProvider", " Error al generar iframe para $playerName: ${e.message}")
                     }
                 } else {
-                    Log.d("KatanimeProvider", "⏩ Ignorando jugador no permitido: $playerName")
+                    Log.d("KatanimeProvider", " Ignorando jugador no permitido: $playerName")
                 }
             }
         } else {
-            Log.e("KatanimeProvider", "❌ No se encontraron servidores.")
+            Log.e("KatanimeProvider", " No se encontraron servidores.")
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
