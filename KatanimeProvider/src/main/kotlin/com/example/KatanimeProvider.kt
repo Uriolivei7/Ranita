@@ -305,6 +305,8 @@ class KatanimeProvider : MainAPI() {
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
                         val iframeUrl = "https://katanime.net/reproductor?url=${Uri.encode(playerPayload)}"
+                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
+
                         val iframeResponse = app.get(iframeUrl)
                         val iframeDoc = iframeResponse.document
 
