@@ -4,6 +4,9 @@ import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import kotlin.collections.ArrayList
@@ -297,7 +300,7 @@ class KatanimeProvider : MainAPI() {
         )
 
         if (players.isNotEmpty()) {
-            players.amap { player ->
+            players.apmap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
@@ -308,23 +311,47 @@ class KatanimeProvider : MainAPI() {
                         val iframeUrl = "https://katanime.net/reproductor?url=$playerPayload"
                         Log.d("KatanimeProvider", " iframe generado: $iframeUrl")
 
-                        loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)
-                        linksFound = true
+                        val iframeResponse = app.get(iframeUrl, referer = episodeUrl)
+                        val iframeDoc = iframeResponse.document
+
+                        // Intenta extraer el src del iframe o video
+                        val videoSrc = iframeDoc.selectFirst("iframe, video")?.attr("src")
+                            ?: iframeDoc.selectFirst("source")?.attr("src")
+
+                        if (!videoSrc.isNullOrBlank()) {
+                            callback(
+                                newExtractorLink(
+                                    source = "Katanime",
+                                    name = "Katanime - $playerName",
+                                    url = videoSrc,
+                                    type = if (videoSrc.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                ) {
+                                    headers = mapOf("Referer" to iframeUrl)
+                                    quality = getQualityFromName(videoSrc)
+                                    //isM3u8 = videoSrc.contains(".m3u8")
+                                }
+                            )
+                            linksFound = true
+                        }
+                        else {
+                            Log.w("KatanimeProvider", "No se encontró src en iframe para $playerName")
+                        }
 
                     } catch (e: Exception) {
-                        Log.e("KatanimeProvider", " Error al generar iframe para $playerName: ${e.message}")
+                        Log.e("KatanimeProvider", "Error al procesar $playerName: ${e.message}")
                     }
                 } else {
-                    Log.d("KatanimeProvider", " Ignorando jugador no permitido: $playerName")
+                    Log.d("KatanimeProvider", "Ignorando jugador no permitido: $playerName")
                 }
             }
         } else {
-            Log.e("KatanimeProvider", " No se encontraron servidores.")
+            Log.e("KatanimeProvider", "No se encontraron servidores.")
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
@@ -334,6 +361,18 @@ class KatanimeProvider : MainAPI() {
             else -> ShowStatus.Ongoing
         }
     }
+
+    fun getQualityFromName(name: String?): Int {
+        if (name == null) return -1
+        return when {
+            name.contains("1080", true) -> 1080
+            name.contains("720", true) -> 720
+            name.contains("480", true) -> 480
+            name.contains("360", true) -> 360
+            else -> -1
+        }
+    }
+
 
     private fun fixUrl(url: String): String {
         return if (url.startsWith("/")) {
