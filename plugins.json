@@ -226,24 +226,5 @@
     "iconUrl": "https://wwv.veranimes.net/cdn/img/favicon.png",
     "language": "es",
     "fileSize": 26000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/KatanimeProvider.cs3",
-    "status": 1,
-    "version": 1,
-    "apiVersion": 13,
-    "name": "Katanime",
-    "internalName": "KatanimeProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para katanime.net",
-    "tvTypes": [
-      "Anime",
-      "OVA"
-    ],
-    "iconUrl": "https://katanime.net/favicon.ico?v=5.0.48",
-    "language": "es",
-    "fileSize": 21000
   }
 ]
