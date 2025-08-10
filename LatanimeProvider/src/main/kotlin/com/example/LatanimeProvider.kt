@@ -131,26 +131,26 @@ class LatanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Primero, carga el documento de la URL del episodio
-        val docEpisodio = appGetChildMainUrl(url).document
+        val doc = appGetChildMainUrl(url).document
 
-        // --- Lógica para extraer datos del episodio (sin cambios) ---
-        val posterElement = docEpisodio.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
+        // --- Lógica para extraer datos del episodio ---
+        val posterElement = doc.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
         val poster = if (dataSrc.isNotEmpty()) fixUrl(dataSrc) else if (src.isNotEmpty()) fixUrl(src) else ""
         val backimage = poster
-        val title = docEpisodio.selectFirst("div.col-lg-9.col-md-8 h2")?.text()
+        val title = doc.selectFirst("h2.mojon4")?.text()
             ?: throw ErrorLoadingException("Título no encontrado en $url")
-        val type = docEpisodio.selectFirst("div.chapterdetls2")?.text() ?: ""
-        val description = docEpisodio.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
-        val genres = docEpisodio.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
-        val status = when (docEpisodio.selectFirst("div.col-lg-3.col-md-4 div.series2 div.serieimgficha div.my-2")?.text()) {
+        // ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA!
+        val type = doc.selectFirst("div.chapterdetls2")?.text() ?: ""
+        val description = doc.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
+        val genres = doc.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
+        val status = when (doc.selectFirst("div.col-lg-3.col-md-4 div.series2 div.serieimgficha div.my-2")?.text()) {
             "Estreno" -> ShowStatus.Ongoing
             "Finalizado" -> ShowStatus.Completed
             else -> null
         }
-        val episodes = docEpisodio.select("div.row div.col-lg-9.col-md-8 div.row div a").mapNotNull { episodeLink ->
+        val episodes = doc.select("div.row div.col-lg-9.col-md-8 div.row div a").mapNotNull { episodeLink ->
             val name = episodeLink.selectFirst("div.cap-layout")?.text()
                 ?: episodeLink.selectFirst("h2")?.text()
                 ?: ""
@@ -170,7 +170,8 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val animeTitleFromPage = docEpisodio.selectFirst("div.col-lg-9.col-md-8 h2")?.text()?.trim()
+        // --- Lógica de las recomendaciones ---
+        val animeTitleFromPage = doc.selectFirst("div.col-lg-9.col-md-8 h2")?.text()?.trim()
 
         val recommendations = if (!animeTitleFromPage.isNullOrEmpty()) {
             Log.i("LatanimePlugin", "Título del anime principal encontrado: $animeTitleFromPage. Creando URL y extrayendo recomendaciones...")
@@ -182,12 +183,11 @@ class LatanimeProvider : MainAPI() {
 
             val docPrincipal = appGetChildMainUrl(animeUrl).document
 
-            // ¡NUEVO SELECTOR AQUÍ!
-            docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
+            docPrincipal.select("h2:contains(Sugerencias) + div.recomendados a").mapNotNull { recLink ->
                 val recUrl = recLink.attr("href")
                 val recTitle = recLink.selectFirst("h5")?.text()
-                val recPoster = recLink.selectFirst("img")?.attr("data-src")
-                    ?: recLink.selectFirst("img")?.attr("src")
+                val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
+                    ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
 
                 if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
                     Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
@@ -219,7 +219,7 @@ class LatanimeProvider : MainAPI() {
             this.recommendations = recommendations
         }
     }
-//Yeji
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
