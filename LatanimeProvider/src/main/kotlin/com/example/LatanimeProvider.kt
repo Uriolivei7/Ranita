@@ -167,6 +167,23 @@ class LatanimeProvider : MainAPI() {
                 this.runTime = null
             }
         }
+
+        val recommendations = doc.select("div.recomendados a").mapNotNull { recLink ->
+            val recUrl = recLink.attr("href")
+            val recTitle = recLink.selectFirst("h5")?.text()
+            val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
+                ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
+
+            if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
+                newAnimeSearchResponse(recTitle, recUrl) {
+                    this.posterUrl = fixUrl(recPoster)
+                    this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
+                }
+            } else {
+                null
+            }
+        }
+
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backimage
@@ -175,6 +192,7 @@ class LatanimeProvider : MainAPI() {
             this.plot = description
             this.tags = genres
             this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
+            this.recommendations = recommendations
         }
     }
 
