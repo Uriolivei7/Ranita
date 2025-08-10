@@ -168,33 +168,22 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val animeUrl = doc.selectFirst("div.col-lg-9.col-md-8 div.series2 h2 a")?.attr("href")
+        val recommendations = doc.select("div.recomendados a").mapNotNull { recLink ->
+            val recUrl = recLink.attr("href")
+            val recTitle = recLink.selectFirst("h5")?.text()
+            val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
+                ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
 
-        val recommendations = if (!animeUrl.isNullOrEmpty()) {
-            Log.i("LatanimePlugin", "URL de la página principal del anime encontrada: $animeUrl. Extrayendo recomendaciones...")
-
-            val docPrincipal = appGetChildMainUrl(animeUrl).document
-
-            docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
-                val recUrl = recLink.attr("href")
-                val recTitle = recLink.selectFirst("h5")?.text()
-                val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
-                    ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
-
-                if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
-                    Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
-                    newAnimeSearchResponse(recTitle, recUrl) {
-                        this.posterUrl = fixUrl(recPoster)
-                        this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
-                    }
-                } else {
-                    Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
-                    null
+            if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
+                Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
+                newAnimeSearchResponse(recTitle, recUrl) {
+                    this.posterUrl = fixUrl(recPoster)
+                    this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
                 }
+            } else {
+                Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
+                null
             }
-        } else {
-            Log.e("LatanimePlugin", "ERROR: No se pudo encontrar la URL de la página principal del anime en la página del episodio. Las recomendaciones no se cargarán.")
-            emptyList()
         }
 
         Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
