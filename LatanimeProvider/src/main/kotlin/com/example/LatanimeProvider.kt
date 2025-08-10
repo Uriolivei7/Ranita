@@ -132,16 +132,13 @@ class LatanimeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val doc = appGetChildMainUrl(url).document
-
-        // --- Lógica para extraer datos del episodio ---
         val posterElement = doc.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
         val poster = if (dataSrc.isNotEmpty()) fixUrl(dataSrc) else if (src.isNotEmpty()) fixUrl(src) else ""
         val backimage = poster
-        val title = doc.selectFirst("h2.mojon4")?.text()
+        val title = doc.selectFirst("div.col-lg-9.col-md-8 h2")?.text()
             ?: throw ErrorLoadingException("Título no encontrado en $url")
-        // ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA!
         val type = doc.selectFirst("div.chapterdetls2")?.text() ?: ""
         val description = doc.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
         val genres = doc.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
@@ -160,6 +157,7 @@ class LatanimeProvider : MainAPI() {
                 Log.w("LatanimePlugin", "WARN: Link de episodio nulo o vacío en load para $url.")
                 return@mapNotNull null
             }
+
             val epThumb = episodeLink.selectFirst(".animeimghv")?.attr("data-src")
                 ?: episodeLink.selectFirst("div.animeimgdiv img.animeimghv")?.attr("src")
                 ?: ""
@@ -169,45 +167,6 @@ class LatanimeProvider : MainAPI() {
                 this.runTime = null
             }
         }
-
-        // --- Lógica de las recomendaciones ---
-        val animeTitleFromPage = doc.selectFirst("div.col-lg-9.col-md-8 h2")?.text()?.trim()
-
-        val recommendations = if (!animeTitleFromPage.isNullOrEmpty()) {
-            Log.i("LatanimePlugin", "Título del anime principal encontrado: $animeTitleFromPage. Creando URL y extrayendo recomendaciones...")
-
-            val formattedTitle = animeTitleFromPage.replace(" ", "-").lowercase()
-            val animeUrl = "https://latanime.org/ver/$formattedTitle"
-
-            Log.i("LatanimePlugin", "URL principal inferida: $animeUrl")
-
-            val docPrincipal = appGetChildMainUrl(animeUrl).document
-
-            docPrincipal.select("h2:contains(Sugerencias) + div.recomendados a").mapNotNull { recLink ->
-                val recUrl = recLink.attr("href")
-                val recTitle = recLink.selectFirst("h5")?.text()
-                val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
-                    ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
-
-                if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
-                    Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
-                    newAnimeSearchResponse(recTitle, recUrl) {
-                        this.posterUrl = fixUrl(recPoster)
-                        this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
-                    }
-                } else {
-                    Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
-                    null
-                }
-            }
-        } else {
-            Log.e("LatanimePlugin", "ERROR: No se pudo encontrar el título principal del anime. Las recomendaciones no se cargarán.")
-            emptyList()
-        }
-
-        Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
-
-        // --- Retorno final de la respuesta ---
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backimage
@@ -216,7 +175,6 @@ class LatanimeProvider : MainAPI() {
             this.plot = description
             this.tags = genres
             this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
-            this.recommendations = recommendations
         }
     }
 
