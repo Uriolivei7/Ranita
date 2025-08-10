@@ -168,20 +168,19 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val recommendations = doc.select("div.recomendados a").mapNotNull { recLink ->
-            val recUrl = recLink.attr("href")
-            val recTitle = recLink.selectFirst("h5")?.text()
-            val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
-                ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
+        val recommendations = doc.select("a h5").mapNotNull { titleElement ->
+            val recLink = titleElement.parent()
+            val recUrl = recLink?.attr("href")
+            val recTitle = titleElement.text()
+            val recPoster = recLink?.selectFirst("img.nxtmainimg")?.attr("data-src")
+                ?: recLink?.selectFirst("img.nxtmainimg")?.attr("src")
 
-            if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
-                Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
+            if (recUrl != null && recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
                 newAnimeSearchResponse(recTitle, recUrl) {
                     this.posterUrl = fixUrl(recPoster)
                     this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
                 }
             } else {
-                Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
                 null
             }
         }
