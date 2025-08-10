@@ -132,6 +132,7 @@ class LatanimeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val doc = appGetChildMainUrl(url).document
+        Log.d("LatanimePlugin", "HTML del documento: ${doc.html()}")
         val posterElement = doc.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
