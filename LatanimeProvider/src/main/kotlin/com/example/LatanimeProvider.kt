@@ -131,24 +131,26 @@ class LatanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = appGetChildMainUrl(url).document
+        // Primero, carga el documento de la URL del episodio
+        val docEpisodio = appGetChildMainUrl(url).document
 
-        val posterElement = doc.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
+        // Extrae todos los datos del episodio de docEpisodio
+        val posterElement = docEpisodio.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
         val poster = if (dataSrc.isNotEmpty()) fixUrl(dataSrc) else if (src.isNotEmpty()) fixUrl(src) else ""
         val backimage = poster
-        val title = doc.selectFirst("div.col-lg-9.col-md-8 h2")?.text()
+        val title = docEpisodio.selectFirst("div.col-lg-9.col-md-8 h2")?.text()
             ?: throw ErrorLoadingException("Título no encontrado en $url")
-        val type = doc.selectFirst("div.chapterdetls2")?.text() ?: ""
-        val description = doc.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
-        val genres = doc.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
-        val status = when (doc.selectFirst("div.col-lg-3.col-md-4 div.series2 div.serieimgficha div.my-2")?.text()) {
+        val type = docEpisodio.selectFirst("div.chapterdetls2")?.text() ?: ""
+        val description = docEpisodio.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
+        val genres = docEpisodio.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
+        val status = when (docEpisodio.selectFirst("div.col-lg-3.col-md-4 div.series2 div.serieimgficha div.my-2")?.text()) {
             "Estreno" -> ShowStatus.Ongoing
             "Finalizado" -> ShowStatus.Completed
             else -> null
         }
-        val episodes = doc.select("div.row div.col-lg-9.col-md-8 div.row div a").mapNotNull { episodeLink ->
+        val episodes = docEpisodio.select("div.row div.col-lg-9.col-md-8 div.row div a").mapNotNull { episodeLink ->
             val name = episodeLink.selectFirst("div.cap-layout")?.text()
                 ?: episodeLink.selectFirst("h2")?.text()
                 ?: ""
@@ -168,25 +170,41 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val recommendations = doc.select("a h5").mapNotNull { titleElement ->
-            val recLink = titleElement.parent()
-            val recUrl = recLink?.attr("href")
-            val recTitle = titleElement.text()
-            val recPoster = recLink?.selectFirst("img.nxtmainimg")?.attr("data-src")
-                ?: recLink?.selectFirst("img.nxtmainimg")?.attr("src")
+        // AHORA BUSCA LA URL PRINCIPAL DESDE EL HTML DEL EPISODIO
+        // En tu HTML, el título del anime es un h2. Su padre es un a
+        val animeUrl = docEpisodio.selectFirst("h2 a")?.attr("href")
 
-            if (recUrl != null && recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
-                newAnimeSearchResponse(recTitle, recUrl) {
-                    this.posterUrl = fixUrl(recPoster)
-                    this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
+        val recommendations = if (!animeUrl.isNullOrEmpty()) {
+            Log.i("LatanimePlugin", "URL principal encontrada: $animeUrl. Extrayendo recomendaciones...")
+
+            // Carga la página principal del anime para obtener las recomendaciones
+            val docPrincipal = appGetChildMainUrl(animeUrl).document
+
+            docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
+                val recUrl = recLink.attr("href")
+                val recTitle = recLink.selectFirst("h5")?.text()
+                val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
+                    ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
+
+                if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
+                    Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
+                    newAnimeSearchResponse(recTitle, recUrl) {
+                        this.posterUrl = fixUrl(recPoster)
+                        this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
+                    }
+                } else {
+                    Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
+                    null
                 }
-            } else {
-                null
             }
+        } else {
+            Log.e("LatanimePlugin", "ERROR: No se pudo encontrar la URL de la página principal del anime. Las recomendaciones no se cargarán.")
+            emptyList()
         }
 
         Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
 
+        // Devuelve todos los datos, incluyendo la lista de recomendaciones
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backimage
