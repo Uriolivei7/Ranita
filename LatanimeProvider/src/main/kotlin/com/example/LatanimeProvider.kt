@@ -168,7 +168,7 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val animeUrl = docEpisodio.selectFirst("div.capresto h3 a")?.attr("href")
+        val animeUrl = url.substringBeforeLast("-episodio-", "")
 
         val recommendations = if (!animeUrl.isNullOrEmpty()) {
             Log.i("LatanimePlugin", "URL principal encontrada: $animeUrl. Extrayendo recomendaciones...")
