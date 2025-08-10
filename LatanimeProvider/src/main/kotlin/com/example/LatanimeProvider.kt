@@ -131,8 +131,10 @@ class LatanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
+        // Primero, carga el documento de la URL del episodio
         val docEpisodio = appGetChildMainUrl(url).document
 
+        // --- Lógica para extraer datos del episodio (sin cambios) ---
         val posterElement = docEpisodio.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
@@ -168,11 +170,18 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        val animeUrl = url.substringBeforeLast("-episodio-", "")
+        val animeTitleFromPage = docEpisodio.selectFirst("div.col-lg-9.col-md-8 h2")?.text()?.trim()
 
-        val recommendations = if (!animeUrl.isNullOrEmpty()) {
-            Log.i("LatanimePlugin", "URL principal encontrada: $animeUrl. Extrayendo recomendaciones...")
+        val recommendations = if (!animeTitleFromPage.isNullOrEmpty()) {
+            Log.i("LatanimePlugin", "Título del anime principal encontrado: $animeTitleFromPage. Creando URL y extrayendo recomendaciones...")
 
+            // 2. Formatear el título para que coincida con el formato de URL.
+            val formattedTitle = animeTitleFromPage.replace(" ", "-").lowercase()
+            val animeUrl = "https://latanime.org/ver/$formattedTitle"
+
+            Log.i("LatanimePlugin", "URL principal inferida: $animeUrl")
+
+            // 3. Cargar la página principal del anime para obtener las recomendaciones.
             val docPrincipal = appGetChildMainUrl(animeUrl).document
 
             docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
@@ -193,12 +202,13 @@ class LatanimeProvider : MainAPI() {
                 }
             }
         } else {
-            Log.e("LatanimePlugin", "ERROR: No se pudo encontrar la URL de la página principal del anime. Las recomendaciones no se cargarán.")
+            Log.e("LatanimePlugin", "ERROR: No se pudo encontrar el título principal del anime. Las recomendaciones no se cargarán.")
             emptyList()
         }
 
         Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
 
+        // --- Retorno final de la respuesta ---
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backimage
