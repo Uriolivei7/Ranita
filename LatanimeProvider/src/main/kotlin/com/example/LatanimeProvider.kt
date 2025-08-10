@@ -131,10 +131,8 @@ class LatanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Primero, carga el documento de la URL del episodio
         val docEpisodio = appGetChildMainUrl(url).document
 
-        // Extrae todos los datos del episodio de docEpisodio
         val posterElement = docEpisodio.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
         val dataSrc = posterElement?.attr("data-src") ?: ""
         val src = posterElement?.attr("src") ?: ""
@@ -170,14 +168,11 @@ class LatanimeProvider : MainAPI() {
             }
         }
 
-        // AHORA BUSCA LA URL PRINCIPAL DESDE EL HTML DEL EPISODIO
-        // En tu HTML, el título del anime es un h2. Su padre es un a
-        val animeUrl = docEpisodio.selectFirst("h2 a")?.attr("href")
+        val animeUrl = docEpisodio.selectFirst("div.capresto h3 a")?.attr("href")
 
         val recommendations = if (!animeUrl.isNullOrEmpty()) {
             Log.i("LatanimePlugin", "URL principal encontrada: $animeUrl. Extrayendo recomendaciones...")
 
-            // Carga la página principal del anime para obtener las recomendaciones
             val docPrincipal = appGetChildMainUrl(animeUrl).document
 
             docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
@@ -204,7 +199,6 @@ class LatanimeProvider : MainAPI() {
 
         Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
 
-        // Devuelve todos los datos, incluyendo la lista de recomendaciones
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backimage
