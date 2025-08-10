@@ -175,20 +175,19 @@ class LatanimeProvider : MainAPI() {
         val recommendations = if (!animeTitleFromPage.isNullOrEmpty()) {
             Log.i("LatanimePlugin", "Título del anime principal encontrado: $animeTitleFromPage. Creando URL y extrayendo recomendaciones...")
 
-            // 2. Formatear el título para que coincida con el formato de URL.
             val formattedTitle = animeTitleFromPage.replace(" ", "-").lowercase()
             val animeUrl = "https://latanime.org/ver/$formattedTitle"
 
             Log.i("LatanimePlugin", "URL principal inferida: $animeUrl")
 
-            // 3. Cargar la página principal del anime para obtener las recomendaciones.
             val docPrincipal = appGetChildMainUrl(animeUrl).document
 
+            // ¡NUEVO SELECTOR AQUÍ!
             docPrincipal.select("div.recomendados a").mapNotNull { recLink ->
                 val recUrl = recLink.attr("href")
                 val recTitle = recLink.selectFirst("h5")?.text()
-                val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
-                    ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
+                val recPoster = recLink.selectFirst("img")?.attr("data-src")
+                    ?: recLink.selectFirst("img")?.attr("src")
 
                 if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
                     Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl")
