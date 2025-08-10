@@ -174,15 +174,24 @@ class LatanimeProvider : MainAPI() {
             val recPoster = recLink.selectFirst("img.nxtmainimg")?.attr("data-src")
                 ?: recLink.selectFirst("img.nxtmainimg")?.attr("src")
 
+            if (recLink.selectFirst("h5") == null) {
+                Log.w("LatanimePlugin", "WARN: No se encontró el título (h5) para un enlace de recomendación. Selector 'div.recomendados a' podría estar incorrecto.")
+                return@mapNotNull null
+            }
+
             if (recUrl.isNotEmpty() && recTitle != null && recPoster != null) {
+                Log.d("LatanimePlugin", "Recomendación encontrada: Título=$recTitle, URL=$recUrl, Póster=$recPoster")
                 newAnimeSearchResponse(recTitle, recUrl) {
                     this.posterUrl = fixUrl(recPoster)
                     this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
                 }
             } else {
+                Log.w("LatanimePlugin", "ADVERTENCIA: Fallo al extraer datos de una recomendación. Título: $recTitle, URL: $recUrl, Póster: $recPoster")
                 null
             }
         }
+
+        Log.i("LatanimePlugin", "Se encontraron ${recommendations.size} recomendaciones.")
 
         return newAnimeLoadResponse(title, url, getType(type)) {
             this.posterUrl = poster
