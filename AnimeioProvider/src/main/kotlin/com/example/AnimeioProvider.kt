@@ -49,7 +49,7 @@ class AnimeioProvider : MainAPI() {
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
         val link = linkElement?.attr("href")
         val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img")?.attr("src")?.ifEmpty { element.selectFirst("img")?.attr("data-src") }
+        val posterUrl = element.selectFirst("img")?.attr("data-src")?.ifEmpty { element.selectFirst("img")?.attr("src") }
         val yearText = element.selectFirst("div._2y8kd")?.text()?.trim()
         val year = yearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
 
@@ -188,9 +188,9 @@ class AnimeioProvider : MainAPI() {
         val year = yearText?.take(4)?.toIntOrNull()
         val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
 
+        // Código corregido para la extracción de episodios
         val allEpisodes = ArrayList<Episode>()
-        // Nueva lógica para extraer episodios de la variable de script
-        val scriptContent = doc.selectFirst("script:contains(const allEpisodes =)")?.html()
+        val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
         if (scriptContent != null) {
             val episodesJsonString = scriptContent
                 .substringAfter("const allEpisodes = ")
@@ -208,10 +208,7 @@ class AnimeioProvider : MainAPI() {
                                 this.name = episode.title ?: "Episodio $epNum"
                                 this.episode = epNum
                             }
-                        } else {
-                            Log.e("AnimeioProvider", "Fallo al extraer episodio. URL: $epUrl, Número: $epNum")
-                            null
-                        }
+                        } else null
                     })
                 }
             } catch (e: Exception) {
