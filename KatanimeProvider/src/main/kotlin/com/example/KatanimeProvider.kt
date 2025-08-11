@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.MainAPI
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import kotlin.collections.ArrayList
@@ -26,7 +27,6 @@ import javax.crypto.spec.SecretKeySpec
 import okhttp3.FormBody
 import javax.crypto.Cipher.DECRYPT_MODE
 import android.net.Uri
-
 
 class KatanimeProvider : MainAPI() {
     override var mainUrl = "https://katanime.net"
@@ -118,8 +118,6 @@ class KatanimeProvider : MainAPI() {
                 val posterUrl = it.selectFirst("img.lozad")?.attr("data-src")
 
                 if (title != null && link != null) {
-                    // Obtener el nombre del anime de la URL del capítulo
-                    // Ejemplo: https://katanime.net/capitulo/dandadan-2nd-season-6/ -> https://katanime.net/anime/dandadan-2nd-season/
                     val animeSlug = link.substringAfter("/capitulo/").substringBeforeLast("-").substringBeforeLast("/")
                     val animeUrl = "$mainUrl/anime/$animeSlug/"
 
@@ -285,32 +283,26 @@ class KatanimeProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val parsedEpisodeData = tryParseJson<EpisodeLoadData>(data)
-        val episodeUrl = parsedEpisodeData?.episodeUrl ?: data
-
+        val episodeUrl = tryParseJson<EpisodeLoadData>(data)?.episodeUrl ?: data
         val response = app.get(episodeUrl)
         val doc = response.document
 
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
-        // Lista de jugadores permitidos. Es buena práctica mantenerla.
-        val allowedPlayers = listOf("FileMoon", "Mp4Upload")
+        val allowedPlayers = listOf("FileMoon", "Mp4Upload", "Mega", "StreamW", "Streamtape", "LuluStream", "Hexupload", "VidGuard")
 
         if (players.isNotEmpty()) {
             players.apmap { player ->
                 val playerName = player.attr("data-player-name")
                 val playerPayload = player.attr("data-player")
 
-                // Solo procesamos los jugadores que están en nuestra lista
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        // Construimos la URL del iframe. Es la que Cloudstream necesita.
                         val iframeUrl = "https://katanime.net/reproductor?url=${Uri.encode(playerPayload)}"
-                        Log.d("KatanimeProvider", "Procesando jugador permitido: $playerName")
+                        Log.d("KatanimeProvider", "Procesando reproductor: $playerName")
                         Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
 
-                        // Llamamos a loadExtractor y dependemos de él para manejar la extracción
                         if (loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)) {
                             linksFound = true
                             Log.d("KatanimeProvider", "Enlaces encontrados por loadExtractor para $playerName")
@@ -324,10 +316,9 @@ class KatanimeProvider : MainAPI() {
         }
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
-        // Devolvemos si se encontró al menos un enlace
         return linksFound
     }
-    //Yeji
+
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
             "finalizado" -> ShowStatus.Completed
