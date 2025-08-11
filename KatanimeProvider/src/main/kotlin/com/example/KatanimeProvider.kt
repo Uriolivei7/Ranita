@@ -299,13 +299,16 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        val iframeUrl = "https://katanime.net/reproductor?url=${Uri.encode(playerPayload)}"
+                        val iframeUrl = decryptPlayerUrl(playerPayload)
                         Log.d("KatanimeProvider", "Procesando reproductor: $playerName")
-                        Log.d("KatanimeProvider", "Iframe generado: $iframeUrl")
+                        Log.d("KatanimeProvider", "URL de Iframe desencriptada: $iframeUrl")
 
-                        if (loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)) {
-                            linksFound = true
-                            Log.d("KatanimeProvider", "Enlaces encontrados por loadExtractor para $playerName")
+                        if (!iframeUrl.isNullOrBlank()) {
+                            // Se usa la función utilitaria loadExtractor directamente con la URL desencriptada
+                            if (loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)) {
+                                linksFound = true
+                                Log.d("KatanimeProvider", "Enlaces encontrados por loadExtractor para $playerName")
+                            }
                         }
 
                     } catch (e: Exception) {
@@ -317,6 +320,42 @@ class KatanimeProvider : MainAPI() {
 
         Log.d("KatanimeProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
+    }
+
+    private fun decryptPlayerUrl(encodedPayload: String): String? {
+        return try {
+            data class PlayerData(
+                @JsonProperty("iv") val iv: String? = null,
+                @JsonProperty("value") val value: String? = null,
+                @JsonProperty("mac") val mac: String? = null
+            )
+
+            val decryptedData = AndroidBase64.decode(encodedPayload, AndroidBase64.URL_SAFE)
+            val json = decryptedData.toString(Charsets.UTF_8)
+            val playerData = tryParseJson<PlayerData>(json)
+
+            val key = "CLOUSTREAM3EXTRACTORKEY".toByteArray(Charsets.UTF_8)
+            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
+            val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
+
+            if (iv == null || encryptedValue == null) {
+                Log.e("KatanimeProvider", "Datos de desencriptación incompletos (IV o valor nulo)")
+                return null
+            }
+
+            val ivSpec = IvParameterSpec(iv)
+            val keySpec = SecretKeySpec(key, "AES")
+
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(DECRYPT_MODE, keySpec, ivSpec)
+
+            val decryptedBytes = cipher.doFinal(encryptedValue)
+            decryptedBytes.toString(Charsets.UTF_8)
+
+        } catch (e: Exception) {
+            Log.e("KatanimeProvider", "Error al desencriptar el payload: ${e.message}")
+            null
+        }
     }
 
     private fun parseStatus(statusString: String): ShowStatus {
