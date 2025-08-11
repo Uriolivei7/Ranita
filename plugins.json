@@ -226,5 +226,24 @@
     "iconUrl": "https://wwv.veranimes.net/cdn/img/favicon.png",
     "language": "es",
     "fileSize": 26000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 13,
+    "name": "AnimeIO",
+    "internalName": "AnimeioProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para animeio.com",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://animeio.com/favicon.ico",
+    "language": "es",
+    "fileSize": 26000
   }
 ]
