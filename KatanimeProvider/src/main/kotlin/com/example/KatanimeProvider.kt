@@ -299,9 +299,9 @@ class KatanimeProvider : MainAPI() {
 
                 if (playerPayload.isNotBlank() && allowedPlayers.any { playerName.contains(it, ignoreCase = true) }) {
                     try {
-                        val iframeUrl = getIframeUrl(playerPayload)
+                        val iframeUrl = decryptPlayerUrl(playerPayload)
                         Log.d("KatanimeProvider", "Procesando reproductor: $playerName")
-                        Log.d("KatanimeProvider", "URL de Iframe obtenida: $iframeUrl")
+                        Log.d("KatanimeProvider", "URL de Iframe desencriptada: $iframeUrl")
 
                         if (!iframeUrl.isNullOrBlank()) {
                             if (loadExtractor(iframeUrl, episodeUrl, subtitleCallback, callback)) {
@@ -321,22 +321,46 @@ class KatanimeProvider : MainAPI() {
         return linksFound
     }
 
-    // Nueva función para construir y obtener la URL del iframe.
-    private fun getIframeUrl(playerPayload: String): String? {
-        val baseUrl = "https://katanime.net/player?url="
+    private fun decryptPlayerUrl(encodedPayload: String): String? {
         return try {
-            val decodedPayload = AndroidBase64.decode(playerPayload, AndroidBase64.URL_SAFE).toString(Charsets.UTF_8)
-            val jsonObject = tryParseJson<Map<String, String>>(decodedPayload)
-            val encodedValue = jsonObject?.get("value")
+            data class PlayerData(
+                @JsonProperty("iv") val iv: String? = null,
+                @JsonProperty("value") val value: String? = null
+            )
 
-            val iframeSrc = baseUrl + encodedValue
+            val json = AndroidBase64.decode(encodedPayload, AndroidBase64.URL_SAFE).toString(Charsets.UTF_8)
+            val playerData = tryParseJson<PlayerData>(json)
 
-            return iframeSrc
+            val key = hexStringToByteArray("32726d6c6e756163747167696c737930777561636c7a706b726d6e7563796d74")
+            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
+            val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
+
+            if (iv == null || encryptedValue == null) {
+                Log.e("KatanimeProvider", "Datos de desencriptación incompletos (IV o valor nulo)")
+                return null
+            }
+
+            val ivSpec = IvParameterSpec(iv)
+            val keySpec = SecretKeySpec(key, "AES")
+
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(DECRYPT_MODE, keySpec, ivSpec)
+
+            val decryptedBytes = cipher.doFinal(encryptedValue)
+            return decryptedBytes.toString(Charsets.UTF_8)
+
         } catch (e: Exception) {
-            Log.e("KatanimeProvider", "Error al construir la URL del iframe: ${e.message}")
+            Log.e("KatanimeProvider", "Error al desencriptar el payload: ${e.message}")
             null
         }
     }
+
+    private fun hexStringToByteArray(hexString: String): ByteArray {
+        return hexString.chunked(2)
+            .map { it.toInt(16).toByte() }
+            .toByteArray()
+    }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
