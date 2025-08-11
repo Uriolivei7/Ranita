@@ -27,6 +27,7 @@ import javax.crypto.spec.SecretKeySpec
 import okhttp3.FormBody
 import javax.crypto.Cipher.DECRYPT_MODE
 import android.net.Uri
+import java.security.MessageDigest
 
 class KatanimeProvider : MainAPI() {
     override var mainUrl = "https://katanime.net"
@@ -323,24 +324,34 @@ class KatanimeProvider : MainAPI() {
 
     private fun decryptPlayerUrl(encodedPayload: String): String? {
         return try {
+            // El payload ahora incluye la sal (salt)
             data class PlayerData(
                 @JsonProperty("iv") val iv: String? = null,
-                @JsonProperty("value") val value: String? = null
+                @JsonProperty("value") val value: String? = null,
+                @JsonProperty("salt") val salt: String? = null
             )
 
+            // Decodificar el payload de Base64 por defecto.
             val json = AndroidBase64.decode(encodedPayload, AndroidBase64.DEFAULT).toString(Charsets.UTF_8)
             val playerData = tryParseJson<PlayerData>(json)
 
-            val key = hexStringToByteArray("32726d6c6e756163747167696c737930777561636c7a706b726d6e7563796d74")
+            // La clave de encriptación real se deriva de la contraseña "hanabi" y la sal.
+            val password = "hanabi".toByteArray(Charsets.UTF_8)
+            val salt = playerData?.salt?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
             val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
             val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
 
-            if (iv == null || encryptedValue == null) {
-                Log.e("KatanimeProvider", "Datos de desencriptación incompletos (IV o valor nulo)")
+            if (salt == null || iv == null || encryptedValue == null) {
+                Log.e("KatanimeProvider", "Datos de desencriptación incompletos (Sal, IV o valor nulo)")
                 return null
             }
 
-            val ivSpec = IvParameterSpec(iv)
+            // Derivación de la clave y el IV (similar al método OpenSSL de CryptoJS)
+            val derivedKeyAndIv = deriveKeyAndIv(password, salt, 32, 16)
+            val key = derivedKeyAndIv.first
+            val derivedIv = derivedKeyAndIv.second
+
+            val ivSpec = IvParameterSpec(derivedIv)
             val keySpec = SecretKeySpec(key, "AES")
 
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
@@ -355,12 +366,35 @@ class KatanimeProvider : MainAPI() {
         }
     }
 
-    // Función auxiliar para convertir una cadena hexadecimal a un ByteArray
+    private fun deriveKeyAndIv(password: ByteArray, salt: ByteArray, keyLength: Int, ivLength: Int): Pair<ByteArray, ByteArray> {
+        val keyAndIvLength = keyLength + ivLength
+        val keyAndIv = ByteArray(keyAndIvLength)
+        val md = MessageDigest.getInstance("MD5")
+        var currentHash = md.digest(password + salt)
+        System.arraycopy(currentHash, 0, keyAndIv, 0, currentHash.size)
+
+        var currentLength = currentHash.size
+        while (currentLength < keyAndIvLength) {
+            md.reset()
+            currentHash = md.digest(currentHash + password + salt)
+            val remainingLength = keyAndIvLength - currentLength
+            val toCopy = minOf(currentHash.size, remainingLength)
+            System.arraycopy(currentHash, 0, keyAndIv, currentLength, toCopy)
+            currentLength += toCopy
+        }
+
+        val key = keyAndIv.copyOfRange(0, keyLength)
+        val iv = keyAndIv.copyOfRange(keyLength, keyAndIvLength)
+
+        return Pair(key, iv)
+    }
+
     private fun hexStringToByteArray(hexString: String): ByteArray {
         return hexString.chunked(2)
             .map { it.toInt(16).toByte() }
             .toByteArray()
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
