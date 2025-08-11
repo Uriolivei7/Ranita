@@ -95,9 +95,10 @@ class AnimeioProvider : MainAPI() {
         delayMs: Long = 2000L,
         timeoutMs: Long = 15000L
     ): String? {
+        val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
         for (i in 0 until retries) {
             try {
-                val res = app.get(url, timeout = timeoutMs)
+                val res = app.get(url, timeout = timeoutMs, headers = mapOf("User-Agent" to userAgent))
                 if (res.isSuccessful) return res.text
             } catch (e: Exception) {
                 Log.e("AnimeioProvider", "safeAppGet error for URL: $url: ${e.message}", e)
