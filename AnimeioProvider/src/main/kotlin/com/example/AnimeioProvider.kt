@@ -180,7 +180,6 @@ class AnimeioProvider : MainAPI() {
         val html = response.text
         val doc = Jsoup.parse(html)
 
-        // Selectores actualizados
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
         val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src") ?: doc.selectFirst("div#animeinfo img")?.attr("src") ?: ""
         val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
@@ -189,33 +188,7 @@ class AnimeioProvider : MainAPI() {
         val year = yearText?.take(4)?.toIntOrNull()
         val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
 
-        // Código corregido para la extracción de episodios
-        val allEpisodes = ArrayList<Episode>()
-        val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
-        if (scriptContent != null) {
-            val episodesJsonString = scriptContent
-                .substringAfter("const allEpisodes = ")
-                .substringBefore(";")
-                .trim()
-
-            try {
-                val episodesData = tryParseJson<List<EpisodeData>>(episodesJsonString)
-                if (episodesData != null) {
-                    allEpisodes.addAll(episodesData.mapNotNull { episode ->
-                        val epUrl = "$url/episodio-${episode.episode}"
-                        val epNum = episode.episode?.toIntOrNull()
-                        if (epUrl.isNotBlank() && epNum != null) {
-                            newEpisode(epUrl) {
-                                this.name = episode.title ?: "Episodio $epNum"
-                                this.episode = epNum
-                            }
-                        } else null
-                    })
-                }
-            } catch (e: Exception) {
-                Log.e("AnimeioProvider", "Fallo al parsear el JSON de episodios: ${e.message}", e)
-            }
-        }
+        val isMovie = doc.selectFirst("span#ranking.estado")?.text()?.lowercase() == "película"
 
         val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
             val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
@@ -235,19 +208,62 @@ class AnimeioProvider : MainAPI() {
             } else null
         }
 
-        return newTvSeriesLoadResponse(
-            name = title,
-            url = url,
-            type = TvType.Anime,
-            episodes = allEpisodes.reversed()
-        ) {
-            this.posterUrl = fixPosterUrl(poster)
-            this.backgroundPosterUrl = fixPosterUrl(poster)
-            this.plot = description
-            this.tags = tags
-            this.year = year
-            this.recommendations = recommendations
-            //this.status = status
+        if (isMovie) {
+            return newMovieLoadResponse(
+                name = title,
+                url = url,
+                type = TvType.Movie,
+                dataUrl = url
+            ) {
+                this.posterUrl = fixPosterUrl(poster)
+                this.backgroundPosterUrl = fixPosterUrl(poster)
+                this.plot = description
+                this.tags = tags
+                this.year = year
+                this.recommendations = recommendations
+                //this.status = status
+            }
+        } else {
+            val allEpisodes = ArrayList<Episode>()
+            val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
+            if (scriptContent != null) {
+                val episodesJsonString = scriptContent
+                    .substringAfter("const allEpisodes = ")
+                    .substringBefore(";")
+                    .trim()
+
+                try {
+                    val episodesData = tryParseJson<List<EpisodeData>>(episodesJsonString)
+                    if (episodesData != null) {
+                        allEpisodes.addAll(episodesData.mapNotNull { episode ->
+                            val epUrl = "$url/episodio-${episode.episode}"
+                            val epNum = episode.episode?.toIntOrNull()
+                            if (epUrl.isNotBlank() && epNum != null) {
+                                newEpisode(epUrl) {
+                                    this.name = episode.title ?: "Episodio $epNum"
+                                    this.episode = epNum
+                                }
+                            } else null
+                        })
+                    }
+                } catch (e: Exception) {
+                    Log.e("AnimeioProvider", "Fallo al parsear el JSON de episodios: ${e.message}", e)
+                }
+            }
+            return newTvSeriesLoadResponse(
+                name = title,
+                url = url,
+                type = TvType.Anime,
+                episodes = allEpisodes.reversed()
+            ) {
+                this.posterUrl = fixPosterUrl(poster)
+                this.backgroundPosterUrl = fixPosterUrl(poster)
+                this.plot = description
+                this.tags = tags
+                this.year = year
+                this.recommendations = recommendations
+                //this.status = status
+            }
         }
     }
 
