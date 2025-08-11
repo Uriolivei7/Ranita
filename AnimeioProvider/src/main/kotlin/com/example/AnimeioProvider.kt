@@ -181,7 +181,13 @@ class AnimeioProvider : MainAPI() {
         val doc = Jsoup.parse(html)
 
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
-        val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src") ?: doc.selectFirst("div#animeinfo img")?.attr("src") ?: ""
+        val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src").let {
+            if (it.isNullOrBlank()) {
+                doc.selectFirst("div#animeinfo img")?.attr("src")
+            } else {
+                it
+            }
+        } ?: ""
         val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
         val tags = doc.select("div.anime-genres a").map { it.text() }
         val yearText = doc.selectFirst("div.details-by")?.text()?.substringAfter("•")?.trim()
@@ -193,7 +199,13 @@ class AnimeioProvider : MainAPI() {
         val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
             val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
             val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
-            val recPoster = element.selectFirst("img")?.attr("data-src")?.ifEmpty { element.selectFirst("img")?.attr("src") }
+            val recPoster = element.selectFirst("img")?.attr("data-src").let {
+                if (it.isNullOrBlank()) {
+                    element.selectFirst("img")?.attr("src")
+                } else {
+                    it
+                }
+            }
             val recYearText = element.selectFirst("div._2y8kd")?.text()?.trim()
             val recYear = recYearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
 
