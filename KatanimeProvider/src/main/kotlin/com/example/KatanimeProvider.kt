@@ -322,6 +322,7 @@ class KatanimeProvider : MainAPI() {
         return linksFound
     }
 
+    // Función para desencriptar el payload AES-256-CBC
     private fun decryptPlayerUrl(encodedPayload: String): String? {
         return try {
             data class PlayerData(
@@ -330,11 +331,12 @@ class KatanimeProvider : MainAPI() {
                 @JsonProperty("mac") val mac: String? = null
             )
 
-            val decryptedData = AndroidBase64.decode(encodedPayload, AndroidBase64.URL_SAFE)
-            val json = decryptedData.toString(Charsets.UTF_8)
+            // Decodificar el payload de Base64 (URL_SAFE) a una cadena JSON
+            val json = AndroidBase64.decode(encodedPayload, AndroidBase64.URL_SAFE).toString(Charsets.UTF_8)
             val playerData = tryParseJson<PlayerData>(json)
 
-            val key = "CLOUSTREAM3EXTRACTORKEY".toByteArray(Charsets.UTF_8)
+            // Clave de 32 bytes para AES-256-CBC (256 bits)
+            val key = "This is a 32 byte secret key for you".toByteArray(Charsets.UTF_8)
             val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
             val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
 
@@ -350,7 +352,7 @@ class KatanimeProvider : MainAPI() {
             cipher.init(DECRYPT_MODE, keySpec, ivSpec)
 
             val decryptedBytes = cipher.doFinal(encryptedValue)
-            decryptedBytes.toString(Charsets.UTF_8)
+            return decryptedBytes.toString(Charsets.UTF_8)
 
         } catch (e: Exception) {
             Log.e("KatanimeProvider", "Error al desencriptar el payload: ${e.message}")
