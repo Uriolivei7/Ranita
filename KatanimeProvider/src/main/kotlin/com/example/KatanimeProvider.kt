@@ -324,18 +324,15 @@ class KatanimeProvider : MainAPI() {
 
     private fun decryptPlayerUrl(encodedPayload: String): String? {
         return try {
-            // El payload ahora incluye la sal (salt)
             data class PlayerData(
                 @JsonProperty("iv") val iv: String? = null,
-                @JsonProperty("value") val value: String? = null,
-                @JsonProperty("salt") val salt: String? = null
+                @JsonProperty("ct") val value: String? = null,
+                @JsonProperty("s") val salt: String? = null
             )
 
-            // Decodificar el payload de Base64 por defecto.
             val json = AndroidBase64.decode(encodedPayload, AndroidBase64.DEFAULT).toString(Charsets.UTF_8)
             val playerData = tryParseJson<PlayerData>(json)
 
-            // La clave de encriptación real se deriva de la contraseña "hanabi" y la sal.
             val password = "hanabi".toByteArray(Charsets.UTF_8)
             val salt = playerData?.salt?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
             val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
@@ -346,7 +343,6 @@ class KatanimeProvider : MainAPI() {
                 return null
             }
 
-            // Derivación de la clave y el IV (similar al método OpenSSL de CryptoJS)
             val derivedKeyAndIv = deriveKeyAndIv(password, salt, 32, 16)
             val key = derivedKeyAndIv.first
             val derivedIv = derivedKeyAndIv.second
@@ -394,7 +390,6 @@ class KatanimeProvider : MainAPI() {
             .map { it.toInt(16).toByte() }
             .toByteArray()
     }
-
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
