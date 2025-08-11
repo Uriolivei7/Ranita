@@ -328,12 +328,12 @@ class KatanimeProvider : MainAPI() {
                 @JsonProperty("value") val value: String? = null
             )
 
-            val json = AndroidBase64.decode(encodedPayload, AndroidBase64.URL_SAFE).toString(Charsets.UTF_8)
+            val json = AndroidBase64.decode(encodedPayload, AndroidBase64.DEFAULT).toString(Charsets.UTF_8)
             val playerData = tryParseJson<PlayerData>(json)
 
             val key = hexStringToByteArray("32726d6c6e756163747167696c737930777561636c7a706b726d6e7563796d74")
-            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
-            val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
+            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
+            val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
 
             if (iv == null || encryptedValue == null) {
                 Log.e("KatanimeProvider", "Datos de desencriptación incompletos (IV o valor nulo)")
@@ -355,12 +355,12 @@ class KatanimeProvider : MainAPI() {
         }
     }
 
+    // Función auxiliar para convertir una cadena hexadecimal a un ByteArray
     private fun hexStringToByteArray(hexString: String): ByteArray {
         return hexString.chunked(2)
             .map { it.toInt(16).toByte() }
             .toByteArray()
     }
-
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
