@@ -336,7 +336,7 @@ class KatanimeProvider : MainAPI() {
             val playerData = tryParseJson<PlayerData>(json)
 
             // Clave de 32 bytes para AES-256-CBC (256 bits)
-            val key = "This is a 32 byte secret key for you".toByteArray(Charsets.UTF_8)
+            val key = "01234567890123456789012345678901".toByteArray(Charsets.UTF_8)
             val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
             val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.URL_SAFE) }
 
@@ -359,6 +359,7 @@ class KatanimeProvider : MainAPI() {
             null
         }
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
