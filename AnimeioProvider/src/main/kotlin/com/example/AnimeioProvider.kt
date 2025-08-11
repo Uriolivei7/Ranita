@@ -18,11 +18,9 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import android.net.Uri
 
-
 class AnimeioProvider : MainAPI() {
-    // URL principal actualizada a Animeio
     override var mainUrl = "https://animeio.com"
-    override var name = "Animeio"
+    override var name = "AnimeIO"
     override val supportedTypes = setOf(
         TvType.Anime,
     )
@@ -33,7 +31,6 @@ class AnimeioProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
 
-    // Función para construir la URL del póster, ya que a veces es relativa
     private fun fixPosterUrl(url: String?): String? {
         if (url == null) return null
         return if (url.startsWith("/")) {
@@ -43,13 +40,18 @@ class AnimeioProvider : MainAPI() {
         }
     }
 
-    // La función extractAnimeItem es casi idéntica, pero adaptada a las clases consistentes
     private fun extractAnimeItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
         val link = linkElement?.attr("href")
         val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img")?.attr("data-src")?.ifEmpty { element.selectFirst("img")?.attr("src") }
+        val posterUrl = element.selectFirst("img")?.attr("data-src").let {
+            if (it.isNullOrBlank()) {
+                element.selectFirst("img")?.attr("src")
+            } else {
+                it
+            }
+        }
         val yearText = element.selectFirst("div._2y8kd")?.text()?.trim()
         val year = yearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
 
@@ -66,13 +68,18 @@ class AnimeioProvider : MainAPI() {
         return null
     }
 
-    // Adaptada la función para buscar animes, usando el nuevo formato
     private fun extractSearchItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
         val link = linkElement?.attr("href")
         val title = titleElement?.text()?.trim()
-        val posterUrl = element.selectFirst("img")?.attr("src")?.ifEmpty { element.selectFirst("img")?.attr("data-src") }
+        val posterUrl = element.selectFirst("img")?.attr("data-src").let {
+            if (it.isNullOrBlank()) {
+                element.selectFirst("img")?.attr("src")
+            } else {
+                it
+            }
+        }
         val yearText = element.selectFirst("div._2y8kd")?.text()?.trim()
         val year = yearText?.toIntOrNull()
 
@@ -114,7 +121,6 @@ class AnimeioProvider : MainAPI() {
         val html = safeAppGet(url) ?: return null
         val doc = Jsoup.parse(html)
 
-        // Secciones principales de la homepage, adaptadas a los nuevos selectores.
         doc.select("div#content-full").forEach { container ->
             val heading = container.selectFirst("h3.carousel.t")?.text()?.trim()
             val animes = container.select("div#article-div > div").mapNotNull {
@@ -161,13 +167,11 @@ class AnimeioProvider : MainAPI() {
         val html = safeAppGet(url) ?: return emptyList()
         val doc = Jsoup.parse(html)
 
-        // Selectores de búsqueda actualizados
         return doc.select("div._135yj._2FQAt.full._2mJki").mapNotNull {
             extractSearchItem(it)
         }
     }
 
-    // Se elimina la lógica de las data classes porque los episodios ahora se extraen del HTML
     data class EpisodeData (
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("episode") val episode: String? = null,
@@ -233,7 +237,6 @@ class AnimeioProvider : MainAPI() {
                 this.tags = tags
                 this.year = year
                 this.recommendations = recommendations
-                //this.status = status
             }
         } else {
             val allEpisodes = ArrayList<Episode>()
@@ -274,7 +277,6 @@ class AnimeioProvider : MainAPI() {
                 this.tags = tags
                 this.year = year
                 this.recommendations = recommendations
-                //this.status = status
             }
         }
     }
@@ -285,12 +287,10 @@ class AnimeioProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // La URL del episodio es el 'data'
         val episodeUrl = data
         val response = app.get(episodeUrl)
         val doc = response.document
 
-        // Selectores de reproductores actualizados
         val players = doc.select("ul.ul-drop.dropcaps li a.play-video.cap")
         var linksFound = false
 
@@ -302,14 +302,11 @@ class AnimeioProvider : MainAPI() {
                 if (playerPayload.isNotBlank()) {
                     try {
                         Log.d("AnimeioProvider", "Procesando reproductor: $playerName con payload: $playerPayload")
-                        // Algunos jugadores usan una URL de iframe directa, otros solo el hash.
-                        // La URL base del reproductor es la misma del sitio.
                         val finalUrl = when(playerName.lowercase()) {
                             "san" -> "$mainUrl/sanplayer/um?e=$playerPayload"
                             else -> playerPayload
                         }
 
-                        // Llamamos a loadExtractor y dependemos de él para manejar la extracción
                         if (loadExtractor(finalUrl, episodeUrl, subtitleCallback, callback)) {
                             linksFound = true
                             Log.d("AnimeioProvider", "Enlaces encontrados por loadExtractor para $playerName")
