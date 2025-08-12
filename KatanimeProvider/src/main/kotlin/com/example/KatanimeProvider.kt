@@ -325,25 +325,21 @@ class KatanimeProvider : MainAPI() {
     // Función para desencriptar el payload AES-256-CBC
     private fun decryptPlayerUrl(encodedPayload: String): String? {
         return try {
-            // El payload ahora incluye la sal (salt)
             data class PlayerData(
                 @JsonProperty("iv") val iv: String? = null,
-                // Mapear "ct" del JSON a "value"
                 @JsonProperty("ct") val value: String? = null,
-                // Mapear "s" del JSON a "salt"
                 @JsonProperty("s") val salt: String? = null
             )
 
-            // Decodificar el payload de Base64 por defecto.
+            // Decodificar el payload de Base64 para obtener el JSON.
             val json = AndroidBase64.decode(encodedPayload, AndroidBase64.DEFAULT).toString(Charsets.UTF_8)
             val playerData = tryParseJson<PlayerData>(json)
 
-            // La clave de encriptación real se deriva de la contraseña "hanabi" y la sal.
             val password = "hanabi".toByteArray(Charsets.UTF_8)
 
-            // Corregido: La sal y el IV se decodifican desde hexadecimal, no Base64
-            val salt = playerData?.salt?.let { hexStringToByteArray(it) }
-            val iv = playerData?.iv?.let { hexStringToByteArray(it) }
+            // Corregido: La sal y el IV ahora se decodifican desde Base64.
+            val salt = playerData?.salt?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
+            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
             val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
 
             if (salt == null || iv == null || encryptedValue == null) {
@@ -351,7 +347,6 @@ class KatanimeProvider : MainAPI() {
                 return null
             }
 
-            // Derivación de la clave y el IV (similar al método OpenSSL de CryptoJS)
             val derivedKeyAndIv = deriveKeyAndIv(password, salt, 32, 16)
             val key = derivedKeyAndIv.first
             val derivedIv = derivedKeyAndIv.second
@@ -371,8 +366,6 @@ class KatanimeProvider : MainAPI() {
         }
     }
 
-    // Función auxiliar para derivar la clave y el IV desde la contraseña y la sal
-    // Esta función imita la lógica de derivación de claves de OpenSSL utilizada por CryptoJS.
     private fun deriveKeyAndIv(password: ByteArray, salt: ByteArray, keyLength: Int, ivLength: Int): Pair<ByteArray, ByteArray> {
         val keyAndIvLength = keyLength + ivLength
         val keyAndIv = ByteArray(keyAndIvLength)
@@ -396,12 +389,12 @@ class KatanimeProvider : MainAPI() {
         return Pair(key, iv)
     }
 
-    // Función auxiliar para convertir una cadena hexadecimal a un ByteArray
     private fun hexStringToByteArray(hexString: String): ByteArray {
         return hexString.chunked(2)
             .map { it.toInt(16).toByte() }
             .toByteArray()
     }
+
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
