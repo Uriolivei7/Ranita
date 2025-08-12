@@ -337,9 +337,23 @@ class KatanimeProvider : MainAPI() {
 
             val password = "hanabi".toByteArray(Charsets.UTF_8)
 
-            // Corregido: La sal y el IV ahora se decodifican desde Base64.
-            val salt = playerData?.salt?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
-            val iv = playerData?.iv?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
+            // Corregido: La sal y el IV ahora se decodifican desde hexadecimal.
+            val salt = playerData?.salt?.let {
+                try {
+                    hexStringToByteArray(it)
+                } catch (e: Exception) {
+                    Log.e("KatanimeProvider", "Error al decodificar la sal de hexadecimal: ${e.message}")
+                    null
+                }
+            }
+            val iv = playerData?.iv?.let {
+                try {
+                    hexStringToByteArray(it)
+                } catch (e: Exception) {
+                    Log.e("KatanimeProvider", "Error al decodificar el IV de hexadecimal: ${e.message}")
+                    null
+                }
+            }
             val encryptedValue = playerData?.value?.let { AndroidBase64.decode(it, AndroidBase64.DEFAULT) }
 
             if (salt == null || iv == null || encryptedValue == null) {
@@ -394,7 +408,6 @@ class KatanimeProvider : MainAPI() {
             .map { it.toInt(16).toByte() }
             .toByteArray()
     }
-
 
     private fun parseStatus(statusString: String): ShowStatus {
         return when (statusString.lowercase()) {
