@@ -245,24 +245,5 @@
     "iconUrl": "https://animeio.com/favicon.ico",
     "language": "es",
     "fileSize": 19000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/KatanimeProvider.cs3",
-    "status": 1,
-    "version": 2,
-    "apiVersion": 14,
-    "name": "Katanime",
-    "internalName": "KatanimeProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para katanime.net",
-    "tvTypes": [
-      "Anime",
-      "OVA"
-    ],
-    "iconUrl": "https://katanime.net/favicon.ico?v=5.0.48",
-    "language": "es",
-    "fileSize": 24000
   }
 ]
