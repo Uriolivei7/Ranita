@@ -191,7 +191,7 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OtakuversoProvider.cs3",
-    "status": 1,
+    "status": 0,
     "version": 4,
     "apiVersion": 11,
     "name": "Otakuverso",
@@ -230,7 +230,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 1,
     "apiVersion": 13,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
@@ -245,5 +245,24 @@
     "iconUrl": "https://animeio.com/favicon.ico",
     "language": "es",
     "fileSize": 19000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimejlProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 14,
+    "name": "AnimeJL",
+    "internalName": "AnimejlProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.anime-jl.net",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://www.anime-jl.net/favicon.ico",
+    "language": "es",
+    "fileSize": 12000
   }
 ]
