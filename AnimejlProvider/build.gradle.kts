@@ -7,7 +7,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove them
 
     //description = "Lorem Ipsum"
-    authors = listOf("misajimenezmx")
+    authors = listOf("Ranita")
 
     /**
      * Status int as the following:
@@ -22,5 +22,5 @@ cloudstream {
         "Anime",
     )
 
-    iconUrl = "https://www.anime-jl.net/favicon.ico"
+    //iconUrl = "https://www.anime-jl.net/favicon.ico"
 }
