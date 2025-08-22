@@ -18,7 +18,7 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "TestPlugins"
+rootProject.name = "Ranita"
 
 
 // Resto del código de auto-inclusión (no necesita cambios para este problema):

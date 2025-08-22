@@ -23,6 +23,7 @@ class AnimeioProvider : MainAPI() {
     override var name = "AnimeIO"
     override val supportedTypes = setOf(
         TvType.Anime,
+        TvType.AnimeMovie,
     )
 
     override var lang = "es"
