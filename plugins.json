@@ -129,33 +129,13 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=200&id=tlzsVoeHOw9V&format=png",
     "language": "es",
-    "fileSize": 12000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Cuevana3Provider.cs3",
-    "status": 1,
-    "version": 2,
-    "apiVersion": 8,
-    "name": "Cuevana3",
-    "internalName": "Cuevana3Provider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para ww8.cuevana3.to",
-    "tvTypes": [
-      "Movie",
-      "TvSeries",
-      "Cartoon"
-    ],
-    "iconUrl": "https://ww8.cuevana3.to/static/wp-content/uploads/2019/03/cropped-favicon-1-32x32.png",
-    "language": "es",
-    "fileSize": 22000
+    "fileSize": 16000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelispediaProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 9,
+    "apiVersion": 8,
     "name": "Pelispedia",
     "internalName": "PelispediaProvider",
     "authors": [
@@ -174,7 +154,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 10,
+    "apiVersion": 9,
     "name": "TioAnime",
     "internalName": "TioanimeProvider",
     "authors": [
@@ -190,29 +170,10 @@
     "fileSize": 19000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VeranimesProvider.cs3",
-    "status": 0,
-    "version": 3,
-    "apiVersion": 11,
-    "name": "VerAnimes",
-    "internalName": "VeranimesProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para wwv.veranimes.net",
-    "tvTypes": [
-      "Anime",
-      "OVA"
-    ],
-    "iconUrl": "https://wwv.veranimes.net/cdn/img/favicon.png",
-    "language": "es",
-    "fileSize": 26000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 12,
+    "apiVersion": 10,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
     "authors": [
@@ -231,7 +192,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 13,
+    "apiVersion": 11,
     "name": "AnimeAV1",
     "internalName": "Animeav1Provider",
     "authors": [
