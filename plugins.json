@@ -190,29 +190,10 @@
     "fileSize": 19000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OtakuversoProvider.cs3",
-    "status": 0,
-    "version": 4,
-    "apiVersion": 11,
-    "name": "Otakuverso",
-    "internalName": "OtakuversoProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para otakuverso.net",
-    "tvTypes": [
-      "Anime",
-      "OVA"
-    ],
-    "iconUrl": "https://otakuverso.net/favicon.ico",
-    "language": "es",
-    "fileSize": 22000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VeranimesProvider.cs3",
     "status": 0,
     "version": 3,
-    "apiVersion": 12,
+    "apiVersion": 11,
     "name": "VerAnimes",
     "internalName": "VeranimesProvider",
     "authors": [
@@ -231,7 +212,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 13,
+    "apiVersion": 12,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
     "authors": [
@@ -250,7 +231,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 14,
+    "apiVersion": 13,
     "name": "AnimeAV1",
     "internalName": "Animeav1Provider",
     "authors": [

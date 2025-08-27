@@ -120,6 +120,49 @@ class LacartoonsProvider : MainAPI() {
         }
     }
 
+    // Nuevo código para el extractor de Ok.ru
+    private suspend fun okruExtractor(url: String, callback: (ExtractorLink) -> Unit): Boolean {
+        return try {
+            val page = app.get(url).document
+            val script = page.select("div[data-module=\"OKVideo\"]").attr("data-options")
+            val json = tryParseJson<OkruData>(script)
+            val video = json?.flashvars?.videos?.find {
+                it.name == "hd" || it.name == "sd" || it.name == "low"
+            }
+            if (video != null) {
+                callback.invoke(
+                    ExtractorLink(
+                        source = "Ok.ru",
+                        name = "Ok.ru",
+                        url = video.url!!,
+                        referer = url,
+                        quality = Qualities.Unknown.value,
+                        type = ExtractorLinkType.VIDEO
+                    )
+                )
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            println("OKRU_ERROR: ${e.message}")
+            false
+        }
+    }
+
+    data class OkruData(
+        @JsonProperty("flashvars") val flashvars: OkruFlashvars? = null
+    )
+
+    data class OkruFlashvars(
+        @JsonProperty("videos") val videos: List<OkruVideo>? = null
+    )
+
+    data class OkruVideo(
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("url") val url: String? = null
+    )
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -137,14 +180,12 @@ class LacartoonsProvider : MainAPI() {
         if (iframeSrc.contains("sendvid.com/embed/")) {
             println("${name}: Detectado iframe de sendvid.com. Intentando extracción manual.")
             val sendvidEmbedUrl = iframeSrc
-
             val embedDoc = try {
                 app.get(sendvidEmbedUrl).document
             } catch (e: Exception) {
                 println("${name}: SENDVID_ERROR - No se pudo obtener el documento del embed de Sendvid: $sendvidEmbedUrl. ${e.message}")
                 return false
             }
-
             val videoUrl = embedDoc.selectFirst("video#video-js-video source#video_source")?.attr("src")
                 ?: embedDoc.selectFirst("meta[property=og:video]")?.attr("content")
                 ?: embedDoc.selectFirst("meta[property=og:video:secure_url]")?.attr("content")
@@ -167,11 +208,12 @@ class LacartoonsProvider : MainAPI() {
                 println("${name}: SENDVID_WARN - No se encontró la URL del video en la página de Sendvid: $sendvidEmbedUrl")
                 return false
             }
-        }
-
-        else if (iframeSrc.contains("dhtpre.com")) {
+        } else if (iframeSrc.contains("dhtpre.com")) {
             println("${name}: Detectado iframe de dhtpre.com, usando loadExtractor.")
             return loadExtractor(iframeSrc, data, subtitleCallback, callback)
+        } else if (iframeSrc.contains("ok.ru/videoembed/")) {
+            println("${name}: Detectado iframe de ok.ru, intentando extracción manual.")
+            return okruExtractor(iframeSrc, callback)
         } else {
             println("${name}: Tipo de iframe desconocido: $iframeSrc. Intentando con loadExtractor por defecto.")
             return loadExtractor(iframeSrc, data, subtitleCallback, callback)
