@@ -119,33 +119,48 @@ class LacartoonsProvider : MainAPI() {
             this.recommendations = recommendations
         }
     }
-
-    // Nuevo código para el extractor de Ok.ru
     private suspend fun okruExtractor(url: String, callback: (ExtractorLink) -> Unit): Boolean {
         return try {
             val page = app.get(url).document
-            val script = page.select("div[data-module=\"OKVideo\"]").attr("data-options")
-            val json = tryParseJson<OkruData>(script)
-            val video = json?.flashvars?.videos?.find {
-                it.name == "hd" || it.name == "sd" || it.name == "low"
+
+            val script = page.selectFirst("div.vp_video_player")
+                ?.attr("data-options")
+
+            if (script.isNullOrBlank()) {
+                println("OKRU_ERROR: No se encontró el atributo 'data-options' del reproductor de video.")
+                return false
             }
-            if (video != null) {
+
+            val json = tryParseJson<OkruData>(script)
+
+            if (json == null) {
+                println("OKRU_ERROR: Fallo al parsear el JSON de Okru. JSON: $script")
+                return false
+            }
+
+            val videoUrl = json.flashvars?.videos?.maxByOrNull {
+                it.quality ?: 0
+            }?.url
+
+            if (!videoUrl.isNullOrBlank()) {
                 callback.invoke(
                     ExtractorLink(
                         source = "Ok.ru",
                         name = "Ok.ru",
-                        url = video.url!!,
+                        url = videoUrl,
                         referer = url,
                         quality = Qualities.Unknown.value,
                         type = ExtractorLinkType.VIDEO
                     )
                 )
-                true
+                println("OKRU_SUCCESS: URL de video encontrada: $videoUrl")
+                return true
             } else {
-                false
+                println("OKRU_WARN: No se encontró una URL de video válida en el JSON.")
+                return false
             }
         } catch (e: Exception) {
-            println("OKRU_ERROR: ${e.message}")
+            println("OKRU_ERROR: Excepción en el extractor de Okru: ${e.message}")
             false
         }
     }
@@ -161,7 +176,16 @@ class LacartoonsProvider : MainAPI() {
     data class OkruVideo(
         @JsonProperty("name") val name: String? = null,
         @JsonProperty("url") val url: String? = null
-    )
+    ) {
+        val quality: Int
+            get() = when (name) {
+                "hd" -> 1080
+                "sd" -> 720
+                "low" -> 480
+                "lowest" -> 360
+                else -> 0
+            }
+    }
 
     override suspend fun loadLinks(
         data: String,
