@@ -119,73 +119,6 @@ class LacartoonsProvider : MainAPI() {
             this.recommendations = recommendations
         }
     }
-    private suspend fun okruExtractor(url: String, callback: (ExtractorLink) -> Unit): Boolean {
-        return try {
-            val page = app.get(url).document
-
-            val script = page.selectFirst("div.vp_video_player")
-                ?.attr("data-options")
-
-            if (script.isNullOrBlank()) {
-                println("OKRU_ERROR: No se encontró el atributo 'data-options' del reproductor de video.")
-                return false
-            }
-
-            val json = tryParseJson<OkruData>(script)
-
-            if (json == null) {
-                println("OKRU_ERROR: Fallo al parsear el JSON de Okru. JSON: $script")
-                return false
-            }
-
-            val videoUrl = json.flashvars?.videos?.maxByOrNull {
-                it.quality ?: 0
-            }?.url
-
-            if (!videoUrl.isNullOrBlank()) {
-                callback.invoke(
-                    ExtractorLink(
-                        source = "Ok.ru",
-                        name = "Ok.ru",
-                        url = videoUrl,
-                        referer = url,
-                        quality = Qualities.Unknown.value,
-                        type = ExtractorLinkType.VIDEO
-                    )
-                )
-                println("OKRU_SUCCESS: URL de video encontrada: $videoUrl")
-                return true
-            } else {
-                println("OKRU_WARN: No se encontró una URL de video válida en el JSON.")
-                return false
-            }
-        } catch (e: Exception) {
-            println("OKRU_ERROR: Excepción en el extractor de Okru: ${e.message}")
-            false
-        }
-    }
-
-    data class OkruData(
-        @JsonProperty("flashvars") val flashvars: OkruFlashvars? = null
-    )
-
-    data class OkruFlashvars(
-        @JsonProperty("videos") val videos: List<OkruVideo>? = null
-    )
-
-    data class OkruVideo(
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("url") val url: String? = null
-    ) {
-        val quality: Int
-            get() = when (name) {
-                "hd" -> 1080
-                "sd" -> 720
-                "low" -> 480
-                "lowest" -> 360
-                else -> 0
-            }
-    }
 
     override suspend fun loadLinks(
         data: String,
@@ -204,12 +137,14 @@ class LacartoonsProvider : MainAPI() {
         if (iframeSrc.contains("sendvid.com/embed/")) {
             println("${name}: Detectado iframe de sendvid.com. Intentando extracción manual.")
             val sendvidEmbedUrl = iframeSrc
+
             val embedDoc = try {
                 app.get(sendvidEmbedUrl).document
             } catch (e: Exception) {
                 println("${name}: SENDVID_ERROR - No se pudo obtener el documento del embed de Sendvid: $sendvidEmbedUrl. ${e.message}")
                 return false
             }
+
             val videoUrl = embedDoc.selectFirst("video#video-js-video source#video_source")?.attr("src")
                 ?: embedDoc.selectFirst("meta[property=og:video]")?.attr("content")
                 ?: embedDoc.selectFirst("meta[property=og:video:secure_url]")?.attr("content")
@@ -232,12 +167,11 @@ class LacartoonsProvider : MainAPI() {
                 println("${name}: SENDVID_WARN - No se encontró la URL del video en la página de Sendvid: $sendvidEmbedUrl")
                 return false
             }
-        } else if (iframeSrc.contains("dhtpre.com")) {
+        }
+
+        else if (iframeSrc.contains("dhtpre.com")) {
             println("${name}: Detectado iframe de dhtpre.com, usando loadExtractor.")
             return loadExtractor(iframeSrc, data, subtitleCallback, callback)
-        } else if (iframeSrc.contains("ok.ru/videoembed/")) {
-            println("${name}: Detectado iframe de ok.ru, intentando extracción manual.")
-            return okruExtractor(iframeSrc, callback)
         } else {
             println("${name}: Tipo de iframe desconocido: $iframeSrc. Intentando con loadExtractor por defecto.")
             return loadExtractor(iframeSrc, data, subtitleCallback, callback)
