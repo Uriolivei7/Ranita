@@ -206,5 +206,24 @@
     "iconUrl": "https://animeav1.com/favicon.png",
     "language": "es",
     "fileSize": 19000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 12,
+    "name": "PelisPLus",
+    "internalName": "PelisplusProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para pelisplushd.bz",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
+    "language": "es",
+    "fileSize": 23000
   }
 ]
