@@ -25,7 +25,7 @@ import kotlin.math.min
 class LacartoonsProvider : MainAPI() {
     override var mainUrl = "https://www.lacartoons.com"
     override var name = "LACartoons"
-    override var lang = "es"
+    override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true

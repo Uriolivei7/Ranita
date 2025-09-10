@@ -26,7 +26,7 @@ class AnimeioProvider : MainAPI() {
         TvType.AnimeMovie,
     )
 
-    override var lang = "es"
+    override var lang = "mx"
 
     override val hasMainPage = true
     override val hasChromecastSupport = true

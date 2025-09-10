@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 class PlushdProvider : MainAPI() {
     override var mainUrl = "https://ww3.pelisplus.to"
     override var name = "PlusHD"
-    override var lang = "es"
+    override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true

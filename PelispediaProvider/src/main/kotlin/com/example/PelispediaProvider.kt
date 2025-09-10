@@ -9,7 +9,7 @@ import android.util.Log
 class PelispediaProvider:MainAPI() {
     override var mainUrl = "https://pelispedia.is"
     override var name = "Pelispedia"
-    override var lang = "es"
+    override var lang = "mx"
 
     override val hasQuickSearch = false
     override val hasMainPage = true

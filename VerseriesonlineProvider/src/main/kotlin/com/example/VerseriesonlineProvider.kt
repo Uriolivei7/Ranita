@@ -19,7 +19,7 @@ class VerseriesonlineProvider : MainAPI() {
         TvType.Cartoon
     )
 
-    override var lang = "es"
+    override var lang = "mx"
 
     override val hasMainPage = true
     override val hasChromecastSupport = true

@@ -36,7 +36,7 @@ class LatanimeProvider : MainAPI() {
 
     override var mainUrl = "https://latanime.org"
     override var name = "LatAnime"
-    override var lang = "es"
+    override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true

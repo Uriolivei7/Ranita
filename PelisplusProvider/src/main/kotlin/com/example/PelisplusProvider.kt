@@ -18,7 +18,7 @@ import kotlin.text.Charsets.UTF_8
 
 class PelisplusProvider : MainAPI() {
     override var mainUrl = "https://pelisplushd.bz"
-    override var name = "Pelisplus"
+    override var name = "PelisPlus"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
@@ -26,7 +26,7 @@ class PelisplusProvider : MainAPI() {
         TvType.Cartoon,
     )
 
-    override var lang = "es"
+    override var lang = "mx"
 
     override val hasMainPage = true
     override val hasChromecastSupport = true
