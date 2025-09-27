@@ -583,39 +583,34 @@ class SoloLatinoProvider : MainAPI() {
             }
 
             val doc = Jsoup.parse(embedHtml)
+            var scriptContent: String? = null
 
-            // Buscamos el script que contiene la definición de dataLink
-            // Esto asume que estás importando Jsoup correctamente.
-            val scriptContent = doc.select("script:contains(let dataLink)").firstOrNull()?.html()
+            for (script in doc.select("script")) {
+                val content = script.html()
+                if (content.contains("let dataLink =") || content.contains("var dataLink =")) {
+                    scriptContent = content
+                    break
+                }
+            }
 
             if (scriptContent.isNullOrBlank()) {
-                Log.e("SoloLatino", "ERROR: No se encontró el script que define 'dataLink'.")
+                Log.e("SoloLatino", "ERROR: No se encontró el script que define 'dataLink' iterando en todos los scripts.")
                 return@coroutineScope false
             }
 
-            // CORRECCIÓN para DOT_ALL: Usamos un constructor de Regex simple.
-            // El .* en la regex ya debería ser guloso y funcionar sin el flag DOT_ALL
-            // si el JSON está en una sola línea (lo cual es el caso aquí).
             val dataLinkRegex = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""")
 
-            // El cast explícito 'as? MatchResult' también podría fallar si el import no existe.
-            // Lo dejamos como .find() y confiamos en la inferencia si los otros errores desaparecen.
-            val jsonMatch = dataLinkRegex.find(scriptContent)
-
+            val jsonMatch = dataLinkRegex.find(scriptContent!!) // Usamos !! porque ya verificamos null.
 
             if (jsonMatch == null) {
-                // CORRECCIÓN para minOf: Usamos Math.min() de Java.
                 val end = Math.min(scriptContent.length, 200)
                 val snippet = scriptContent.substring(0, end)
                 Log.e("SoloLatino", "ERROR: No se pudo extraer la variable dataLink JSON del script. Script snippet: $snippet")
                 return@coroutineScope false
             }
 
-            // El error 'groupValues' se resuelve al reconocer 'jsonMatch' como MatchResult.
-            // Si este error persiste, verifica si el import `kotlin.text.MatchResult` puede ser usado.
             val dataLinkJson = jsonMatch.groupValues[1]
 
-            // CORRECCIÓN para minOf: Usamos Math.min() de Java.
             val logEnd = Math.min(dataLinkJson.length, 100)
             Log.d("SoloLatino", "dataLink JSON extraído: ${dataLinkJson.substring(0, logEnd)}...")
 
@@ -639,7 +634,6 @@ class SoloLatinoProvider : MainAPI() {
             val body = DecryptRequestBody(encryptedLinks).toJson()
                 .toRequestBody("application/json".toMediaTypeOrNull())
 
-            // Asumiendo que 'app.post' y 'cfKiller' son reconocidos.
             val decryptedRes = app.post(
                 decryptUrl,
                 requestBody = body,
