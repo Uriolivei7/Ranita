@@ -318,17 +318,23 @@ class SoloLatinoProvider : MainAPI() {
         @SerializedName("video_language") val videoLanguage: String? = null,
         @SerializedName("sortedEmbeds") val sortedEmbeds: List<SortedEmbeds>? = null
     )
-
     data class SortedEmbeds(
         @SerializedName("servername") val servername: String? = null,
         @SerializedName("link") val link: String? = null,
         @SerializedName("download") val download: String? = null
     )
+
+    data class DecryptedLink(
+        @SerializedName("index") val index: Int,
+        @SerializedName("link") val link: String?
+    )
+
     data class DecryptionResponse(
         @SerializedName("success") val success: Boolean,
-        @SerializedName("links") val links: List<String>?,
+        @SerializedName("links") val links: List<DecryptedLink>?,
         @SerializedName("reason") val reason: String?
     )
+
     data class DecryptRequestBody(
         @SerializedName("links") val links: List<String>
     )
@@ -650,7 +656,7 @@ class SoloLatinoProvider : MainAPI() {
 
             val decryptedData =
                 tryParseJson<DecryptionResponse>(decryptedRes.text)
-            val finalLinks = decryptedData?.links
+            val finalLinks = decryptedData?.links?.mapNotNull { it.link }
 
             if (decryptedData?.success != true || finalLinks.isNullOrEmpty()) {
                 Log.e(
