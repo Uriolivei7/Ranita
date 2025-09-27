@@ -312,25 +312,23 @@ class SoloLatinoProvider : MainAPI() {
             else -> null
         }
     }
-    data class SortedEmbed(
-        @SerializedName("servername") val servername: String,
-        @SerializedName("link") val link: String?,
-        @SerializedName("type") val type: String,
-        @SerializedName("download") val download: String?
-    )
 
     data class DataLinkEntry(
-        @SerializedName("file_id") val fileId: String,
-        @SerializedName("video_language") val videoLanguage: String,
-        @SerializedName("sortedEmbeds") val sortedEmbeds: List<SortedEmbed>
+        @SerializedName("file_id") val fileId: String? = null,
+        @SerializedName("video_language") val videoLanguage: String? = null,
+        @SerializedName("sortedEmbeds") val sortedEmbeds: List<SortedEmbeds>? = null
     )
 
+    data class SortedEmbeds(
+        @SerializedName("servername") val servername: String? = null,
+        @SerializedName("link") val link: String? = null,
+        @SerializedName("download") val download: String? = null
+    )
     data class DecryptionResponse(
         @SerializedName("success") val success: Boolean,
         @SerializedName("links") val links: List<String>?,
         @SerializedName("reason") val reason: String?
     )
-
     data class DecryptRequestBody(
         @SerializedName("links") val links: List<String>
     )
@@ -622,7 +620,9 @@ class SoloLatinoProvider : MainAPI() {
             }
 
             val encryptedLinks = files.flatMap { file ->
-                file.sortedEmbeds.mapNotNull { it.link } + file.sortedEmbeds.mapNotNull { it.download }
+                (file.sortedEmbeds ?: emptyList()).flatMap { embed ->
+                    listOfNotNull(embed.link, embed.download)
+                }
             }.distinct()
 
             if (encryptedLinks.isEmpty()) {
