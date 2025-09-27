@@ -15,6 +15,7 @@ import kotlinx.coroutines.coroutineScope
 import com.google.gson.annotations.SerializedName
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import kotlin.text.RegexOption
 
 class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
@@ -566,16 +567,12 @@ class SoloLatinoProvider : MainAPI() {
             }
         }
 
-        // --- SEPARACIÓN CLAVE ---
-
-        // 2. Manejo de embed69.org (Requiere API de descifrado)
         else if (finalIframeSrc.contains("embed69.org")) {
             Log.d(
                 "SoloLatino",
                 "loadLinks - Detectado embed69.org. Usando nueva lógica de descifrado API."
             )
 
-            // 2.1. Obtener HTML y JSON
             val embedHtml = safeAppGet(fixUrl(finalIframeSrc))
             if (embedHtml == null) {
                 Log.e(
@@ -585,27 +582,50 @@ class SoloLatinoProvider : MainAPI() {
                 return@coroutineScope false
             }
 
-            val dataLinkRegex = """let dataLink = (\[.*?\]);""".toRegex()
-            val jsonMatch = dataLinkRegex.find(embedHtml)
+            val doc = Jsoup.parse(embedHtml)
+
+            // Buscamos el script que contiene la definición de dataLink
+            // Esto asume que estás importando Jsoup correctamente.
+            val scriptContent = doc.select("script:contains(let dataLink)").firstOrNull()?.html()
+
+            if (scriptContent.isNullOrBlank()) {
+                Log.e("SoloLatino", "ERROR: No se encontró el script que define 'dataLink'.")
+                return@coroutineScope false
+            }
+
+            // CORRECCIÓN para DOT_ALL: Usamos un constructor de Regex simple.
+            // El .* en la regex ya debería ser guloso y funcionar sin el flag DOT_ALL
+            // si el JSON está en una sola línea (lo cual es el caso aquí).
+            val dataLinkRegex = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""")
+
+            // El cast explícito 'as? MatchResult' también podría fallar si el import no existe.
+            // Lo dejamos como .find() y confiamos en la inferencia si los otros errores desaparecen.
+            val jsonMatch = dataLinkRegex.find(scriptContent)
+
 
             if (jsonMatch == null) {
-                Log.e(
-                    "SoloLatino",
-                    "ERROR: No se pudo extraer la variable dataLink JSON del script."
-                )
+                // CORRECCIÓN para minOf: Usamos Math.min() de Java.
+                val end = Math.min(scriptContent.length, 200)
+                val snippet = scriptContent.substring(0, end)
+                Log.e("SoloLatino", "ERROR: No se pudo extraer la variable dataLink JSON del script. Script snippet: $snippet")
                 return@coroutineScope false
             }
 
+            // El error 'groupValues' se resuelve al reconocer 'jsonMatch' como MatchResult.
+            // Si este error persiste, verifica si el import `kotlin.text.MatchResult` puede ser usado.
             val dataLinkJson = jsonMatch.groupValues[1]
 
-            val files =
-                tryParseJson<List<DataLinkEntry>>(dataLinkJson)
+            // CORRECCIÓN para minOf: Usamos Math.min() de Java.
+            val logEnd = Math.min(dataLinkJson.length, 100)
+            Log.d("SoloLatino", "dataLink JSON extraído: ${dataLinkJson.substring(0, logEnd)}...")
+
+            val files = tryParseJson<List<DataLinkEntry>>(dataLinkJson)
+
             if (files.isNullOrEmpty()) {
-                Log.e("SoloLatino", "ERROR: dataLink JSON vacío o no se pudo parsear.")
+                Log.e("SoloLatino", "ERROR: dataLink JSON se extrajo, pero no se pudo parsear a la lista de DataLinkEntry.")
                 return@coroutineScope false
             }
 
-            // 2.2. Recopilar enlaces cifrados (JWT)
             val encryptedLinks = files.flatMap { file ->
                 file.sortedEmbeds.mapNotNull { it.link } + file.sortedEmbeds.mapNotNull { it.download }
             }.distinct()
@@ -619,11 +639,12 @@ class SoloLatinoProvider : MainAPI() {
             val body = DecryptRequestBody(encryptedLinks).toJson()
                 .toRequestBody("application/json".toMediaTypeOrNull())
 
+            // Asumiendo que 'app.post' y 'cfKiller' son reconocidos.
             val decryptedRes = app.post(
                 decryptUrl,
                 requestBody = body,
                 interceptor = cfKiller
-            ) // Asegúrate de que cfKiller esté definido
+            )
 
             if (!decryptedRes.isSuccessful) {
                 Log.e(
@@ -634,7 +655,7 @@ class SoloLatinoProvider : MainAPI() {
             }
 
             val decryptedData =
-                tryParseJson<DecryptionResponse>(decryptedRes.text) // Asegúrate de que DecryptionResponse esté definida
+                tryParseJson<DecryptionResponse>(decryptedRes.text)
             val finalLinks = decryptedData?.links
 
             if (decryptedData?.success != true || finalLinks.isNullOrEmpty()) {
@@ -648,7 +669,6 @@ class SoloLatinoProvider : MainAPI() {
             val jobs = finalLinks.map { decryptedLink ->
                 async {
                     Log.d("SoloLatino", "Cargando extractor para enlace descifrado: $decryptedLink")
-                    // Limpiamos los backticks (``) que a veces deja el servicio
                     loadExtractor(
                         decryptedLink.replace("`", "").trim(),
                         targetUrl,
@@ -657,7 +677,6 @@ class SoloLatinoProvider : MainAPI() {
                     )
                 }
             }
-
             return@coroutineScope jobs.awaitAll().any { it }
         }
 
