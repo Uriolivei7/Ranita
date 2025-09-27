@@ -4,27 +4,15 @@ import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.APIHolder.unixTime
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
-import android.util.Base64
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import kotlin.collections.ArrayList
-import kotlin.text.Charsets.UTF_8
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.Deferred
 import com.google.gson.annotations.SerializedName
-import okhttp3.Response
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
