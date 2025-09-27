@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
-    "version": 5,
+    "version": 6,
     "apiVersion": 1,
     "name": "SoloLatino",
     "internalName": "SoloLatinoProvider",
@@ -18,7 +18,7 @@
     ],
     "iconUrl": "https://sololatino.net/wp-content/uploads/2022/11/logo-final.png",
     "language": "mx",
-    "fileSize": 28000
+    "fileSize": 27000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",

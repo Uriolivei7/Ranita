@@ -20,6 +20,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Deferred
+import com.google.gson.annotations.SerializedName
+import okhttp3.Response
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
@@ -317,40 +322,29 @@ class SoloLatinoProvider : MainAPI() {
         }
     }
 
-    data class SortedEmbed(
-        val servername: String,
-        val link: String,
-        val type: String
+    private data class SortedEmbed(
+        @SerializedName("servername") val servername: String,
+        @SerializedName("link") val link: String, // Este es el JWT cifrado
+        @SerializedName("type") val type: String
     )
 
-    data class DataLinkEntry(
-        val file_id: String,
-        val video_language: String,
-        val sortedEmbeds: List<SortedEmbed>
+    private data class DataLinkEntry(
+        @SerializedName("file_id") val fileId: String,
+        @SerializedName("video_language") val videoLanguage: String,
+        @SerializedName("sortedEmbeds") val sortedEmbeds: List<SortedEmbed>
     )
 
-    private fun decryptLink(encryptedLinkBase64: String, secretKey: String): String? {
-        try {
-            val encryptedBytes = Base64.decode(encryptedLinkBase64, Base64.DEFAULT)
+    // Clase para manejar la respuesta de la API /api/decrypt
+    private data class DecryptionResponse(
+        @SerializedName("success") val success: Boolean,
+        @SerializedName("links") val links: List<String>?,
+        @SerializedName("reason") val reason: String?
+    )
 
-            val ivBytes = encryptedBytes.copyOfRange(0, 16)
-            val ivSpec = IvParameterSpec(ivBytes)
-
-            val cipherTextBytes = encryptedBytes.copyOfRange(16, encryptedBytes.size)
-
-            val keySpec = SecretKeySpec(secretKey.toByteArray(UTF_8), "AES")
-
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-
-            val decryptedBytes = cipher.doFinal(cipherTextBytes)
-
-            return String(decryptedBytes, UTF_8)
-        } catch (e: Exception) {
-            Log.e("SoloLatino", "Error al descifrar link: ${e.message}", e)
-            return null
-        }
-    }
+    // Clase para el cuerpo de la petición /api/decrypt
+    private data class DecryptRequestBody(
+        @SerializedName("links") val links: List<String>
+    )
 
     override suspend fun loadLinks(
         data: String,
@@ -428,11 +422,8 @@ class SoloLatinoProvider : MainAPI() {
                 Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de ghbrisk.com: $initialIframeSrc")
                 return@coroutineScope false
             }
-            val ghbriskDoc = Jsoup.parse(ghbriskHtml)
-
-            val nestedIframeSrc = ghbriskDoc.selectFirst("iframe.metaframe.rptss")?.attr("src")
-                ?: ghbriskDoc.selectFirst("iframe")?.attr("src")
-
+            val nestedIframeSrc = Jsoup.parse(ghbriskHtml).selectFirst("iframe.metaframe.rptss")?.attr("src")
+                ?: Jsoup.parse(ghbriskHtml).selectFirst("iframe")?.attr("src")
             if (nestedIframeSrc.isNullOrBlank()) {
                 Log.e("SoloLatino", "No se encontró un iframe anidado (posiblemente embed69.org) dentro de ghbrisk.com.")
                 return@coroutineScope false
@@ -440,6 +431,7 @@ class SoloLatinoProvider : MainAPI() {
             Log.d("SoloLatino", "Iframe anidado encontrado en ghbrisk.com: $nestedIframeSrc")
             finalIframeSrc = nestedIframeSrc
         }
+
         else if (initialIframeSrc.contains("xupalace.org")) {
             Log.d("SoloLatino", "loadLinks - Detectado Xupalace.org iframe intermediario/directo: $initialIframeSrc.")
             val xupalaceHtml = safeAppGet(fixUrl(initialIframeSrc))
@@ -448,7 +440,6 @@ class SoloLatinoProvider : MainAPI() {
                 return@coroutineScope false
             }
             val xupalaceDoc = Jsoup.parse(xupalaceHtml)
-
             val nestedIframeSrc = xupalaceDoc.selectFirst("iframe#IFR")?.attr("src")
 
             if (!nestedIframeSrc.isNullOrBlank()) {
@@ -457,32 +448,11 @@ class SoloLatinoProvider : MainAPI() {
             } else {
                 Log.w("SoloLatino", "No se encontró un iframe anidado (playerwish.com) dentro de Xupalace.org. Intentando buscar enlaces directos 'go_to_playerVast'.")
                 val regexPlayerUrl = Regex("""go_to_playerVast\('([^']+)'""")
-                val elementsWithOnclick = xupalaceDoc.select("*[onclick*='go_to_playerVast']")
+                val foundLinks = Jsoup.parse(xupalaceHtml).select("*[onclick*='go_to_playerVast']")
+                    .mapNotNull { element -> regexPlayerUrl.find(element.attr("onclick"))?.groupValues?.get(1) }
 
-                if (elementsWithOnclick.isEmpty()) {
-                    Log.e("SoloLatino", "No se encontraron elementos con 'go_to_playerVast' ni iframe 'IFR' en xupalace.org.")
-                    return@coroutineScope false
-                }
-
-                val foundXupalaceLinks = mutableListOf<String>()
-                for (element in elementsWithOnclick) {
-                    val onclickAttr = element.attr("onclick")
-                    val matchPlayerUrl = regexPlayerUrl.find(onclickAttr)
-
-                    if (matchPlayerUrl != null) {
-                        val videoUrl = matchPlayerUrl.groupValues[1]
-                        val serverName = element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
-                        Log.d("SoloLatino", "Xupalace: Encontrado servidor '$serverName' con URL: $videoUrl")
-                        if (videoUrl.isNotBlank()) {
-                            foundXupalaceLinks.add(videoUrl)
-                        }
-                    } else {
-                        Log.w("SoloLatino", "Xupalace: No se pudo extraer la URL del onclick: $onclickAttr")
-                    }
-                }
-
-                if (foundXupalaceLinks.isNotEmpty()) {
-                    val jobs = foundXupalaceLinks.map { playerUrl ->
+                if (foundLinks.isNotEmpty()) {
+                    val jobs = foundLinks.map { playerUrl ->
                         async {
                             Log.d("SoloLatino", "Cargando extractor para link de Xupalace (go_to_playerVast): $playerUrl")
                             loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
@@ -490,47 +460,34 @@ class SoloLatinoProvider : MainAPI() {
                     }
                     return@coroutineScope jobs.awaitAll().any { it }
                 } else {
-                    Log.d("SoloLatino", "No se encontraron enlaces de video de Xupalace.org (go_to_playerVast).")
+                    Log.e("SoloLatino", "No se encontraron elementos con 'go_to_playerVast' ni iframe 'IFR' en xupalace.org.")
                     return@coroutineScope false
                 }
             }
         }
 
-        if (finalIframeSrc.contains("playerwish.com")) {
-            Log.d("SoloLatino", "loadLinks - Detectado playerwish.com. Pasando al extractor general de CloudStream: $finalIframeSrc")
-            return@coroutineScope loadExtractor(fixUrl(finalIframeSrc), finalIframeSrc, subtitleCallback, callback)
-        }
-        else if (finalIframeSrc.contains("re.sololatino.net/embed.php")) {
+        if (finalIframeSrc.contains("re.sololatino.net/embed.php")) {
             Log.d("SoloLatino", "loadLinks - Detectado re.sololatino.net/embed.php iframe: $finalIframeSrc")
             val embedHtml = safeAppGet(fixUrl(finalIframeSrc))
             if (embedHtml == null) {
                 Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de re.sololatino.net: $finalIframeSrc")
                 return@coroutineScope false
             }
-            val embedDoc = Jsoup.parse(embedHtml)
             val regexGoToPlayerUrl = Regex("""go_to_player\('([^']+)'\)""")
-            val elementsWithOnclick = embedDoc.select("*[onclick*='go_to_player']")
-            if (elementsWithOnclick.isEmpty()) {
-                Log.w("SoloLatino", "No se encontraron elementos con 'go_to_player' en re.sololatino.net/embed.php con el selector general.")
-                return@coroutineScope false
-            }
-            val foundReSoloLatinoLinks = mutableListOf<String>()
-            for (element in elementsWithOnclick) {
-                val onclickAttr = element.attr("onclick")
-                val matchPlayerUrl = regexGoToPlayerUrl.find(onclickAttr)
-                if (matchPlayerUrl != null) {
-                    val videoUrl = matchPlayerUrl.groupValues[1]
-                    val serverName = element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
-                    Log.d("SoloLatino", "re.sololatino.net: Encontrado servidor '$serverName' con URL: $videoUrl")
-                    if (videoUrl.isNotBlank()) {
-                        foundReSoloLatinoLinks.add(videoUrl)
-                    }
-                } else {
-                    Log.w("SoloLatino", "re.sololatino.net: No se pudo extraer la URL del onclick: $onclickAttr")
+            val foundLinks = Jsoup.parse(embedHtml).select("*[onclick*='go_to_player']")
+                .mapNotNull { element ->
+                    val onclickAttr = element.attr("onclick")
+                    val matchPlayerUrl = regexGoToPlayerUrl.find(onclickAttr)
+                    val videoUrl = matchPlayerUrl?.groupValues?.get(1)
+                    if (videoUrl != null) {
+                        val serverName = element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
+                        Log.d("SoloLatino", "re.sololatino.net: Encontrado servidor '$serverName' con URL: $videoUrl")
+                        videoUrl
+                    } else null
                 }
-            }
-            if (foundReSoloLatinoLinks.isNotEmpty()) {
-                val jobs = foundReSoloLatinoLinks.map { playerUrl ->
+
+            if (foundLinks.isNotEmpty()) {
+                val jobs = foundLinks.map { playerUrl ->
                     async {
                         Log.d("SoloLatino", "Cargando extractor para link de re.sololatino.net: $playerUrl")
                         loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
@@ -542,65 +499,14 @@ class SoloLatinoProvider : MainAPI() {
                 return@coroutineScope false
             }
         }
-        else if (finalIframeSrc.contains("embed69.org")) {
-            Log.d("SoloLatino", "loadLinks - Detectado embed69.org iframe: $finalIframeSrc")
 
-            val frameHtml = safeAppGet(fixUrl(finalIframeSrc))
-            if (frameHtml == null) {
-                Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de embed69.org: $finalIframeSrc")
-                return@coroutineScope false
-            }
-            val frameDoc = Jsoup.parse(frameHtml)
+        else if (finalIframeSrc.contains("embed69.org") ||
+            finalIframeSrc.contains("playerwish.com") ||
+            finalIframeSrc.contains("fembed.com") ||
+            finalIframeSrc.contains("streamlare.com") ||
+            finalIframeSrc.contains("player.sololatino.net")) {
 
-            val scriptContent = frameDoc.select("script").map { it.html() }.joinToString("\n")
-
-            val dataLinkRegex = """const\s+dataLink\s*=\s*(\[.*?\]);""".toRegex()
-            val dataLinkJsonString = dataLinkRegex.find(scriptContent)?.groupValues?.get(1)
-
-            if (dataLinkJsonString.isNullOrBlank()) {
-                Log.e("SoloLatino", "No se encontró la variable dataLink en el script de embed69.org con la regex. Contenido del script (primeras 500 chars): ${scriptContent.take(500)}...")
-                return@coroutineScope false
-            }
-
-            Log.d("SoloLatino", "dataLink JSON string encontrado: $dataLinkJsonString")
-
-            val dataLinkEntries = tryParseJson<List<DataLinkEntry>>(dataLinkJsonString)
-
-            if (dataLinkEntries.isNullOrEmpty()) {
-                Log.e("SoloLatino", "Error al parsear dataLink JSON o está vacío.")
-                return@coroutineScope false
-            }
-
-            val secretKey = "Ak7qrvvH4WKYxV2OgaeHAEg2a5eh16vE"
-
-            val jobs = mutableListOf<Deferred<Boolean>>()
-            for (entry in dataLinkEntries) {
-                for (embed in entry.sortedEmbeds) {
-                    if (embed.type == "video") {
-                        val decryptedLink = decryptLink(embed.link, secretKey)
-                        if (decryptedLink != null) {
-                            Log.d("SoloLatino", "Link desencriptado para ${embed.servername}: $decryptedLink")
-                            val job = async {
-                                if (embed.servername.equals("vidhide", ignoreCase = true)) {
-                                    Log.d("SoloLatino", "Detectado Vidhide. Se usará un Referer especial para el extractor.")
-                                    loadExtractor(fixUrl(decryptedLink), "https://embed69.org/", subtitleCallback, callback)
-                                } else {
-                                    loadExtractor(fixUrl(decryptedLink), initialIframeSrc, subtitleCallback, callback)
-                                }
-                            }
-                            jobs.add(job)
-                        } else {
-                            Log.e("SoloLatino", "Falló la desencriptación para ${embed.servername} con enlace: ${embed.link}")
-                        }
-                    } else {
-                        Log.d("SoloLatino", "Ignorando embed de tipo no video: ${embed.servername} (${embed.type})")
-                    }
-                }
-            }
-            return@coroutineScope jobs.awaitAll().any { it }
-        }
-        else if (finalIframeSrc.contains("fembed.com") || finalIframeSrc.contains("streamlare.com") || finalIframeSrc.contains("player.sololatino.net")) {
-            Log.d("SoloLatino", "loadLinks - Detectado reproductor directo (Fembed/Streamlare/player.sololatino.net): $finalIframeSrc")
+            Log.d("SoloLatino", "loadLinks - Intentando cargar iframe/reproductor directamente: $finalIframeSrc")
             return@coroutineScope loadExtractor(fixUrl(finalIframeSrc), targetUrl, subtitleCallback, callback)
         }
         else {
