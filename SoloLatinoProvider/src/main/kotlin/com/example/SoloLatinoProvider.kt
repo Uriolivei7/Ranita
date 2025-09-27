@@ -13,6 +13,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import com.google.gson.annotations.SerializedName
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
@@ -312,7 +314,8 @@ class SoloLatinoProvider : MainAPI() {
     data class SortedEmbed(
         @SerializedName("servername") val servername: String,
         @SerializedName("link") val link: String?,
-        @SerializedName("type") val type: String
+        @SerializedName("type") val type: String,
+        @SerializedName("download") val download: String?
     )
 
     data class DataLinkEntry(
@@ -347,7 +350,10 @@ class SoloLatinoProvider : MainAPI() {
             cleanedData = match.groupValues[1]
             Log.d("SoloLatino", "loadLinks - Data limpia por Regex (primer intento): $cleanedData")
         } else {
-            Log.d("SoloLatino", "loadLinks - Regex inicial no encontró coincidencia. Usando data original: $cleanedData")
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Regex inicial no encontró coincidencia. Usando data original: $cleanedData"
+            )
         }
 
         val targetUrl: String
@@ -357,17 +363,26 @@ class SoloLatinoProvider : MainAPI() {
             Log.d("SoloLatino", "loadLinks - URL final de episodio (de JSON): $targetUrl")
         } else {
             targetUrl = fixUrl(cleanedData)
-            Log.d("SoloLatino", "loadLinks - URL final de película (directa o ya limpia y fixUrl-ed): $targetUrl")
+            Log.d(
+                "SoloLatino",
+                "loadLinks - URL final de película (directa o ya limpia y fixUrl-ed): $targetUrl"
+            )
         }
 
         if (targetUrl.isBlank()) {
-            Log.e("SoloLatino", "loadLinks - ERROR: URL objetivo está en blanco después de procesar 'data'.")
+            Log.e(
+                "SoloLatino",
+                "loadLinks - ERROR: URL objetivo está en blanco después de procesar 'data'."
+            )
             return@coroutineScope false
         }
 
         val initialHtml = safeAppGet(targetUrl)
         if (initialHtml == null) {
-            Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML para la URL principal del contenido: $targetUrl")
+            Log.e(
+                "SoloLatino",
+                "loadLinks - No se pudo obtener HTML para la URL principal del contenido: $targetUrl"
+            )
             return@coroutineScope false
         }
         val doc = Jsoup.parse(initialHtml)
@@ -377,22 +392,32 @@ class SoloLatinoProvider : MainAPI() {
             ?: doc.selectFirst("div[id*=\"dooplay_player_response\"] iframe")?.attr("src")
 
         if (initialIframeSrc.isNullOrBlank()) {
-            Log.d("SoloLatino", "No se encontró iframe del reproductor principal con el selector específico en SoloLatino.net. Intentando buscar en scripts de la página principal.")
+            Log.d(
+                "SoloLatino",
+                "No se encontró iframe del reproductor principal con el selector específico en SoloLatino.net. Intentando buscar en scripts de la página principal."
+            )
             val scriptContent = doc.select("script").map { it.html() }.joinToString("\n")
 
             val directRegex = """url:\s*['"](https?:\/\/[^'"]+)['"]""".toRegex()
-            val directMatches = directRegex.findAll(scriptContent).map { it.groupValues[1] }.toList()
+            val directMatches =
+                directRegex.findAll(scriptContent).map { it.groupValues[1] }.toList()
 
             if (directMatches.isNotEmpty()) {
                 val jobs = directMatches.map { directUrl ->
                     async {
-                        Log.d("SoloLatino", "Encontrado enlace directo en script de página principal: $directUrl")
+                        Log.d(
+                            "SoloLatino",
+                            "Encontrado enlace directo en script de página principal: $directUrl"
+                        )
                         loadExtractor(directUrl, targetUrl, subtitleCallback, callback)
                     }
                 }
                 return@coroutineScope jobs.awaitAll().any { it }
             }
-            Log.d("SoloLatino", "No se encontraron enlaces directos en scripts de la página principal.")
+            Log.d(
+                "SoloLatino",
+                "No se encontraron enlaces directos en scripts de la página principal."
+            )
             return@coroutineScope false
         }
 
@@ -401,61 +426,102 @@ class SoloLatinoProvider : MainAPI() {
         var finalIframeSrc: String = initialIframeSrc
 
         if (initialIframeSrc.contains("ghbrisk.com")) {
-            Log.d("SoloLatino", "loadLinks - Detectado ghbrisk.com iframe intermediario: $initialIframeSrc. Buscando iframe anidado.")
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Detectado ghbrisk.com iframe intermediario: $initialIframeSrc. Buscando iframe anidado."
+            )
             val ghbriskHtml = safeAppGet(fixUrl(initialIframeSrc))
             if (ghbriskHtml == null) {
-                Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de ghbrisk.com: $initialIframeSrc")
+                Log.e(
+                    "SoloLatino",
+                    "loadLinks - No se pudo obtener HTML del iframe de ghbrisk.com: $initialIframeSrc"
+                )
                 return@coroutineScope false
             }
-            val nestedIframeSrc = Jsoup.parse(ghbriskHtml).selectFirst("iframe.metaframe.rptss")?.attr("src")
-                ?: Jsoup.parse(ghbriskHtml).selectFirst("iframe")?.attr("src")
+            val nestedIframeSrc =
+                Jsoup.parse(ghbriskHtml).selectFirst("iframe.metaframe.rptss")?.attr("src")
+                    ?: Jsoup.parse(ghbriskHtml).selectFirst("iframe")?.attr("src")
             if (nestedIframeSrc.isNullOrBlank()) {
-                Log.e("SoloLatino", "No se encontró un iframe anidado (posiblemente embed69.org) dentro de ghbrisk.com.")
+                Log.e(
+                    "SoloLatino",
+                    "No se encontró un iframe anidado (posiblemente embed69.org) dentro de ghbrisk.com."
+                )
                 return@coroutineScope false
             }
             Log.d("SoloLatino", "Iframe anidado encontrado en ghbrisk.com: $nestedIframeSrc")
             finalIframeSrc = nestedIframeSrc
-        }
-
-        else if (initialIframeSrc.contains("xupalace.org")) {
-            Log.d("SoloLatino", "loadLinks - Detectado Xupalace.org iframe intermediario/directo: $initialIframeSrc.")
+        } else if (initialIframeSrc.contains("xupalace.org")) {
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Detectado Xupalace.org iframe intermediario/directo: $initialIframeSrc."
+            )
             val xupalaceHtml = safeAppGet(fixUrl(initialIframeSrc))
             if (xupalaceHtml == null) {
-                Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de Xupalace: $initialIframeSrc")
+                Log.e(
+                    "SoloLatino",
+                    "loadLinks - No se pudo obtener HTML del iframe de Xupalace: $initialIframeSrc"
+                )
                 return@coroutineScope false
             }
             val xupalaceDoc = Jsoup.parse(xupalaceHtml)
             val nestedIframeSrc = xupalaceDoc.selectFirst("iframe#IFR")?.attr("src")
 
             if (!nestedIframeSrc.isNullOrBlank()) {
-                Log.d("SoloLatino", "Iframe anidado (playerwish.com) encontrado en Xupalace.org: $nestedIframeSrc")
+                Log.d(
+                    "SoloLatino",
+                    "Iframe anidado (playerwish.com) encontrado en Xupalace.org: $nestedIframeSrc"
+                )
                 finalIframeSrc = nestedIframeSrc
             } else {
-                Log.w("SoloLatino", "No se encontró un iframe anidado (playerwish.com) dentro de Xupalace.org. Intentando buscar enlaces directos 'go_to_playerVast'.")
+                Log.w(
+                    "SoloLatino",
+                    "No se encontró un iframe anidado (playerwish.com) dentro de Xupalace.org. Intentando buscar enlaces directos 'go_to_playerVast'."
+                )
                 val regexPlayerUrl = Regex("""go_to_playerVast\('([^']+)'""")
                 val foundLinks = Jsoup.parse(xupalaceHtml).select("*[onclick*='go_to_playerVast']")
-                    .mapNotNull { element -> regexPlayerUrl.find(element.attr("onclick"))?.groupValues?.get(1) }
+                    .mapNotNull { element ->
+                        regexPlayerUrl.find(element.attr("onclick"))?.groupValues?.get(
+                            1
+                        )
+                    }
 
                 if (foundLinks.isNotEmpty()) {
                     val jobs = foundLinks.map { playerUrl ->
                         async {
-                            Log.d("SoloLatino", "Cargando extractor para link de Xupalace (go_to_playerVast): $playerUrl")
-                            loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
+                            Log.d(
+                                "SoloLatino",
+                                "Cargando extractor para link de Xupalace (go_to_playerVast): $playerUrl"
+                            )
+                            loadExtractor(
+                                fixUrl(playerUrl),
+                                initialIframeSrc,
+                                subtitleCallback,
+                                callback
+                            )
                         }
                     }
                     return@coroutineScope jobs.awaitAll().any { it }
                 } else {
-                    Log.e("SoloLatino", "No se encontraron elementos con 'go_to_playerVast' ni iframe 'IFR' en xupalace.org.")
+                    Log.e(
+                        "SoloLatino",
+                        "No se encontraron elementos con 'go_to_playerVast' ni iframe 'IFR' en xupalace.org."
+                    )
                     return@coroutineScope false
                 }
             }
         }
 
         if (finalIframeSrc.contains("re.sololatino.net/embed.php")) {
-            Log.d("SoloLatino", "loadLinks - Detectado re.sololatino.net/embed.php iframe: $finalIframeSrc")
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Detectado re.sololatino.net/embed.php iframe: $finalIframeSrc"
+            )
             val embedHtml = safeAppGet(fixUrl(finalIframeSrc))
             if (embedHtml == null) {
-                Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de re.sololatino.net: $finalIframeSrc")
+                Log.e(
+                    "SoloLatino",
+                    "loadLinks - No se pudo obtener HTML del iframe de re.sololatino.net: $finalIframeSrc"
+                )
                 return@coroutineScope false
             }
             val regexGoToPlayerUrl = Regex("""go_to_player\('([^']+)'\)""")
@@ -465,8 +531,12 @@ class SoloLatinoProvider : MainAPI() {
                     val matchPlayerUrl = regexGoToPlayerUrl.find(onclickAttr)
                     val videoUrl = matchPlayerUrl?.groupValues?.get(1)
                     if (videoUrl != null) {
-                        val serverName = element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
-                        Log.d("SoloLatino", "re.sololatino.net: Encontrado servidor '$serverName' con URL: $videoUrl")
+                        val serverName =
+                            element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
+                        Log.d(
+                            "SoloLatino",
+                            "re.sololatino.net: Encontrado servidor '$serverName' con URL: $videoUrl"
+                        )
                         videoUrl
                     } else null
                 }
@@ -474,60 +544,141 @@ class SoloLatinoProvider : MainAPI() {
             if (foundLinks.isNotEmpty()) {
                 val jobs = foundLinks.map { playerUrl ->
                     async {
-                        Log.d("SoloLatino", "Cargando extractor para link de re.sololatino.net: $playerUrl")
-                        loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
+                        Log.d(
+                            "SoloLatino",
+                            "Cargando extractor para link de re.sololatino.net: $playerUrl"
+                        )
+                        loadExtractor(
+                            fixUrl(playerUrl),
+                            initialIframeSrc,
+                            subtitleCallback,
+                            callback
+                        )
                     }
                 }
                 return@coroutineScope jobs.awaitAll().any { it }
             } else {
-                Log.d("SoloLatino", "No se encontraron enlaces de video de re.sololatino.net/embed.php.")
+                Log.d(
+                    "SoloLatino",
+                    "No se encontraron enlaces de video de re.sololatino.net/embed.php."
+                )
                 return@coroutineScope false
             }
         }
 
-        if (finalIframeSrc.contains("re.sololatino.net/embed.php")) {
-            Log.d("SoloLatino", "loadLinks - Detectado re.sololatino.net/embed.php iframe: $finalIframeSrc")
+        // --- SEPARACIÓN CLAVE ---
+
+        // 2. Manejo de embed69.org (Requiere API de descifrado)
+        else if (finalIframeSrc.contains("embed69.org")) {
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Detectado embed69.org. Usando nueva lógica de descifrado API."
+            )
+
+            // 2.1. Obtener HTML y JSON
             val embedHtml = safeAppGet(fixUrl(finalIframeSrc))
             if (embedHtml == null) {
-                Log.e("SoloLatino", "loadLinks - No se pudo obtener HTML del iframe de re.sololatino.net: $finalIframeSrc")
+                Log.e(
+                    "SoloLatino",
+                    "loadLinks - No se pudo obtener HTML del iframe de embed69.org."
+                )
                 return@coroutineScope false
             }
-            val regexGoToPlayerUrl = Regex("""go_to_player\('([^']+)'\)""")
-            val foundLinks = Jsoup.parse(embedHtml).select("*[onclick*='go_to_player']")
-                .mapNotNull { element ->
-                    val onclickAttr = element.attr("onclick")
-                    val matchPlayerUrl = regexGoToPlayerUrl.find(onclickAttr)
-                    val videoUrl = matchPlayerUrl?.groupValues?.get(1)
-                    if (videoUrl != null) {
-                        val serverName = element.selectFirst("span")?.text()?.trim() ?: "Desconocido"
-                        Log.d("SoloLatino", "re.sololatino.net: Encontrado servidor '$serverName' con URL: $videoUrl")
-                        videoUrl
-                    } else null
-                }
 
-            if (foundLinks.isNotEmpty()) {
-                val jobs = foundLinks.map { playerUrl ->
-                    async {
-                        Log.d("SoloLatino", "Cargando extractor para link de re.sololatino.net: $playerUrl")
-                        loadExtractor(fixUrl(playerUrl), initialIframeSrc, subtitleCallback, callback)
-                    }
-                }
-                return@coroutineScope jobs.awaitAll().any { it }
-            } else {
-                Log.d("SoloLatino", "No se encontraron enlaces de video de re.sololatino.net/embed.php.")
+            val dataLinkRegex = """let dataLink = (\[.*?\]);""".toRegex()
+            val jsonMatch = dataLinkRegex.find(embedHtml)
+
+            if (jsonMatch == null) {
+                Log.e(
+                    "SoloLatino",
+                    "ERROR: No se pudo extraer la variable dataLink JSON del script."
+                )
                 return@coroutineScope false
             }
+
+            val dataLinkJson = jsonMatch.groupValues[1]
+
+            val files =
+                tryParseJson<List<DataLinkEntry>>(dataLinkJson)
+            if (files.isNullOrEmpty()) {
+                Log.e("SoloLatino", "ERROR: dataLink JSON vacío o no se pudo parsear.")
+                return@coroutineScope false
+            }
+
+            // 2.2. Recopilar enlaces cifrados (JWT)
+            val encryptedLinks = files.flatMap { file ->
+                file.sortedEmbeds.mapNotNull { it.link } + file.sortedEmbeds.mapNotNull { it.download }
+            }.distinct()
+
+            if (encryptedLinks.isEmpty()) {
+                Log.e("SoloLatino", "ERROR: No se encontraron enlaces cifrados (JWT) en dataLink.")
+                return@coroutineScope false
+            }
+
+            val decryptUrl = "https://embed69.org/api/decrypt"
+            val body = DecryptRequestBody(encryptedLinks).toJson()
+                .toRequestBody("application/json".toMediaTypeOrNull())
+
+            val decryptedRes = app.post(
+                decryptUrl,
+                requestBody = body,
+                interceptor = cfKiller
+            ) // Asegúrate de que cfKiller esté definido
+
+            if (!decryptedRes.isSuccessful) {
+                Log.e(
+                    "SoloLatino",
+                    "ERROR: API de descifrado fallida con código ${decryptedRes.code}. Cuerpo: ${decryptedRes.text}"
+                )
+                return@coroutineScope false
+            }
+
+            val decryptedData =
+                tryParseJson<DecryptionResponse>(decryptedRes.text) // Asegúrate de que DecryptionResponse esté definida
+            val finalLinks = decryptedData?.links
+
+            if (decryptedData?.success != true || finalLinks.isNullOrEmpty()) {
+                Log.e(
+                    "SoloLatino",
+                    "ERROR: Respuesta de descifrado inválida o vacía. Razón: ${decryptedData?.reason}"
+                )
+                return@coroutineScope false
+            }
+
+            val jobs = finalLinks.map { decryptedLink ->
+                async {
+                    Log.d("SoloLatino", "Cargando extractor para enlace descifrado: $decryptedLink")
+                    // Limpiamos los backticks (``) que a veces deja el servicio
+                    loadExtractor(
+                        decryptedLink.replace("`", "").trim(),
+                        targetUrl,
+                        subtitleCallback,
+                        callback
+                    )
+                }
+            }
+
+            return@coroutineScope jobs.awaitAll().any { it }
         }
 
-        else if (finalIframeSrc.contains("embed69.org") ||
-            finalIframeSrc.contains("playerwish.com") ||
+        else if (finalIframeSrc.contains("playerwish.com") ||
             finalIframeSrc.contains("fembed.com") ||
             finalIframeSrc.contains("streamlare.com") ||
-            finalIframeSrc.contains("player.sololatino.net")) {
+            finalIframeSrc.contains("player.sololatino.net")
+        ) {
 
-            Log.d("SoloLatino", "loadLinks - Intentando cargar iframe/reproductor directamente: $finalIframeSrc")
-            return@coroutineScope loadExtractor(fixUrl(finalIframeSrc), targetUrl, subtitleCallback, callback)
+            Log.d(
+                "SoloLatino",
+                "loadLinks - Intentando cargar iframe/reproductor directamente: $finalIframeSrc"
+            )
+            return@coroutineScope loadExtractor(
+                fixUrl(finalIframeSrc),
+                targetUrl,
+                subtitleCallback,
+                callback
+            )
         }
+
         else {
             Log.w("SoloLatino", "Tipo de iframe desconocido o no manejado: $finalIframeSrc")
             return@coroutineScope false
