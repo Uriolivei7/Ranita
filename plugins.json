@@ -172,7 +172,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 10,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
@@ -225,5 +225,23 @@
     "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
     "language": "mx",
     "fileSize": 23000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 13,
+    "name": "DoramasFlix",
+    "internalName": "DoramasflixProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para pelisplushd.bz",
+    "tvTypes": [
+      "AsianDrama"
+    ],
+    "iconUrl": "https://doramasflix.co/favicon.ico",
+    "language": "mx",
+    "fileSize": 31000
   }
 ]
