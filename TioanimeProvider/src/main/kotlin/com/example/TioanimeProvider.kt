@@ -28,71 +28,211 @@ class TioanimeProvider:MainAPI() {
         TvType.Anime,
     )
 
-    override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
-        Log.d("TioanimeProvider", "DEBUG: Iniciando getMainPage, página: $page")
-        val urls = listOf(
-            Pair("$mainUrl/directorio?year=1950%2C2022&status=2&sort=recent", "Animes"),
-            Pair("$mainUrl/directorio?year=1950%2C2022&status=1&sort=recent", "En Emisión"),
-            Pair("$mainUrl/directorio?type[]=1&year=1950%2C2022&status=2&sort=recent", "Películas"),
-        )
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        Log.d("TioanimeProvider", "Iniciando getMainPage")
+
         val items = ArrayList<HomePageList>()
 
-        val latestEpisodes = app.get(mainUrl).document.select("ul.episodes li article").mapNotNull { article ->
-            val titleRaw = article.selectFirst("h3.title")?.text()
-            val title = titleRaw?.replace(Regex("((\\d+)\$)"),"")
-            val poster = article.selectFirst("figure img")?.attr("src")
-            val epRegex = Regex("(-(\\d+)\$)")
-            val urlRaw = article.selectFirst("a")?.attr("href")
+        try {
+            val mainDoc = app.get(mainUrl).document
+            Log.d("TioanimeProvider", "Página principal cargada")
 
-            if (title.isNullOrEmpty() || poster.isNullOrEmpty() || urlRaw.isNullOrEmpty()) {
-                Log.w("TioanimeProvider", "WARN: Elemento de últimos episodios con datos nulos/vacíos, saltando. Título: $titleRaw, URL: $urlRaw")
-                return@mapNotNull null
-            }
+            val episodesSection = mainDoc.select("section:has(h1.title:contains(Últimos Episodios)) ul.episodes li article")
+            Log.d("TioanimeProvider", "Episodios encontrados: ${episodesSection.size}")
 
-            val url = urlRaw.replace(epRegex,"")?.replace("ver/","anime/")
-            val epNum = epRegex.findAll(urlRaw).map {
-                it.value.replace("-","")
-            }.firstOrNull()?.toIntOrNull()
+            val latestEpisodes = episodesSection.mapNotNull { article ->
+                try {
+                    val titleRaw = article.selectFirst("h3.title")?.text()
+                    val title = titleRaw?.replace(Regex("\\s+\\d+$"), "")?.trim()
+                    val poster = article.selectFirst("figure img")?.attr("src")
+                    val urlRaw = article.selectFirst("a")?.attr("href")
 
-            val dubstat = if (titleRaw.contains("Latino") || titleRaw.contains("Castellano"))
-                DubStatus.Dubbed
-            else DubStatus.Subbed
+                    if (title.isNullOrEmpty() || poster.isNullOrEmpty() || urlRaw.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
 
-            newAnimeSearchResponse(title, fixUrl(url!!)) {
-                this.posterUrl = fixUrl(poster)
-                addDubStatus(dubstat, epNum)
-            }
-        }
-        items.add(HomePageList("Últimos episodios", latestEpisodes))
+                    val epNum = Regex("\\d+$").find(titleRaw ?: "")?.value?.toIntOrNull()
+                    val animeUrl = urlRaw.replace(Regex("-\\d+$"), "").replace("/ver/", "/anime/")
 
-        urls.forEach { (url, name) ->
-            Log.d("TioanimeProvider", "DEBUG: Obteniendo datos para la lista: $name de $url")
-            val doc = app.get(url).document
-            val home = doc.select("ul.animes li article").mapNotNull { article ->
-                val title = article.selectFirst("h3.title")?.text()
-                val poster = article.selectFirst("figure img")?.attr("src")
-                val link = article.selectFirst("a")?.attr("href")
+                    val dubstat = if (title.contains("Latino") || title.contains("Castellano"))
+                        DubStatus.Dubbed
+                    else DubStatus.Subbed
 
-                if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
-                    Log.w("TioanimeProvider", "WARN: Elemento de directorio con datos nulos/vacíos, saltando. Título: $title, Link: $link")
-                    return@mapNotNull null
-                }
-
-                val dubStatusSet = if (title.contains("Latino") || title.contains("Castellano"))
-                    EnumSet.of(DubStatus.Dubbed)
-                else EnumSet.of(DubStatus.Subbed)
-
-                newAnimeSearchResponse(title, fixUrl(link)) {
-                    this.type = TvType.Anime
-                    this.posterUrl = fixUrl(poster)
-                    this.dubStatus = dubStatusSet
+                    newAnimeSearchResponse(title, fixUrl(animeUrl)) {
+                        this.posterUrl = fixUrl(poster)
+                        addDubStatus(dubstat, epNum)
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error procesando episodio: ${e.message}")
+                    null
                 }
             }
-            if (home.isNotEmpty()) {
-                items.add(HomePageList(name, home))
+
+            if (latestEpisodes.isNotEmpty()) {
+                items.add(HomePageList("Últimos Episodios", latestEpisodes))
             }
+
+            val moviesSection = mainDoc.select("section.movies ul li article.anime")
+            Log.d("TioanimeProvider", "Películas encontradas: ${moviesSection.size}")
+
+            val latestMovies = moviesSection.mapNotNull { article ->
+                try {
+                    val title = article.selectFirst("h3.title")?.text()
+                    val poster = article.selectFirst("figure img")?.attr("src")
+                    val link = article.selectFirst("a")?.attr("href")
+
+                    if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    newAnimeSearchResponse(title, fixUrl(link)) {
+                        this.type = TvType.AnimeMovie
+                        this.posterUrl = fixUrl(poster)
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error procesando película: ${e.message}")
+                    null
+                }
+            }
+
+            if (latestMovies.isNotEmpty()) {
+                items.add(HomePageList("Últimas Películas", latestMovies))
+            }
+
+            val ovasSection = mainDoc.select("section.ovas ul li article.anime")
+            Log.d("TioanimeProvider", "OVAs encontrados: ${ovasSection.size}")
+
+            val latestOvas = ovasSection.mapNotNull { article ->
+                try {
+                    val title = article.selectFirst("h3.title")?.text()
+                    val poster = article.selectFirst("figure img")?.attr("src")
+                    val link = article.selectFirst("a")?.attr("href")
+
+                    if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    newAnimeSearchResponse(title, fixUrl(link)) {
+                        this.type = TvType.OVA
+                        this.posterUrl = fixUrl(poster)
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error procesando OVA: ${e.message}")
+                    null
+                }
+            }
+
+            if (latestOvas.isNotEmpty()) {
+                items.add(HomePageList("Últimos OVAs", latestOvas))
+            }
+
+            val specialsSection = mainDoc.select("section.onas ul li article.anime")
+            Log.d("TioanimeProvider", "Especiales encontrados: ${specialsSection.size}")
+
+            val latestSpecials = specialsSection.mapNotNull { article ->
+                try {
+                    val title = article.selectFirst("h3.title")?.text()
+                    val poster = article.selectFirst("figure img")?.attr("src")
+                    val link = article.selectFirst("a")?.attr("href")
+
+                    if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    newAnimeSearchResponse(title, fixUrl(link)) {
+                        this.type = TvType.OVA
+                        this.posterUrl = fixUrl(poster)
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error procesando especial: ${e.message}")
+                    null
+                }
+            }
+
+            if (latestSpecials.isNotEmpty()) {
+                items.add(HomePageList("Últimos Especiales", latestSpecials))
+            }
+
+            val animesSection = mainDoc.select("section:has(h2.title:contains(Últimos Animes)) ul li article.anime")
+            Log.d("TioanimeProvider", "Animes encontrados: ${animesSection.size}")
+
+            val latestAnimes = animesSection.mapNotNull { article ->
+                try {
+                    val title = article.selectFirst("h3.title")?.text()
+                    val poster = article.selectFirst("figure img")?.attr("src")
+                    val link = article.selectFirst("a")?.attr("href")
+
+                    if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    val dubStatusSet = if (title.contains("Latino") || title.contains("Castellano"))
+                        EnumSet.of(DubStatus.Dubbed)
+                    else EnumSet.of(DubStatus.Subbed)
+
+                    newAnimeSearchResponse(title, fixUrl(link)) {
+                        this.type = TvType.Anime
+                        this.posterUrl = fixUrl(poster)
+                        this.dubStatus = dubStatusSet
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error procesando anime: ${e.message}")
+                    null
+                }
+            }
+
+            if (latestAnimes.isNotEmpty()) {
+                items.add(HomePageList("Últimos Animes", latestAnimes))
+            }
+
+            val directoryUrls = listOf(
+                Pair("$mainUrl/directorio?year=1950%2C2025&status=1&sort=recent", "En Emisión"),
+                Pair("$mainUrl/directorio?year=1950%2C2025&status=2&sort=recent", "Finalizados")
+            )
+
+            directoryUrls.forEach { (url, name) ->
+                try {
+                    val doc = app.get(url).document
+                    val home = doc.select("ul.animes li article").mapNotNull { article ->
+                        val title = article.selectFirst("h3.title")?.text()
+                        val poster = article.selectFirst("figure img")?.attr("src")
+                        val link = article.selectFirst("a")?.attr("href")
+
+                        if (title.isNullOrEmpty() || poster.isNullOrEmpty() || link.isNullOrEmpty()) {
+                            return@mapNotNull null
+                        }
+
+                        val dubStatusSet = if (title.contains("Latino") || title.contains("Castellano"))
+                            EnumSet.of(DubStatus.Dubbed)
+                        else EnumSet.of(DubStatus.Subbed)
+
+                        newAnimeSearchResponse(title, fixUrl(link)) {
+                            this.type = TvType.Anime
+                            this.posterUrl = fixUrl(poster)
+                            this.dubStatus = dubStatusSet
+                        }
+                    }
+
+                    if (home.isNotEmpty()) {
+                        items.add(HomePageList(name, home))
+                        Log.d("TioanimeProvider", "$name: ${home.size} elementos")
+                    }
+                } catch (e: Exception) {
+                    Log.e("TioanimeProvider", "Error obteniendo $name: ${e.message}")
+                }
+            }
+
+            Log.d("TioanimeProvider", "Total listas creadas: ${items.size}")
+
+        } catch (e: Exception) {
+            Log.e("TioanimeProvider", "Error fatal en getMainPage: ${e.message}")
+            throw ErrorLoadingException("Error cargando página principal: ${e.message}")
         }
-        if (items.isEmpty()) throw ErrorLoadingException("No se pudieron cargar elementos de la página principal.")
+
+        if (items.isEmpty()) {
+            throw ErrorLoadingException("No se pudieron cargar elementos de la página principal.")
+        }
+
         return newHomePageResponse(items)
     }
 

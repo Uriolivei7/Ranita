@@ -153,7 +153,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 9,
     "name": "TioAnime",
     "internalName": "TioanimeProvider",
@@ -167,7 +167,7 @@
     ],
     "iconUrl": "https://tioanime.com/assets/img/icon-32x32.png",
     "language": "mx",
-    "fileSize": 19000
+    "fileSize": 22000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
