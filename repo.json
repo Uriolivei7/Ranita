@@ -1,8 +1,8 @@
 {
   "name": "Ranita Repositorio",
-  "description": "Lista de plugins de Ranita para CloudStream",
+  "description": "Lista de plugins en Latino para CloudStream",
   "manifestVersion": 1,
-  "iconUrl": "https://img.icons8.com/?size=100&id=117010&format=png&color=000000",
+  "iconUrl": "https://img.icons8.com/?size=192&id=LsKcpqNzlpgH&format=png",
   "pluginLists": [
     "https://uriolivei7.github.io/Ranita/plugins.json"
   ]
