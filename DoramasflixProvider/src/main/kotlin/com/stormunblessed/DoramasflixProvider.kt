@@ -288,19 +288,25 @@ class DoramasflixProvider:MainAPI() {
                 }
                 true
             } else {
-                Log.d("DoramasflixProvider", "Data no contiene 'link', buscando enlaces del episodio: $data")
+                val episodeSlug = data.removePrefix("https://doramasflix.co/")
+                    .removePrefix("http://doramasflix.co/")
+                    .removePrefix(mainUrl + "/")
 
-                val episodeslinkRequestbody = "{\"operationName\":\"GetEpisodeLinks\",\"variables\":{\"episode_slug\":\"$data\"},\"query\":\"query GetEpisodeLinks(\$episode_slug: String!) {\\n  detailEpisode(filter: {slug: \$episode_slug, type_serie: \\\"dorama\\\"}) {\\n    links_online\\n   }\\n}\\n\"}"
+                Log.d("DoramasflixProvider", "Slug del episodio extraído: $episodeSlug")
+
+                val episodeslinkRequestbody = "{\"operationName\":\"GetEpisodeLinks\",\"variables\":{\"episode_slug\":\"$episodeSlug\"},\"query\":\"query GetEpisodeLinks(\$episode_slug: String!) {\\n  detailEpisode(filter: {slug: \$episode_slug, type_serie: \\\"dorama\\\"}) {\\n    links_online\\n   }\\n}\\n\"}"
+
+                Log.d("DoramasflixProvider", "Request body: ${episodeslinkRequestbody.take(200)}")
 
                 val request = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType))
                 val responseText = request.text
-                Log.d("DoramasflixProvider", "Respuesta API: ${responseText.take(500)}") // Primeros 500 caracteres
+                Log.d("DoramasflixProvider", "Respuesta API: $responseText")
 
                 val parsedResponse = parseJson<MainDoramas>(responseText)
                 val links = parsedResponse.data?.detailEpisode?.linksOnline
 
                 if (links.isNullOrEmpty()) {
-                    Log.e("DoramasflixProvider", "No se encontraron enlaces para el episodio: $data")
+                    Log.e("DoramasflixProvider", "No se encontraron enlaces para el episodio: $episodeSlug")
                     return false
                 }
 
@@ -313,7 +319,6 @@ class DoramasflixProvider:MainAPI() {
 
                     Log.d("DoramasflixProvider", "Enlace original: $link (Server: $server, Lang: $lang)")
 
-                    // Aplicar reemplazos
                     link = link?.replace("https://swdyu.com", "https://streamwish.to")
                         ?.replace("https://uqload.to", "https://uqload.co")
 
