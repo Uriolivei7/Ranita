@@ -33,11 +33,13 @@ class AnimeioProvider : MainAPI() {
     override val hasDownloadSupport = true
 
     private fun fixPosterUrl(url: String?): String? {
-        if (url == null) return null
-        return if (url.startsWith("/")) {
-            mainUrl + url
-        } else {
-            url
+        if (url.isNullOrEmpty()) return null
+
+        return when {
+            url.startsWith("http://") || url.startsWith("https://") -> url
+            url.startsWith("storage/") -> "$mainUrl/$url"
+            url.startsWith("/storage/") -> "$mainUrl$url"
+            else -> "$mainUrl/$url"
         }
     }
 
@@ -96,7 +98,6 @@ class AnimeioProvider : MainAPI() {
         }
         return null
     }
-
     private suspend fun safeAppGet(
         url: String,
         retries: Int = 3,
@@ -122,17 +123,54 @@ class AnimeioProvider : MainAPI() {
         val html = safeAppGet(url) ?: return null
         val doc = Jsoup.parse(html)
 
-        doc.select("div#content-full").forEach { container ->
-            val heading = container.selectFirst("h3.carousel.t")?.text()?.trim()
-            val animes = container.select("div#article-div > div").mapNotNull {
-                when (heading) {
-                    "Capítulos recientes" -> {
-                        val titleElement = it.selectFirst("div._2NNxg a")
-                        val link = titleElement?.attr("href")
-                        val title = titleElement?.text()?.trim()
-                        val posterUrl = it.selectFirst("img")?.attr("data-src")
+        doc.select("div#content-full").forEach { section ->
+            val heading = section.selectFirst("h3.carousel")?.text()?.trim() ?: return@forEach
 
-                        if (title != null && link != null) {
+            val animes = when {
+                heading.contains("Capítulos recientes") -> {
+                    section.select("div#article-div > div._135yj").mapNotNull { element ->
+                        val titleElement = element.selectFirst("div._2NNxg a")
+                        val title = titleElement?.text()?.trim()
+                        val animeLink = titleElement?.attr("href")
+
+                        val posterUrl = element.selectFirst("img")?.let { img ->
+                            img.attr("src").ifEmpty { img.attr("data-src") }
+                        }
+
+                        val episodeLink = element.selectFirst("a._38LRT")?.attr("href")
+                        val episodeText = element.selectFirst("span._2y8kd.etag")?.text()
+
+                        if (title != null && animeLink != null && posterUrl != null) {
+                            val episode = episodeText?.replace("Capítulo ", "")?.toIntOrNull()
+
+                            newAnimeSearchResponse(
+                                title,
+                                fixUrl(animeLink)
+                            ) {
+                                this.type = TvType.Anime
+                                this.posterUrl = fixPosterUrl(posterUrl)
+                                if (episode != null) {
+                                    addDubStatus(DubStatus.Subbed, episode)
+                                }
+                            }
+                        } else null
+                    }
+                }
+
+                heading.contains("Animes recientes") ||
+                        heading.contains("Animes más populares") -> {
+                    section.select("div#article-div > div._135yj").mapNotNull { element ->
+                        val titleElement = element.selectFirst("div._2NNxg a")
+                        val title = titleElement?.text()?.trim()
+                        val link = titleElement?.attr("href")
+
+                        val posterUrl = element.selectFirst("img")?.let { img ->
+                            img.attr("src").ifEmpty { img.attr("data-src") }
+                        }
+
+                        val status = element.selectFirst("div._2y8kd:not(.etag)")?.text()
+
+                        if (title != null && link != null && posterUrl != null) {
                             newAnimeSearchResponse(
                                 title,
                                 fixUrl(link)
@@ -142,25 +180,40 @@ class AnimeioProvider : MainAPI() {
                             }
                         } else null
                     }
-                    "Animes recientes", "Animes más populares" -> extractAnimeItem(it)
-                    else -> null
                 }
+
+                heading.contains("Películas recientes") ||
+                        heading.contains("Películas más populares") -> {
+                    section.select("div#article-div > div._135yj").mapNotNull { element ->
+                        val titleElement = element.selectFirst("div._2NNxg a")
+                        val title = titleElement?.text()?.trim()
+                        val link = titleElement?.attr("href")
+
+                        val posterUrl = element.selectFirst("img")?.let { img ->
+                            img.attr("src").ifEmpty { img.attr("data-src") }
+                        }
+
+                        if (title != null && link != null && posterUrl != null) {
+                            newAnimeSearchResponse(
+                                title,
+                                fixUrl(link)
+                            ) {
+                                this.type = TvType.AnimeMovie
+                                this.posterUrl = fixPosterUrl(posterUrl)
+                            }
+                        } else null
+                    }
+                }
+
+                else -> emptyList()
             }
+
             if (animes.isNotEmpty()) {
-                val listName = when (heading) {
-                    "Capítulos recientes" -> "Capítulos recientes"
-                    "Animes recientes" -> "Animes recientes"
-                    "Animes más populares" -> "Animes más populares"
-                    "Películas recientes" -> "Películas recientes"
-                    "Películas más populares" -> "Películas más populares"
-                    else -> null
-                }
-                if (listName != null) {
-                    items.add(HomePageList(listName, animes))
-                }
+                items.add(HomePageList(heading, animes))
             }
         }
-        return HomePageResponse(items)
+
+        return if (items.isNotEmpty()) HomePageResponse(items) else null
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
