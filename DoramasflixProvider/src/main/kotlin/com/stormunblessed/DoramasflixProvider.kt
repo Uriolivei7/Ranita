@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import android.util.Log
 
 class DoramasflixProvider:MainAPI() {
     companion object  {
@@ -16,7 +17,7 @@ class DoramasflixProvider:MainAPI() {
     }
 
     override var mainUrl = "https://doramasflix.co"
-    override var name = "Doramasflix"
+    override var name = "DoramasFlix"
     override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
@@ -143,7 +144,7 @@ class DoramasflixProvider:MainAPI() {
         items.add(HomePageList("Peliculas", home2!!))
         items.add(HomePageList("Doramas 2", home3!!))
         if (items.size <= 0) throw ErrorLoadingException()
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     private fun tasa(
@@ -158,13 +159,9 @@ class DoramasflixProvider:MainAPI() {
         val istvShow = info.isTVShow
         val data = "{\"id\":\"$id\",\"slug\":\"$slug\",\"type\":\"$typename\",\"isTV\":$istvShow}"
 
-        return TvSeriesSearchResponse(
-            title!!,
-            data,
-            name,
-            TvType.AsianDrama,
-            realposter,
-        )
+        return newTvSeriesSearchResponse(title!!, data) {
+            this.posterUrl = realposter
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -225,13 +222,13 @@ class DoramasflixProvider:MainAPI() {
                     val epthumb = getImageUrl(it.stillPath)
                     val name = it.name
                     episodes.add(
-                        Episode(
-                            epSlug!!,
-                            name,
-                            season,
-                            epnum,
-                            epthumb
-                        ))
+                        newEpisode(epSlug!!) {
+                            this.name = name
+                            this.season = season
+                            this.episode = epnum
+                            this.posterUrl = epthumb
+                        }
+                    )
                 }
             }
         } else if (isMovie) {
@@ -268,26 +265,77 @@ class DoramasflixProvider:MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        if (data.contains("link")) {
-            val parse = parseJson<List<LinksOnline>>(data)
-            parse.map {
-                val link = it.link
-                loadExtractor(link!!, data, subtitleCallback, callback)
+        Log.d("DoramasflixProvider", "loadLinks iniciado con data: $data")
+
+        return try {
+            if (data.contains("link")) {
+                Log.d("DoramasflixProvider", "Data contiene 'link', parseando como LinksOnline")
+                val parse = parseJson<List<LinksOnline>>(data)
+                Log.d("DoramasflixProvider", "Enlaces encontrados: ${parse.size}")
+
+                parse.forEach { linkInfo ->
+                    val link = linkInfo.link
+                    val server = linkInfo.server
+                    val lang = linkInfo.lang
+                    Log.d("DoramasflixProvider", "Procesando enlace: $link (Server: $server, Lang: $lang)")
+
+                    if (!link.isNullOrEmpty()) {
+                        val success = loadExtractor(link, data, subtitleCallback, callback)
+                        Log.d("DoramasflixProvider", "loadExtractor resultado para $link: $success")
+                    } else {
+                        Log.w("DoramasflixProvider", "Enlace vacío o nulo encontrado")
+                    }
+                }
+                true
+            } else {
+                Log.d("DoramasflixProvider", "Data no contiene 'link', buscando enlaces del episodio: $data")
+
+                val episodeslinkRequestbody = "{\"operationName\":\"GetEpisodeLinks\",\"variables\":{\"episode_slug\":\"$data\"},\"query\":\"query GetEpisodeLinks(\$episode_slug: String!) {\\n  detailEpisode(filter: {slug: \$episode_slug, type_serie: \\\"dorama\\\"}) {\\n    links_online\\n   }\\n}\\n\"}"
+
+                val request = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType))
+                val responseText = request.text
+                Log.d("DoramasflixProvider", "Respuesta API: ${responseText.take(500)}") // Primeros 500 caracteres
+
+                val parsedResponse = parseJson<MainDoramas>(responseText)
+                val links = parsedResponse.data?.detailEpisode?.linksOnline
+
+                if (links.isNullOrEmpty()) {
+                    Log.e("DoramasflixProvider", "No se encontraron enlaces para el episodio: $data")
+                    return false
+                }
+
+                Log.d("DoramasflixProvider", "Enlaces encontrados: ${links.size}")
+
+                links.forEach { linkInfo ->
+                    var link = linkInfo.link
+                    val server = linkInfo.server
+                    val lang = linkInfo.lang
+
+                    Log.d("DoramasflixProvider", "Enlace original: $link (Server: $server, Lang: $lang)")
+
+                    // Aplicar reemplazos
+                    link = link?.replace("https://swdyu.com", "https://streamwish.to")
+                        ?.replace("https://uqload.to", "https://uqload.co")
+
+                    Log.d("DoramasflixProvider", "Enlace modificado: $link")
+
+                    if (!link.isNullOrEmpty()) {
+                        val success = loadExtractor(link, data, subtitleCallback, callback)
+                        Log.d("DoramasflixProvider", "loadExtractor resultado para $link: $success")
+
+                        if (!success) {
+                            Log.w("DoramasflixProvider", "Falló la extracción para: $link")
+                        }
+                    } else {
+                        Log.w("DoramasflixProvider", "Enlace vacío después de modificaciones")
+                    }
+                }
+                true
             }
-        } else {
-            val episodeslinkRequestbody = "{\"operationName\":\"GetEpisodeLinks\",\"variables\":{\"episode_slug\":\"$data\"},\"query\":\"query GetEpisodeLinks(\$episode_slug: String!) {\\n  detailEpisode(filter: {slug: \$episode_slug, type_serie: \\\"dorama\\\"}) {\\n    links_online\\n   }\\n}\\n\"}"
-            val request = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType)).parsedSafe<MainDoramas>()
-            //val test = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType)).text
-            //println("TESTEO $test")
-            request?.data?.detailEpisode?.linksOnline?.map {
-                val link = it.link?.replace("https://swdyu.com","https://streamwish.to")?.replace("https://uqload.to","https://uqload.co")
-                //println("LINK $link")
-                loadExtractor(link!!, data, subtitleCallback, callback)
-            }
+        } catch (e: Exception) {
+            Log.e("DoramasflixProvider", "Error en loadLinks: ${e.message}", e)
+            e.printStackTrace()
+            false
         }
-
-
-
-        return true
     }
 }
