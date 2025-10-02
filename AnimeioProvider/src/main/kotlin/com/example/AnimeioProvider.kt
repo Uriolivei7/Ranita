@@ -32,17 +32,6 @@ class AnimeioProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
 
-    private fun fixPosterUrl(url: String?): String? {
-        if (url.isNullOrEmpty()) return null
-
-        return when {
-            url.startsWith("http://") || url.startsWith("https://") -> url
-            url.startsWith("storage/") -> "$mainUrl/$url"
-            url.startsWith("/storage/") -> "$mainUrl$url"
-            else -> "$mainUrl/$url"
-        }
-    }
-
     private fun extractAnimeItem(element: Element): AnimeSearchResponse? {
         val linkElement = element.selectFirst("a._1A2Dc._38LRT")
         val titleElement = element.selectFirst("div._2NNxg a._2uHIS")
@@ -234,9 +223,12 @@ class AnimeioProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         Log.d("AnimeioProvider", "Iniciando load para URL: $url")
+
         val response = app.get(url)
         val html = response.text
         val doc = Jsoup.parse(html)
+
+        val baseUrl = "https://animeio.com"
 
         val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
         val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src").let {
@@ -293,12 +285,22 @@ class AnimeioProvider : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
+            data class EpisodeData(
+                val title: String?,
+                val season: String?,
+                val episode: String?,
+                val image: String?,
+                val image2: String?
+            )
+
             val allEpisodes = ArrayList<Episode>()
             val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
+
             if (scriptContent != null) {
                 val episodesJsonString = scriptContent
                     .substringAfter("const allEpisodes = ")
-                    .substringBefore(";")
+                    .substringBefore("];")
+                    .plus("]")
                     .trim()
 
                 try {
@@ -307,18 +309,30 @@ class AnimeioProvider : MainAPI() {
                         allEpisodes.addAll(episodesData.mapNotNull { episode ->
                             val epUrl = "$url/episodio-${episode.episode}"
                             val epNum = episode.episode?.toIntOrNull()
+
+                            val posterUrl = when {
+                                episode.image.isNullOrBlank() -> null
+                                episode.image.startsWith("http") -> episode.image
+                                episode.image.startsWith("/") -> "$baseUrl${episode.image}"
+                                else -> "$baseUrl/${episode.image}"
+                            }
+
                             if (epUrl.isNotBlank() && epNum != null) {
                                 newEpisode(epUrl) {
                                     this.name = episode.title ?: "Episodio $epNum"
                                     this.episode = epNum
+                                    this.posterUrl = posterUrl
                                 }
                             } else null
                         })
+
+                        Log.d("AnimeioProvider", "Total episodios procesados: ${allEpisodes.size}")
                     }
                 } catch (e: Exception) {
-                    Log.e("AnimeioProvider", "Fallo al parsear el JSON de episodios: ${e.message}", e)
+                    Log.e("AnimeioProvider", "Error al parsear episodios: ${e.message}", e)
                 }
             }
+
             return newTvSeriesLoadResponse(
                 name = title,
                 url = url,
@@ -331,7 +345,26 @@ class AnimeioProvider : MainAPI() {
                 this.tags = tags
                 this.year = year
                 this.recommendations = recommendations
+                this.showStatus = status
             }
+        }
+    }
+
+    private fun fixPosterUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        return when {
+            url.startsWith("http") -> url
+            url.startsWith("//") -> "https:$url"
+            url.startsWith("/") -> "https://animeio.com$url"
+            else -> "https://animeio.com/$url"
+        }
+    }
+
+    private fun parseStatus(status: String): ShowStatus {
+        return when (status.lowercase()) {
+            "concluido", "finalizado" -> ShowStatus.Completed
+            "en emisión", "en emision" -> ShowStatus.Ongoing
+            else -> ShowStatus.Ongoing
         }
     }
 
@@ -375,14 +408,6 @@ class AnimeioProvider : MainAPI() {
 
         Log.d("AnimeioProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
         return linksFound
-    }
-
-    private fun parseStatus(statusString: String): ShowStatus {
-        return when (statusString.lowercase()) {
-            "finalizado", "concluido" -> ShowStatus.Completed
-            "en emisión", "en emision" -> ShowStatus.Ongoing
-            else -> ShowStatus.Ongoing
-        }
     }
 
     private fun fixUrl(url: String): String {
