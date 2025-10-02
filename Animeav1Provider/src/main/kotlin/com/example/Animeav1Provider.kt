@@ -176,6 +176,9 @@ class Animeav1 : MainAPI() {
             try {
                 val embedsObject = JSONObject(embedsJson)
 
+                val stats = mutableMapOf<String, Int>()
+                val failedServers = mutableListOf<String>()
+
                 fun extractLinks(arrayName: String): List<Pair<String, String>> {
                     val list = mutableListOf<Pair<String, String>>()
                     if (embedsObject.has(arrayName)) {
@@ -210,6 +213,8 @@ class Animeav1 : MainAPI() {
 
                 subEmbeds.forEach { (server, url) ->
                     Log.d("Animeav1", "Procesando SUB enlace #${++subProcessed}: $server")
+                    val startTime = System.currentTimeMillis()
+
                     try {
                         loadCustomExtractor(
                             "Animeav1 [SUB:$server]",
@@ -218,15 +223,24 @@ class Animeav1 : MainAPI() {
                             subtitleCallback,
                             callback
                         )
-                        Log.d("Animeav1", "SUB enlace procesado exitosamente: $server")
+
+                        val duration = System.currentTimeMillis() - startTime
+
+                        stats[server] = (stats[server] ?: 0) + 1
+                        Log.d("Animeav1", "✓ SUB:$server procesado exitosamente en ${duration}ms")
+
                     } catch (e: Exception) {
-                        Log.e("Animeav1", "Error al procesar SUB enlace $server: ${e.message}")
+                        failedServers.add("SUB:$server")
+                        Log.e("Animeav1", "✗ Error al procesar SUB:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
+                        e.printStackTrace()
                     }
                 }
 
                 dubEmbeds.forEach { (server, url) ->
                     Log.d("Animeav1", "Procesando DUB enlace #${++dubProcessed}: $server")
+                    val startTime = System.currentTimeMillis()
+
                     try {
                         loadCustomExtractor(
                             "Animeav1 [DUB:$server]",
@@ -235,14 +249,27 @@ class Animeav1 : MainAPI() {
                             subtitleCallback,
                             callback
                         )
-                        Log.d("Animeav1", "DUB enlace procesado exitosamente: $server")
+
+                        val duration = System.currentTimeMillis() - startTime
+
+                        stats[server] = (stats[server] ?: 0) + 1
+                        Log.d("Animeav1", "✓ DUB:$server procesado exitosamente en ${duration}ms")
+
                     } catch (e: Exception) {
-                        Log.e("Animeav1", "Error al procesar DUB enlace $server: ${e.message}")
+                        failedServers.add("DUB:$server")
+                        Log.e("Animeav1", "✗ Error al procesar DUB:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
+                        e.printStackTrace()
                     }
                 }
 
-                Log.i("Animeav1", "Procesamiento completado - SUB: $subProcessed, DUB: $dubProcessed")
+                Log.i("Animeav1", "RESUMEN DE PROCESAMIENTO:")
+                Log.i("Animeav1", "Total procesados - SUB: $subProcessed, DUB: $dubProcessed")
+                Log.i("Animeav1", "Servidores exitosos: ${stats.entries.joinToString { "${it.key}(${it.value})" }}")
+
+                if (failedServers.isNotEmpty()) {
+                    Log.w("Animeav1", "Servidores fallidos: ${failedServers.joinToString()}")
+                }
 
             } catch (e: Exception) {
                 Log.e("Animeav1", "Error al parsear JSON: ${e.message}")
