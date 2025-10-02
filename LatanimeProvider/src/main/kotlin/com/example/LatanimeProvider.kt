@@ -105,7 +105,7 @@ class LatanimeProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val doc = appGetChildMainUrl("$mainUrl/buscar?q=$query").document
-        delay(2000) // Retardo reducido
+        delay(2000)
         return doc.select("div.col-md-4.col-lg-3.col-xl-2.col-6.my-3").mapNotNull { article ->
             val itemLink = article.selectFirst("a")
             val title = itemLink?.selectFirst("div.seriedetails h3.my-1")?.text() ?: ""
@@ -130,51 +130,54 @@ class LatanimeProvider : MainAPI() {
         }
     }
 
-    override suspend fun load(url: String): LoadResponse {
-        val doc = appGetChildMainUrl(url).document
-        val posterElement = doc.selectFirst("div.p-2.cap-layout.d-flex.align-items-center.gap-2 img.lozad.rounded-3")
-        val dataSrc = posterElement?.attr("data-src") ?: ""
-        val src = posterElement?.attr("src") ?: ""
-        val poster = if (dataSrc.isNotEmpty()) fixUrl(dataSrc) else if (src.isNotEmpty()) fixUrl(src) else ""
-        val backimage = poster
-        val title = doc.selectFirst("div.col-lg-9.col-md-8 h2")?.text()
-            ?: throw ErrorLoadingException("Título no encontrado en $url")
-        val type = doc.selectFirst("div.chapterdetls2")?.text() ?: ""
-        val description = doc.selectFirst("div.col-lg-9.col-md-8 p.my-2.opacity-75")?.text()?.replace("Ver menos", "") ?: ""
-        val genres = doc.select("div.col-lg-9.col-md-8 a div.btn").map { it.text() }
-        val status = when (doc.selectFirst("div.col-lg-3.col-md-4 div.series2 div.serieimgficha div.my-2")?.text()) {
-            "Estreno" -> ShowStatus.Ongoing
-            "Finalizado" -> ShowStatus.Completed
-            else -> null
-        }
-        val episodes = doc.select("div.row div.col-lg-9.col-md-8 div.row div a").mapNotNull { episodeLink ->
-            val name = episodeLink.selectFirst("div.cap-layout")?.text()
-                ?: episodeLink.selectFirst("h2")?.text()
-                ?: ""
-            val link = episodeLink.attr("href")
+    override suspend fun load(url: String): LoadResponse? {
+        val document = app.get(url).document
 
-            if (link.isNullOrEmpty()) {
-                Log.w("LatanimePlugin", "WARN: Link de episodio nulo o vacío en load para $url.")
-                return@mapNotNull null
+        val title = document.selectFirst("h1.title")?.text()?.trim() ?: ""
+        val poster = document.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
+        val description = document.selectFirst("p.description")?.text()?.trim() ?: ""
+
+        val tags = document.select("div.genres a").map { it.text() }
+        val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
+
+        val episodes = document.select("div.row a[href*=episodio]").mapNotNull { element ->
+            val epUrl = element.attr("href")
+            val epTitle = element.selectFirst("div.cap-layout")?.text()?.trim() ?: ""
+
+            val epNum = Regex("(?:episodio|capitulo)\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                .find(epUrl + epTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+            val epPoster = element.selectFirst("img")?.let { img ->
+                img.attr("data-src").ifBlank { img.attr("src") }
+            }?.let { imgUrl ->
+                when {
+                    imgUrl.startsWith("http") -> imgUrl
+                    imgUrl.startsWith("//") -> "https:$imgUrl"
+                    imgUrl.startsWith("/") -> "https://latanime.org$imgUrl"
+                    else -> "https://latanime.org/$imgUrl"
+                }
             }
 
-            val epThumb = episodeLink.selectFirst(".animeimghv")?.attr("data-src")
-                ?: episodeLink.selectFirst("div.animeimgdiv img.animeimghv")?.attr("src")
-                ?: ""
-            newEpisode(link) {
-                this.name = name
-                this.posterUrl = epThumb
-                this.runTime = null
-            }
+            if (epUrl.isNotBlank() && epNum != null) {
+                Episode(
+                    data = epUrl,
+                    name = epTitle.ifBlank { "Episodio $epNum" },
+                    episode = epNum,
+                    posterUrl = epPoster
+                )
+            } else null
         }
-        return newAnimeLoadResponse(title, url, getType(type)) {
+
+        return newTvSeriesLoadResponse(
+            name = title,
+            url = url,
+            type = TvType.Anime,
+            episodes = episodes
+        ) {
             this.posterUrl = poster
-            this.backgroundPosterUrl = backimage
-            addEpisodes(DubStatus.Subbed, episodes)
-            this.showStatus = status
             this.plot = description
-            this.tags = genres
-            this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
+            this.tags = tags
+            this.year = year
         }
     }
 
