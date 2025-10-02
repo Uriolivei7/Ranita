@@ -54,53 +54,109 @@ class LatanimeProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val urls = listOf(
             Pair("$mainUrl/emision", "En emisión"),
-            Pair(
-                "$mainUrl/animes?fecha=false&genero=false&letra=false&categoria=Película",
-                "Peliculas"
-            ),
+            Pair("$mainUrl/animes?fecha=false&genero=false&letra=false&categoria=Película", "Películas"),
             Pair("$mainUrl/animes", "Animes"),
         )
 
         val items = ArrayList<HomePageList>()
-        try {
-            urls.map { (url, name) ->
-                val doc = appGetChildMainUrl(url).document
-                delay(2000)
-                val home = doc.select("div.col-md-4.col-lg-3.col-xl-2.col-6.my-3").mapNotNull { article ->
-                    val itemLink = article.selectFirst("a")
-                    val title = itemLink?.selectFirst("div.seriedetails h3.my-1")?.text() ?: ""
-                    val itemUrl = itemLink?.attr("href")
 
-                    if (itemUrl == null) {
-                        Log.w("LatanimePlugin", "WARN: itemUrl es nulo para un elemento en getMainPage.")
+        try {
+            // Primero, obtener el carousel/slider de la página principal
+            val mainDoc = app.get(mainUrl).document
+            val carouselItems = mainDoc.select("div.carousel-item a[href*=/anime/], div.carousel-item a[href*=/pelicula/]").mapNotNull { element ->
+                val itemUrl = element.attr("href")
+                val title = element.selectFirst("span.span-slider")?.text()?.trim() ?: ""
+                val description = element.selectFirst("p.p-slider")?.text()?.trim()
+
+                // Obtener imagen del carousel (primero intenta data-src, luego src)
+                val posterElement = element.selectFirst("img.preview-image, img.d-block")
+                val poster = posterElement?.attr("data-src")?.ifBlank {
+                    posterElement.attr("src")
+                } ?: ""
+
+                if (itemUrl.isNotBlank() && title.isNotBlank()) {
+                    newAnimeSearchResponse(title, fixUrl(itemUrl)) {
+                        this.posterUrl = fixUrl(poster)
+                        addDubStatus(getDubStatus(title))
+                    }
+                } else null
+            }
+
+            if (carouselItems.isNotEmpty()) {
+                items.add(HomePageList("Destacados", carouselItems))
+            }
+
+            // Luego obtener las otras secciones
+            urls.forEach { (url, name) ->
+                val doc = app.get(url).document
+
+                // Selector más general para encontrar los animes
+                val home = doc.select("div.col-md-4, div.col-lg-3, div.col-xl-2, div.col-6").mapNotNull { article ->
+                    val linkElement = article.selectFirst("a[href*=/anime/], a[href*=/pelicula/]")
+                    if (linkElement == null) return@mapNotNull null
+
+                    val itemUrl = linkElement.attr("href")
+                    val title = linkElement.selectFirst("h3.my-1, h3")?.text()?.trim()
+                        ?: linkElement.selectFirst("div.seriedetails h3")?.text()?.trim()
+                        ?: linkElement.attr("title").trim()
+
+                    if (itemUrl.isBlank() || title.isBlank()) {
+                        Log.w("LatanimeProvider", "Elemento sin URL o título")
                         return@mapNotNull null
                     }
 
-                    val posterElement = article.selectFirst("div.col-md-4.col-lg-3.col-xl-2.col-6.my-3 a div.series img.img-fluid2.shadow-sm")
-                    val src = posterElement?.attr("src") ?: ""
-                    val dataSrc = posterElement?.attr("data-src") ?: ""
-                    val poster = if (dataSrc.isNotEmpty()) fixUrl(dataSrc) else if (src.isNotEmpty()) fixUrl(src) else ""
+                    // Buscar imagen con varios selectores posibles
+                    val imgElement = linkElement.selectFirst("img.img-fluid2, img.img-fluid, img")
+                    val poster = imgElement?.let {
+                        it.attr("data-src").ifBlank { it.attr("src") }
+                    }?.let { imgUrl ->
+                        when {
+                            imgUrl.startsWith("http") -> imgUrl
+                            imgUrl.startsWith("//") -> "https:$imgUrl"
+                            imgUrl.startsWith("/") -> "$mainUrl$imgUrl"
+                            else -> "$mainUrl/$imgUrl"
+                        }
+                    } ?: ""
 
-                    // Usar newAnimeSearchResponse y el lambda
                     newAnimeSearchResponse(title, fixUrl(itemUrl)) {
                         this.posterUrl = poster
                         addDubStatus(getDubStatus(title))
-                        this.posterHeaders = cloudflareKiller.getCookieHeaders(mainUrl).toMap()
                     }
-                }
+                }.filter { it.name.isNotBlank() }
+
                 if (home.isNotEmpty()) {
                     items.add(HomePageList(name, home))
                 }
             }
+
         } catch (e: Exception) {
-            Log.e("LatanimePlugin", "ERROR en getMainPage: ${e.message}", e)
+            Log.e("LatanimeProvider", "ERROR en getMainPage: ${e.message}", e)
             throw ErrorLoadingException("Error al cargar la página principal: ${e.message}")
         }
 
         if (items.isEmpty()) {
             throw ErrorLoadingException("No se pudieron cargar elementos de la página principal.")
         }
+
         return newHomePageResponse(items)
+    }
+
+    private fun fixUrl(url: String): String {
+        return when {
+            url.startsWith("http") -> url
+            url.startsWith("//") -> "https:$url"
+            url.startsWith("/") -> "$mainUrl$url"
+            else -> "$mainUrl/$url"
+        }
+    }
+
+    private fun getDubStatus(title: String): DubStatus {
+        return when {
+            title.contains("Latino", ignoreCase = true) -> DubStatus.Dubbed
+            title.contains("Castellano", ignoreCase = true) -> DubStatus.Dubbed
+            title.contains("Subtitulado", ignoreCase = true) -> DubStatus.Subbed
+            else -> DubStatus.Subbed
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
