@@ -131,42 +131,71 @@ class LatanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
+        Log.d("LatanimeProvider", "Cargando: $url")
+
         val document = app.get(url).document
 
         val title = document.selectFirst("h1.title")?.text()?.trim() ?: ""
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
         val description = document.selectFirst("p.description")?.text()?.trim() ?: ""
 
-        val tags = document.select("div.genres a").map { it.text() }
-        val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
+        Log.d("LatanimeProvider", "Título: $title")
 
-        val episodes = document.select("div.row a[href*=episodio]").mapNotNull { element ->
-            val epUrl = element.attr("href")
-            val epTitle = element.selectFirst("div.cap-layout")?.text()?.trim() ?: ""
+        val episodeElements = document.select("div.row a[href*=episodio]")
+        Log.d("LatanimeProvider", "Elementos de episodios encontrados: ${episodeElements.size}")
 
-            val epNum = Regex("(?:episodio|capitulo)\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                .find(epUrl + epTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val episodes = episodeElements.mapIndexedNotNull { index, element ->
+            try {
+                val epUrl = element.attr("href")
+                val capLayout = element.selectFirst("div.cap-layout")
+                val epTitle = capLayout?.text()?.trim() ?: ""
 
-            val epPoster = element.selectFirst("img")?.let { img ->
-                img.attr("data-src").ifBlank { img.attr("src") }
-            }?.let { imgUrl ->
-                when {
-                    imgUrl.startsWith("http") -> imgUrl
-                    imgUrl.startsWith("//") -> "https:$imgUrl"
-                    imgUrl.startsWith("/") -> "https://latanime.org$imgUrl"
-                    else -> "https://latanime.org/$imgUrl"
+                val epNum = Regex("(?:episodio|capitulo)[\\s-]*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(epUrl + epTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+                val imgElement = element.selectFirst("img")
+                val epPosterRaw = imgElement?.attr("data-src")?.ifBlank {
+                    imgElement.attr("src")
                 }
-            }
 
-            if (epUrl.isNotBlank() && epNum != null) {
-                Episode(
-                    data = epUrl,
-                    name = epTitle.ifBlank { "Episodio $epNum" },
-                    episode = epNum,
-                    posterUrl = epPoster
-                )
-            } else null
+                if (index < 3) {
+                    Log.d("LatanimeProvider", "Episodio $epNum:")
+                    Log.d("LatanimeProvider", "  - URL: $epUrl")
+                    Log.d("LatanimeProvider", "  - Título: $epTitle")
+                    Log.d("LatanimeProvider", "  - Imagen raw: $epPosterRaw")
+                }
+
+                val epPoster = when {
+                    epPosterRaw.isNullOrBlank() -> null
+                    epPosterRaw.startsWith("http") -> epPosterRaw
+                    epPosterRaw.startsWith("//") -> "https:$epPosterRaw"
+                    epPosterRaw.startsWith("/") -> "https://latanime.org$epPosterRaw"
+                    else -> "https://latanime.org/$epPosterRaw"
+                }
+
+                if (index < 3) {
+                    Log.d("LatanimeProvider", "  - Imagen final: $epPoster")
+                }
+
+                if (epUrl.isNotBlank() && epNum != null) {
+                    val fullUrl = if (epUrl.startsWith("http")) epUrl else "https://latanime.org$epUrl"
+
+                    newEpisode(fullUrl) {
+                        this.name = epTitle.ifBlank { "Episodio $epNum" }
+                        this.episode = epNum
+                        this.posterUrl = epPoster
+                    }
+                } else {
+                    Log.w("LatanimeProvider", "Episodio inválido: URL=$epUrl, Num=$epNum")
+                    null
+                }
+            } catch (e: Exception) {
+                Log.e("LatanimeProvider", "Error procesando episodio $index: ${e.message}")
+                null
+            }
         }
+
+        Log.d("LatanimeProvider", "Total episodios procesados: ${episodes.size}")
 
         return newTvSeriesLoadResponse(
             name = title,
@@ -176,7 +205,6 @@ class LatanimeProvider : MainAPI() {
         ) {
             this.posterUrl = poster
             this.plot = description
-            this.tags = tags
             this.year = year
         }
     }
