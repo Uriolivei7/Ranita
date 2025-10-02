@@ -135,13 +135,43 @@ class LatanimeProvider : MainAPI() {
 
         val document = app.get(url).document
 
-        val title = document.selectFirst("h1.title")?.text()?.trim() ?: ""
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
-        val description = document.selectFirst("p.description")?.text()?.trim() ?: ""
+        val title = document.selectFirst("div.col-lg-9 h2")?.text()?.trim()
+            ?: document.selectFirst("h2")?.text()?.trim()
+            ?: ""
+
+        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("div.col-lg-3 img")?.attr("src")
+            ?: ""
+
+        val description = document.selectFirst("p.my-2.opacity-75")?.text()?.trim()
+            ?: document.selectFirst("div.col-lg-9 p:contains(Los cazadores)")?.text()?.trim()
+            ?: ""
+
+        val dateText = document.selectFirst("span.span-tiempo")?.text() ?: ""
+        val year = Regex("\\b(\\d{4})\\b").find(dateText)?.value?.toIntOrNull()
+
+        val totalEpisodesText = document.selectFirst("p:contains(Episodios:)")?.text() ?: ""
+        val totalEpisodes = Regex("\\d+").find(totalEpisodesText)?.value?.toIntOrNull()
+
+        val tags = document.select("a[href*=/genero/] div.btn").map {
+            it.text().trim()
+        }.filter { it.isNotBlank() }
+
+        val status = when {
+            document.html().contains("En emisión", ignoreCase = true) -> ShowStatus.Ongoing
+            document.html().contains("Finalizado", ignoreCase = true) -> ShowStatus.Completed
+            totalEpisodes != null && totalEpisodes > 0 -> ShowStatus.Completed
+            else -> ShowStatus.Ongoing
+        }
 
         Log.d("LatanimeProvider", "Título: $title")
+        Log.d("LatanimeProvider", "Descripción: ${description.take(100)}...")
+        Log.d("LatanimeProvider", "Año: $year")
+        Log.d("LatanimeProvider", "Tags: $tags")
+        Log.d("LatanimeProvider", "Total episodios: $totalEpisodes")
 
-        val episodeElements = document.select("div.row a[href*=episodio]")
+        // Extraer episodios
+        val episodeElements = document.select("div[style*='max-height: 400px'] a[href*=episodio]")
         Log.d("LatanimeProvider", "Elementos de episodios encontrados: ${episodeElements.size}")
 
         val episodes = episodeElements.mapIndexedNotNull { index, element ->
@@ -158,23 +188,12 @@ class LatanimeProvider : MainAPI() {
                     imgElement.attr("src")
                 }
 
-                if (index < 3) {
-                    Log.d("LatanimeProvider", "Episodio $epNum:")
-                    Log.d("LatanimeProvider", "  - URL: $epUrl")
-                    Log.d("LatanimeProvider", "  - Título: $epTitle")
-                    Log.d("LatanimeProvider", "  - Imagen raw: $epPosterRaw")
-                }
-
                 val epPoster = when {
                     epPosterRaw.isNullOrBlank() -> null
                     epPosterRaw.startsWith("http") -> epPosterRaw
                     epPosterRaw.startsWith("//") -> "https:$epPosterRaw"
                     epPosterRaw.startsWith("/") -> "https://latanime.org$epPosterRaw"
                     else -> "https://latanime.org/$epPosterRaw"
-                }
-
-                if (index < 3) {
-                    Log.d("LatanimeProvider", "  - Imagen final: $epPoster")
                 }
 
                 if (epUrl.isNotBlank() && epNum != null) {
@@ -185,10 +204,7 @@ class LatanimeProvider : MainAPI() {
                         this.episode = epNum
                         this.posterUrl = epPoster
                     }
-                } else {
-                    Log.w("LatanimeProvider", "Episodio inválido: URL=$epUrl, Num=$epNum")
-                    null
-                }
+                } else null
             } catch (e: Exception) {
                 Log.e("LatanimeProvider", "Error procesando episodio $index: ${e.message}")
                 null
@@ -197,15 +213,37 @@ class LatanimeProvider : MainAPI() {
 
         Log.d("LatanimeProvider", "Total episodios procesados: ${episodes.size}")
 
-        return newTvSeriesLoadResponse(
-            name = title,
-            url = url,
-            type = TvType.Anime,
-            episodes = episodes
-        ) {
-            this.posterUrl = poster
-            this.plot = description
-            this.year = year
+        val tvType = when {
+            url.contains("/pelicula/") -> TvType.Movie
+            tags.contains("OVA") -> TvType.OVA
+            else -> TvType.Anime
+        }
+
+        return if (tvType == TvType.Movie) {
+            newMovieLoadResponse(
+                name = title,
+                url = url,
+                type = tvType,
+                dataUrl = url
+            ) {
+                this.posterUrl = poster
+                this.plot = description
+                this.tags = tags
+                this.year = year
+            }
+        } else {
+            newTvSeriesLoadResponse(
+                name = title,
+                url = url,
+                type = tvType,
+                episodes = episodes
+            ) {
+                this.posterUrl = poster
+                this.plot = description
+                this.tags = tags
+                this.year = year
+                this.showStatus = status
+            }
         }
     }
 
