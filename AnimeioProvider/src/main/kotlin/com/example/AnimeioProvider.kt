@@ -297,24 +297,56 @@ class AnimeioProvider : MainAPI() {
             val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
 
             if (scriptContent != null) {
+                Log.d("AnimeioProvider", "Script de episodios encontrado")
+
                 val episodesJsonString = scriptContent
                     .substringAfter("const allEpisodes = ")
                     .substringBefore("];")
                     .plus("]")
                     .trim()
 
+                Log.d("AnimeioProvider", "JSON String (primeros 500 chars): ${episodesJsonString.take(500)}")
+
                 try {
                     val episodesData = tryParseJson<List<EpisodeData>>(episodesJsonString)
                     if (episodesData != null) {
+                        Log.d("AnimeioProvider", "Episodios parseados: ${episodesData.size}")
+
+                        var episodiosConImagen = 0
+                        var episodiosSinImagen = 0
+
                         allEpisodes.addAll(episodesData.mapNotNull { episode ->
                             val epUrl = "$url/episodio-${episode.episode}"
                             val epNum = episode.episode?.toIntOrNull()
 
+                            Log.d("AnimeioProvider", "Procesando episodio ${episode.episode}")
+                            Log.d("AnimeioProvider", "  - Título: ${episode.title}")
+                            Log.d("AnimeioProvider", "  - Imagen RAW: ${episode.image}")
+                            Log.d("AnimeioProvider", "  - Imagen2 RAW: ${episode.image2}")
+
                             val posterUrl = when {
-                                episode.image.isNullOrBlank() -> null
-                                episode.image.startsWith("http") -> episode.image
-                                episode.image.startsWith("/") -> "$baseUrl${episode.image}"
-                                else -> "$baseUrl/${episode.image}"
+                                episode.image.isNullOrBlank() -> {
+                                    Log.d("AnimeioProvider", "  - Imagen vacía o nula")
+                                    episodiosSinImagen++
+                                    null
+                                }
+                                episode.image.startsWith("http") -> {
+                                    Log.d("AnimeioProvider", "  - Imagen con URL completa: ${episode.image}")
+                                    episodiosConImagen++
+                                    episode.image
+                                }
+                                episode.image.startsWith("/") -> {
+                                    val fullUrl = "$baseUrl${episode.image}"
+                                    Log.d("AnimeioProvider", "  - Imagen con ruta absoluta, URL final: $fullUrl")
+                                    episodiosConImagen++
+                                    fullUrl
+                                }
+                                else -> {
+                                    val fullUrl = "$baseUrl/${episode.image}"
+                                    Log.d("AnimeioProvider", "  - Imagen con ruta relativa, URL final: $fullUrl")
+                                    episodiosConImagen++
+                                    fullUrl
+                                }
                             }
 
                             if (epUrl.isNotBlank() && epNum != null) {
@@ -322,15 +354,31 @@ class AnimeioProvider : MainAPI() {
                                     this.name = episode.title ?: "Episodio $epNum"
                                     this.episode = epNum
                                     this.posterUrl = posterUrl
+                                    Log.d("AnimeioProvider", "Episodio $epNum creado con posterUrl: $posterUrl")
                                 }
-                            } else null
+                            } else {
+                                Log.w("AnimeioProvider", "Episodio inválido: epUrl=$epUrl, epNum=$epNum")
+                                null
+                            }
                         })
 
-                        Log.d("AnimeioProvider", "Total episodios procesados: ${allEpisodes.size}")
+                        Log.i("AnimeioProvider", "==== RESUMEN DE EPISODIOS ====")
+                        Log.i("AnimeioProvider", "Total episodios procesados: ${allEpisodes.size}")
+                        Log.i("AnimeioProvider", "Episodios CON imagen: $episodiosConImagen")
+                        Log.i("AnimeioProvider", "Episodios SIN imagen: $episodiosSinImagen")
+
+                        allEpisodes.take(3).forEachIndexed { index, episode ->
+                            Log.d("AnimeioProvider", "Episodio muestra $index: ${episode.name} - posterUrl: ${episode.posterUrl}")
+                        }
+                    } else {
+                        Log.e("AnimeioProvider", "episodesData es null después del parseo")
                     }
                 } catch (e: Exception) {
                     Log.e("AnimeioProvider", "Error al parsear episodios: ${e.message}", e)
+                    e.printStackTrace()
                 }
+            } else {
+                Log.e("AnimeioProvider", "No se encontró script con 'const allEpisodes ='")
             }
 
             return newTvSeriesLoadResponse(
@@ -352,12 +400,14 @@ class AnimeioProvider : MainAPI() {
 
     private fun fixPosterUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        return when {
+        val fixed = when {
             url.startsWith("http") -> url
             url.startsWith("//") -> "https:$url"
             url.startsWith("/") -> "https://animeio.com$url"
             else -> "https://animeio.com/$url"
         }
+        Log.d("AnimeioProvider", "fixPosterUrl: '$url' -> '$fixed'")
+        return fixed
     }
 
     private fun parseStatus(status: String): ShowStatus {
