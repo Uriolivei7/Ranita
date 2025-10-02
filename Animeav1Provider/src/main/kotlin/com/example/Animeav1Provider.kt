@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.jsoup.nodes.Element
+import android.util.Log
 
 class Animeav1 : MainAPI() {
     override var mainUrl              = "https://animeav1.com"
@@ -35,7 +36,7 @@ class Animeav1 : MainAPI() {
     override val hasDownloadSupport   = true
     override val hasQuickSearch       = true
     override val supportedTypes       = setOf(
-        TvType.Movie,TvType.Anime,TvType.TvSeries
+        TvType.Anime
     )
 
     override val mainPage = mainPageOf(
@@ -132,91 +133,156 @@ class Animeav1 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        Log.d("Animeav1", "loadLinks iniciado con URL: $data")
+
+        val document = try {
+            app.get(data).document
+        } catch (e: Exception) {
+            Log.e("Animeav1", "Error al cargar documento: ${e.message}")
+            return false
+        }
 
         val scriptHtml = document.select("script")
             .firstOrNull { it.html().contains("__sveltekit_") }
             ?.html()
             .orEmpty()
 
+        if (scriptHtml.isEmpty()) {
+            Log.e("Animeav1", "No se encontró script con __sveltekit_")
+            return false
+        }
+
+        Log.d("Animeav1", "Script encontrado, longitud: ${scriptHtml.length}")
+
         fun cleanJsToJson(js: String): String {
             var cleaned = js.replaceFirst("""^\s*\w+\s*:\s*""".toRegex(), "")
             cleaned = cleaned.replace("void 0", "null")
             cleaned = Regex("""(?<=[{,])\s*(\w+)\s*:""").replace(cleaned) { "\"${it.groupValues[1]}\":" }
-
             return cleaned.trim()
         }
 
         val embedsPattern = "embeds:\\s*\\{([^}]*\\{[^}]*\\})*[^}]*\\}".toRegex(RegexOption.DOT_MATCHES_ALL)
         val embedsMatch = embedsPattern.find(scriptHtml)?.value
-        val embedsJson = embedsMatch?.let { cleanJsToJson(it) }
+
+        if (embedsMatch == null) {
+            Log.e("Animeav1", "No se encontró patrón 'embeds' en el script")
+            return false
+        }
+
+        val embedsJson = embedsMatch.let { cleanJsToJson(it) }
+        Log.d("Animeav1", "JSON parseado: $embedsJson")
 
         if (!embedsJson.isNullOrEmpty()) {
-            val embedsObject = JSONObject(embedsJson)
-            fun extractLinks(arrayName: String): List<Pair<String, String>> {
-                val list = mutableListOf<Pair<String, String>>()
-                if (embedsObject.has(arrayName)) {
-                    val jsonArray = embedsObject.getJSONArray(arrayName)
-                    for (i in 0 until jsonArray.length()) {
-                        val obj = jsonArray.getJSONObject(i)
-                        list.add(obj.getString("server") to obj.getString("url"))
+            try {
+                val embedsObject = JSONObject(embedsJson)
+
+                fun extractLinks(arrayName: String): List<Pair<String, String>> {
+                    val list = mutableListOf<Pair<String, String>>()
+                    if (embedsObject.has(arrayName)) {
+                        val jsonArray = embedsObject.getJSONArray(arrayName)
+                        Log.d("Animeav1", "Encontrados ${jsonArray.length()} enlaces en $arrayName")
+
+                        for (i in 0 until jsonArray.length()) {
+                            try {
+                                val obj = jsonArray.getJSONObject(i)
+                                val server = obj.getString("server")
+                                val url = obj.getString("url")
+                                list.add(server to url)
+                                Log.d("Animeav1", "$arrayName - Servidor: $server, URL: $url")
+                            } catch (e: Exception) {
+                                Log.e("Animeav1", "Error parseando objeto en posición $i de $arrayName: ${e.message}")
+                            }
+                        }
+                    } else {
+                        Log.w("Animeav1", "No se encontró array '$arrayName' en el JSON")
+                    }
+                    return list
+                }
+
+                val subEmbeds = extractLinks("SUB")
+                val dubEmbeds = extractLinks("DUB")
+
+                Log.i("Animeav1", "Total enlaces SUB: ${subEmbeds.size}")
+                Log.i("Animeav1", "Total enlaces DUB: ${dubEmbeds.size}")
+
+                var subProcessed = 0
+                var dubProcessed = 0
+
+                subEmbeds.forEach { (server, url) ->
+                    Log.d("Animeav1", "Procesando SUB enlace #${++subProcessed}: $server")
+                    try {
+                        loadCustomExtractor(
+                            "Animeav1 [SUB:$server]",
+                            url,
+                            "",
+                            subtitleCallback,
+                            callback
+                        )
+                        Log.d("Animeav1", "SUB enlace procesado exitosamente: $server")
+                    } catch (e: Exception) {
+                        Log.e("Animeav1", "Error al procesar SUB enlace $server: ${e.message}")
+                        Log.e("Animeav1", "URL problemática: $url")
                     }
                 }
-                return list
-            }
 
-            val subEmbeds = extractLinks("SUB")
-            val dubEmbeds = extractLinks("DUB")
+                dubEmbeds.forEach { (server, url) ->
+                    Log.d("Animeav1", "Procesando DUB enlace #${++dubProcessed}: $server")
+                    try {
+                        loadCustomExtractor(
+                            "Animeav1 [DUB:$server]",
+                            url,
+                            "",
+                            subtitleCallback,
+                            callback
+                        )
+                        Log.d("Animeav1", "DUB enlace procesado exitosamente: $server")
+                    } catch (e: Exception) {
+                        Log.e("Animeav1", "Error al procesar DUB enlace $server: ${e.message}")
+                        Log.e("Animeav1", "URL problemática: $url")
+                    }
+                }
 
-            subEmbeds.forEach { (server, url) ->
-                loadCustomExtractor(
-                    "Animeav1 [SUB:$server]",
-                    url,
-                    "",
-                    subtitleCallback,
-                    callback
-                )
-            }
+                Log.i("Animeav1", "Procesamiento completado - SUB: $subProcessed, DUB: $dubProcessed")
 
-            dubEmbeds.forEach { (server, url) ->
-                loadCustomExtractor(
-                    "Animeav1 [DUB:$server]",
-                    url,
-                    "",
-                    subtitleCallback,
-                    callback
-                )
+            } catch (e: Exception) {
+                Log.e("Animeav1", "Error al parsear JSON: ${e.message}")
+                Log.e("Animeav1", "JSON problemático: $embedsJson")
+                return false
             }
+        } else {
+            Log.e("Animeav1", "embedsJson está vacío o nulo")
+            return false
         }
+
         return true
     }
-}
 
-suspend fun loadCustomExtractor(
-    name: String? = null,
-    url: String,
-    referer: String? = null,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit,
-    quality: Int? = null,
-) {
-    loadExtractor(url, referer, subtitleCallback) { link ->
-        CoroutineScope(Dispatchers.IO).launch {
-            callback.invoke(
-                newExtractorLink(
-                    name ?: link.source,
-                    name ?: link.name,
-                    link.url,
-                ) {
-                    this.quality = when {
-                        else -> quality ?: link.quality
+    suspend fun loadCustomExtractor(
+        name: String? = null,
+        url: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+        quality: Int? = null,
+    ) {
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            CoroutineScope(Dispatchers.IO).launch {
+                callback.invoke(
+                    newExtractorLink(
+                        name ?: link.source,
+                        name ?: link.name,
+                        link.url,
+                    ) {
+                        this.quality = when {
+                            else -> quality ?: link.quality
+                        }
+                        this.type = link.type
+                        this.referer = link.referer
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
                     }
-                    this.type = link.type
-                    this.referer = link.referer
-                    this.headers = link.headers
-                    this.extractorData = link.extractorData
-                }
-            )
+                )
+            }
         }
     }
 }
