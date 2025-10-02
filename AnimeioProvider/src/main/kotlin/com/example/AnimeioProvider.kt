@@ -222,179 +222,209 @@ class AnimeioProvider : MainAPI() {
     )
 
     override suspend fun load(url: String): LoadResponse? {
-        Log.d("AnimeioProvider", "Iniciando load para URL: $url")
+        Log.d("AnimeioProvider", "========== INICIANDO LOAD ==========")
+        Log.d("AnimeioProvider", "URL: $url")
 
-        val response = app.get(url)
-        val html = response.text
-        val doc = Jsoup.parse(html)
+        try {
+            val response = app.get(url)
+            Log.d("AnimeioProvider", "Respuesta obtenida, código: ${response.code}")
 
-        val baseUrl = "https://animeio.com"
+            val html = response.text
+            val doc = Jsoup.parse(html)
+            Log.d("AnimeioProvider", "HTML parseado correctamente")
 
-        val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim() ?: doc.selectFirst("h3.comics-alt")?.text()?.trim() ?: ""
-        val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src").let {
-            if (it.isNullOrBlank()) {
-                doc.selectFirst("div#animeinfo img")?.attr("src")
-            } else {
-                it
-            }
-        } ?: ""
-        val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
-        val tags = doc.select("div.anime-genres a").map { it.text() }
-        val yearText = doc.selectFirst("div.details-by")?.text()?.substringAfter("•")?.trim()
-        val year = yearText?.take(4)?.toIntOrNull()
-        val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
+            val baseUrl = "https://animeio.com"
 
-        val isMovie = doc.selectFirst("span#ranking.estado")?.text()?.lowercase() == "película"
+            val title = doc.selectFirst("h1.comics-title.ajp")?.text()?.trim()
+                ?: doc.selectFirst("h3.comics-alt")?.text()?.trim()
+                ?: "Sin título"
+            Log.d("AnimeioProvider", "Título: $title")
 
-        val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
-            val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
-            val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
-            val recPoster = element.selectFirst("img")?.attr("data-src").let {
+            val poster = doc.selectFirst("div#animeinfo img")?.attr("data-src").let {
                 if (it.isNullOrBlank()) {
-                    element.selectFirst("img")?.attr("src")
+                    doc.selectFirst("div#animeinfo img")?.attr("src")
                 } else {
                     it
                 }
-            }
-            val recYearText = element.selectFirst("div._2y8kd")?.text()?.trim()
-            val recYear = recYearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
+            } ?: ""
+            Log.d("AnimeioProvider", "Poster principal: $poster")
 
-            if (recLink != null && recTitle != null) {
-                newAnimeSearchResponse(
-                    recTitle,
-                    fixUrl(recLink)
-                ) {
-                    this.posterUrl = fixPosterUrl(recPoster)
-                    this.year = recYear
-                }
-            } else null
-        }
+            val description = doc.selectFirst("div#sinopsis p")?.text()?.trim() ?: ""
+            val tags = doc.select("div.anime-genres a").map { it.text() }
+            val yearText = doc.selectFirst("div.details-by")?.text()?.substringAfter("•")?.trim()
+            val year = yearText?.take(4)?.toIntOrNull()
+            val status = parseStatus(doc.selectFirst("span#estado")?.text()?.trim() ?: "")
 
-        if (isMovie) {
-            return newMovieLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.Movie,
-                dataUrl = url
-            ) {
-                this.posterUrl = fixPosterUrl(poster)
-                this.backgroundPosterUrl = fixPosterUrl(poster)
-                this.plot = description
-                this.tags = tags
-                this.year = year
-                this.recommendations = recommendations
-            }
-        } else {
-            data class EpisodeData(
-                val title: String?,
-                val season: String?,
-                val episode: String?,
-                val image: String?,
-                val image2: String?
-            )
+            val rankingElement = doc.selectFirst("span#ranking.estado")
+            val rankingText = rankingElement?.text()?.lowercase() ?: ""
+            Log.d("AnimeioProvider", "Ranking text: '$rankingText'")
 
-            val allEpisodes = ArrayList<Episode>()
-            val scriptContent = doc.select("script").find { it.html().contains("const allEpisodes =") }?.html()
+            val isMovie = rankingText == "película"
+            Log.d("AnimeioProvider", "Es película: $isMovie")
 
-            if (scriptContent != null) {
-                Log.d("AnimeioProvider", "Script de episodios encontrado")
-
-                val episodesJsonString = scriptContent
-                    .substringAfter("const allEpisodes = ")
-                    .substringBefore("];")
-                    .plus("]")
-                    .trim()
-
-                Log.d("AnimeioProvider", "JSON String (primeros 500 chars): ${episodesJsonString.take(500)}")
-
-                try {
-                    val episodesData = tryParseJson<List<EpisodeData>>(episodesJsonString)
-                    if (episodesData != null) {
-                        Log.d("AnimeioProvider", "Episodios parseados: ${episodesData.size}")
-
-                        var episodiosConImagen = 0
-                        var episodiosSinImagen = 0
-
-                        allEpisodes.addAll(episodesData.mapNotNull { episode ->
-                            val epUrl = "$url/episodio-${episode.episode}"
-                            val epNum = episode.episode?.toIntOrNull()
-
-                            Log.d("AnimeioProvider", "Procesando episodio ${episode.episode}")
-                            Log.d("AnimeioProvider", "  - Título: ${episode.title}")
-                            Log.d("AnimeioProvider", "  - Imagen RAW: ${episode.image}")
-                            Log.d("AnimeioProvider", "  - Imagen2 RAW: ${episode.image2}")
-
-                            val posterUrl = when {
-                                episode.image.isNullOrBlank() -> {
-                                    Log.d("AnimeioProvider", "  - Imagen vacía o nula")
-                                    episodiosSinImagen++
-                                    null
-                                }
-                                episode.image.startsWith("http") -> {
-                                    Log.d("AnimeioProvider", "  - Imagen con URL completa: ${episode.image}")
-                                    episodiosConImagen++
-                                    episode.image
-                                }
-                                episode.image.startsWith("/") -> {
-                                    val fullUrl = "$baseUrl${episode.image}"
-                                    Log.d("AnimeioProvider", "  - Imagen con ruta absoluta, URL final: $fullUrl")
-                                    episodiosConImagen++
-                                    fullUrl
-                                }
-                                else -> {
-                                    val fullUrl = "$baseUrl/${episode.image}"
-                                    Log.d("AnimeioProvider", "  - Imagen con ruta relativa, URL final: $fullUrl")
-                                    episodiosConImagen++
-                                    fullUrl
-                                }
-                            }
-
-                            if (epUrl.isNotBlank() && epNum != null) {
-                                newEpisode(epUrl) {
-                                    this.name = episode.title ?: "Episodio $epNum"
-                                    this.episode = epNum
-                                    this.posterUrl = posterUrl
-                                    Log.d("AnimeioProvider", "Episodio $epNum creado con posterUrl: $posterUrl")
-                                }
-                            } else {
-                                Log.w("AnimeioProvider", "Episodio inválido: epUrl=$epUrl, epNum=$epNum")
-                                null
-                            }
-                        })
-
-                        Log.i("AnimeioProvider", "==== RESUMEN DE EPISODIOS ====")
-                        Log.i("AnimeioProvider", "Total episodios procesados: ${allEpisodes.size}")
-                        Log.i("AnimeioProvider", "Episodios CON imagen: $episodiosConImagen")
-                        Log.i("AnimeioProvider", "Episodios SIN imagen: $episodiosSinImagen")
-
-                        allEpisodes.take(3).forEachIndexed { index, episode ->
-                            Log.d("AnimeioProvider", "Episodio muestra $index: ${episode.name} - posterUrl: ${episode.posterUrl}")
-                        }
+            val recommendations = doc.select("div#slidebar-anime div._type3.np").mapNotNull { element ->
+                val recLink = element.selectFirst("a._1A2Dc._38LRT")?.attr("href")
+                val recTitle = element.selectFirst("div._2NNxg a._2uHIS")?.text()?.trim()
+                val recPoster = element.selectFirst("img")?.attr("data-src").let {
+                    if (it.isNullOrBlank()) {
+                        element.selectFirst("img")?.attr("src")
                     } else {
-                        Log.e("AnimeioProvider", "episodesData es null después del parseo")
+                        it
                     }
-                } catch (e: Exception) {
-                    Log.e("AnimeioProvider", "Error al parsear episodios: ${e.message}", e)
-                    e.printStackTrace()
+                }
+                val recYearText = element.selectFirst("div._2y8kd")?.text()?.trim()
+                val recYear = recYearText?.split(" - ")?.firstOrNull()?.toIntOrNull()
+
+                if (recLink != null && recTitle != null) {
+                    newAnimeSearchResponse(
+                        recTitle,
+                        fixUrl(recLink)
+                    ) {
+                        this.posterUrl = fixPosterUrl(recPoster)
+                        this.year = recYear
+                    }
+                } else null
+            }
+            Log.d("AnimeioProvider", "Recomendaciones encontradas: ${recommendations.size}")
+
+            if (isMovie) {
+                Log.d("AnimeioProvider", "Procesando como película")
+                return newMovieLoadResponse(
+                    name = title,
+                    url = url,
+                    type = TvType.Movie,
+                    dataUrl = url
+                ) {
+                    this.posterUrl = fixPosterUrl(poster)
+                    this.backgroundPosterUrl = fixPosterUrl(poster)
+                    this.plot = description
+                    this.tags = tags
+                    this.year = year
+                    this.recommendations = recommendations
                 }
             } else {
-                Log.e("AnimeioProvider", "No se encontró script con 'const allEpisodes ='")
-            }
+                Log.d("AnimeioProvider", "Procesando como serie")
 
-            return newTvSeriesLoadResponse(
-                name = title,
-                url = url,
-                type = TvType.Anime,
-                episodes = allEpisodes.reversed()
-            ) {
-                this.posterUrl = fixPosterUrl(poster)
-                this.backgroundPosterUrl = fixPosterUrl(poster)
-                this.plot = description
-                this.tags = tags
-                this.year = year
-                this.recommendations = recommendations
-                this.showStatus = status
+                data class EpisodeData(
+                    val title: String?,
+                    val season: String?,
+                    val episode: String?,
+                    val image: String?,
+                    val image2: String?
+                )
+
+                val allEpisodes = ArrayList<Episode>()
+
+                Log.d("AnimeioProvider", "Buscando scripts con 'const allEpisodes'")
+                val scripts = doc.select("script")
+                Log.d("AnimeioProvider", "Total de scripts encontrados: ${scripts.size}")
+
+                val scriptContent = scripts.find { it.html().contains("const allEpisodes =") }?.html()
+
+                if (scriptContent != null) {
+                    Log.d("AnimeioProvider", "Script de episodios encontrado, longitud: ${scriptContent.length}")
+
+                    val startIndex = scriptContent.indexOf("const allEpisodes = ")
+                    val endIndex = scriptContent.indexOf("];", startIndex)
+
+                    if (startIndex != -1 && endIndex != -1) {
+                        val episodesJsonString = scriptContent
+                            .substring(startIndex + "const allEpisodes = ".length, endIndex + 1)
+                            .trim()
+
+                        Log.d("AnimeioProvider", "JSON extraído, longitud: ${episodesJsonString.length}")
+                        Log.d("AnimeioProvider", "JSON (primeros 300 chars): ${episodesJsonString.take(300)}")
+
+                        try {
+                            val episodesData = tryParseJson<List<EpisodeData>>(episodesJsonString)
+                            if (episodesData != null) {
+                                Log.d("AnimeioProvider", "✓ Episodios parseados correctamente: ${episodesData.size}")
+
+                                var episodiosConImagen = 0
+                                var episodiosSinImagen = 0
+
+                                episodesData.forEachIndexed { index, episode ->
+                                    val epNum = episode.episode?.toIntOrNull()
+
+                                    if (index < 5) {
+                                        Log.d("AnimeioProvider", "━━━ Episodio ${episode.episode} ━━━")
+                                        Log.d("AnimeioProvider", "  Título: ${episode.title}")
+                                        Log.d("AnimeioProvider", "  Imagen: ${episode.image}")
+                                    }
+
+                                    val posterUrl = when {
+                                        episode.image.isNullOrBlank() -> {
+                                            episodiosSinImagen++
+                                            null
+                                        }
+                                        episode.image.startsWith("http") -> {
+                                            episodiosConImagen++
+                                            episode.image
+                                        }
+                                        episode.image.startsWith("/") -> {
+                                            episodiosConImagen++
+                                            "$baseUrl${episode.image}"
+                                        }
+                                        else -> {
+                                            episodiosConImagen++
+                                            "$baseUrl/${episode.image}"
+                                        }
+                                    }
+
+                                    if (epNum != null) {
+                                        val epUrl = "$url/episodio-${episode.episode}"
+                                        val newEp = newEpisode(epUrl) {
+                                            this.name = episode.title ?: "Episodio $epNum"
+                                            this.episode = epNum
+                                            this.posterUrl = posterUrl
+                                        }
+                                        allEpisodes.add(newEp)
+
+                                        if (index < 5) {
+                                            Log.d("AnimeioProvider", "  PosterURL final: $posterUrl")
+                                        }
+                                    }
+                                }
+
+                                Log.i("AnimeioProvider", "Total episodios: ${allEpisodes.size}")
+                                Log.i("AnimeioProvider", "CON imagen: $episodiosConImagen")
+                                Log.i("AnimeioProvider", "SIN imagen: $episodiosSinImagen")
+
+                            } else {
+                                Log.e("AnimeioProvider", "✗ episodesData es null después del parseo")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("AnimeioProvider", "✗ Error al parsear JSON: ${e.message}")
+                            Log.e("AnimeioProvider", "Stack trace:", e)
+                        }
+                    } else {
+                        Log.e("AnimeioProvider", "No se pudo extraer el JSON correctamente")
+                    }
+                } else {
+                    Log.e("AnimeioProvider", "✗ No se encontró script con 'const allEpisodes ='")
+                }
+
+                Log.d("AnimeioProvider", "Creando TvSeriesLoadResponse con ${allEpisodes.size} episodios")
+
+                return newTvSeriesLoadResponse(
+                    name = title,
+                    url = url,
+                    type = TvType.Anime,
+                    episodes = allEpisodes.reversed()
+                ) {
+                    this.posterUrl = fixPosterUrl(poster)
+                    this.backgroundPosterUrl = fixPosterUrl(poster)
+                    this.plot = description
+                    this.tags = tags
+                    this.year = year
+                    this.recommendations = recommendations
+                    this.showStatus = status
+                }
             }
+        } catch (e: Exception) {
+            Log.e("AnimeioProvider", "✗✗✗ ERROR GENERAL EN LOAD: ${e.message}")
+            Log.e("AnimeioProvider", "Stack trace completo:", e)
+            return null
         }
     }
 
@@ -406,7 +436,6 @@ class AnimeioProvider : MainAPI() {
             url.startsWith("/") -> "https://animeio.com$url"
             else -> "https://animeio.com/$url"
         }
-        Log.d("AnimeioProvider", "fixPosterUrl: '$url' -> '$fixed'")
         return fixed
     }
 
