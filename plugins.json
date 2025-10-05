@@ -134,7 +134,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelispediaProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 8,
     "name": "Pelispedia",
     "internalName": "PelispediaProvider",
@@ -148,7 +148,7 @@
     ],
     "iconUrl": "https://pelispedia.is/wp-content/uploads/2022/01/cropped-pelispediafavicon-e1642201982676-32x32.png",
     "language": "mx",
-    "fileSize": 21000
+    "fileSize": 20000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
