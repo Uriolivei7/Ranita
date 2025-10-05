@@ -366,7 +366,6 @@ class AnimeioProvider : MainAPI() {
                                                     fullUrl
                                                 }
                                                 else -> {
-                                                    // Para rutas relativas como "storage/episodes/..."
                                                     val fullUrl = "$baseUrl/${episode.image}"
                                                     if (index < 5) Log.d("AnimeioProvider", "URL relativa: $fullUrl")
                                                     fullUrl
@@ -452,7 +451,7 @@ class AnimeioProvider : MainAPI() {
                         Log.d("AnimeioProvider", "startIndex: $startIndex, endIndex: $endIndex")
                     }
                 } else {
-                    Log.e("AnimeioProvider", "✗ No se encontró script con 'const allEpisodes ='")
+                    Log.e("AnimeioProvider", "No se encontró script con 'const allEpisodes ='")
                     scripts.forEach { script ->
                         if (script.html().contains("allEpisodes")) {
                             Log.d("AnimeioProvider", "Script que contiene 'allEpisodes' (primeros 200 chars): ${script.html().take(200)}")

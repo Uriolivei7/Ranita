@@ -216,29 +216,56 @@ class TioanimeProvider:MainAPI() {
             .map { it?.text()?.trim().toString() }
         val year = doc.selectFirst("span.year")?.text()?.toIntOrNull()
 
-        doc.select("script").forEach { script ->
-            if (script.data().contains("var episodes = [")) {
-                val data = script.data().substringAfter("var episodes = [").substringBefore("];")
-                data.split("],").forEach { chunk ->
-                    chunk.split(",").mapNotNull { epNumStr ->
-                        val epNum = epNumStr.toIntOrNull()
-                        if (epNum == null) {
-                            Log.w("TioanimeProvider", "WARN: Número de episodio inválido: '$epNumStr' en URL: $url")
-                            return@mapNotNull null
-                        }
+        val episodesList = doc.select("ul.episodes-list")
+        Log.d("TioanimeProvider", "DEBUG: Encontradas ${episodesList.size} listas de episodios")
 
-                        val link = url.replace("/anime/","/ver/")+"-$epNum"
-                        newEpisode(link) {
-                            this.name = "Capítulo $epNum"
-                            this.posterUrl = null
-                            this.episode = epNum
-                            this.runTime = null
-                        }
-                    }
-                        .let { episodes.addAll(it) }
+        val episodeLinks = doc.select("ul.episodes-list li a")
+        Log.d("TioanimeProvider", "DEBUG: Encontrados ${episodeLinks.size} enlaces de episodios")
+
+        episodeLinks.forEachIndexed { index, episodeLink ->
+            Log.d("TioanimeProvider", "DEBUG: Procesando episodio ${index + 1}/${episodeLinks.size}")
+
+            val episodeUrl = episodeLink.attr("href")
+            Log.d("TioanimeProvider", "DEBUG: URL del episodio: '$episodeUrl'")
+
+            val episodePosterElement = episodeLink.selectFirst("figure img")
+            val episodePoster = episodePosterElement?.attr("src")
+
+            Log.d("TioanimeProvider", "DEBUG: Elemento poster encontrado: ${episodePosterElement != null}")
+            Log.d("TioanimeProvider", "DEBUG: URL del poster: '$episodePoster'")
+
+            val epNum = episodeUrl.substringAfterLast("-").toIntOrNull()
+            Log.d("TioanimeProvider", "DEBUG: Número de episodio extraído: $epNum")
+
+            if (epNum != null) {
+                val fullEpisodeUrl = if (episodeUrl.startsWith("http")) {
+                    episodeUrl
+                } else {
+                    "https://tioanime.com$episodeUrl"
                 }
+                Log.d("TioanimeProvider", "DEBUG: URL completa del episodio: '$fullEpisodeUrl'")
+
+                val finalPosterUrl = if (!episodePoster.isNullOrEmpty()) {
+                    fixUrl(episodePoster)
+                } else {
+                    ""
+                }
+                Log.d("TioanimeProvider", "DEBUG: URL final del poster: '$finalPosterUrl'")
+
+                episodes.add(newEpisode(fullEpisodeUrl) {
+                    this.name = "Capítulo $epNum"
+                    this.posterUrl = finalPosterUrl
+                    this.episode = epNum
+                    this.runTime = null
+                })
+                Log.d("TioanimeProvider", "DEBUG: Episodio $epNum agregado exitosamente")
+            } else {
+                Log.w("TioanimeProvider", "WARN: No se pudo extraer número de episodio de URL: '$episodeUrl'")
             }
         }
+
+        Log.d("TioanimeProvider", "DEBUG: Total de episodios procesados: ${episodes.size}")
+
         return newAnimeLoadResponse(title, url, type) {
             posterUrl = fixUrl(poster ?: "")
             addEpisodes(DubStatus.Subbed, episodes.reversed())
