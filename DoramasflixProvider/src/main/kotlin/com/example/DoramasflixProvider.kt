@@ -214,10 +214,10 @@ class DoramasflixProvider:MainAPI() {
         val id = parse.id
         val detailMovieBody = "{\"operationName\":\"detailMovieExtra\",\"variables\":{\"slug\":\"$sluginfo\"},\"query\":\"query detailMovieExtra(\$slug: String!) {\\n  detailMovie(filter: {slug: \$slug}) {\\n    name\\n    name_es\\n    overview\\n    languages\\n    popularity\\n  poster_path\\n poster\\n  backdrop_path\\n    backdrop\\n    links_online\\n    __typename\\n genres {\\n      name\\n      slug\\n      __typename\\n    }\\n labels {\\n      name\\n      slug\\n      __typename\\n    }\\n  }\\n}\\n\"}"
         val detailDoramaRequestbody = "{\"operationName\":\"detailDorama\",\"variables\":{\"slug\":\"$sluginfo\"},\"query\":\"query detailDorama(\$slug: String!) {\\n  detailDorama(filter: {slug: \$slug}) {\\n    _id\\n    name\\n    slug\\n    cast\\n    names\\n    name_es\\n    overview\\n    languages\\n    poster_path\\n    backdrop_path\\n    first_air_date\\n    episode_run_time\\n    isTVShow\\n    premiere\\n    poster\\n    trailer\\n    videos\\n    backdrop\\n    genres {\\n      name\\n      slug\\n      __typename\\n    }\\n    labels {\\n      name\\n      slug\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}"
+
         val metadataRequestBody = if (!isMovie) detailDoramaRequestbody.toRequestBody(mediaType) else detailMovieBody.toRequestBody(mediaType)
         val metadatarequest = app.post(doraflixapi, requestBody = metadataRequestBody).parsed<MainDoramas>()
         val metaInfo = if (isMovie) metadatarequest.data?.detailMovie else metadatarequest.data?.detailDorama
-        Log.d("DoramasflixProvider", "MetaInfo completo: $metaInfo")
 
         val title = metaInfo?.name
         val plot = metaInfo?.overview
@@ -225,12 +225,15 @@ class DoramasflixProvider:MainAPI() {
         val posterinfo = metaInfo?.poster?.takeIf { it.isNotEmpty() }
             ?: metaInfo?.posterPath?.takeIf { it.isNotEmpty() }
             ?: ""
+
         Log.d("DoramasflixProvider", "Poster info final corregido: $posterinfo")
 
         val poster = getImageUrl(posterinfo)
+
         val backgroundPosterinfo = metaInfo?.backdrop?.takeIf { it.isNotEmpty() }
             ?: metaInfo?.backdropPath?.takeIf { it.isNotEmpty() }
             ?: ""
+
         val bgposter = getImageUrl(backgroundPosterinfo)
         val tags = ArrayList<String>()
         val tags1 = metaInfo?.genres?.map { tags.add(it.name!!) }
