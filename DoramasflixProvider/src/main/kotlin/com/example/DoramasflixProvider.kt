@@ -1,4 +1,4 @@
-package com.stormunblessed
+package com.example
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -222,16 +222,15 @@ class DoramasflixProvider:MainAPI() {
         val title = metaInfo?.name
         val plot = metaInfo?.overview
 
-        val posterinfo = metaInfo?.poster ?: metaInfo?.posterPath ?: ""
-        Log.d("DoramasflixProvider", "Title: ${metaInfo?.name}")
-        Log.d("DoramasflixProvider", "poster field: ${metaInfo?.poster}")
-        Log.d("DoramasflixProvider", "posterPath field: ${metaInfo?.posterPath}")
-        Log.d("DoramasflixProvider", "posterinfo final: $posterinfo")
+        val posterinfo = metaInfo?.poster?.takeIf { it.isNotEmpty() }
+            ?: metaInfo?.posterPath?.takeIf { it.isNotEmpty() }
+            ?: ""
+        Log.d("DoramasflixProvider", "Poster info final corregido: $posterinfo")
 
         val poster = getImageUrl(posterinfo)
-        Log.d("DoramasflixProvider", "Poster URL procesada: $poster")
-
-        val backgroundPosterinfo = metaInfo?.backdrop ?: metaInfo?.backdropPath ?: ""
+        val backgroundPosterinfo = metaInfo?.backdrop?.takeIf { it.isNotEmpty() }
+            ?: metaInfo?.backdropPath?.takeIf { it.isNotEmpty() }
+            ?: ""
         val bgposter = getImageUrl(backgroundPosterinfo)
         val tags = ArrayList<String>()
         val tags1 = metaInfo?.genres?.map { tags.add(it.name!!) }
