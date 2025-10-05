@@ -248,6 +248,7 @@ class TioanimeProvider:MainAPI() {
             this.year = year
         }
     }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,

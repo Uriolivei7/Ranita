@@ -205,19 +205,19 @@ class Animeav1 : MainAPI() {
                 val subEmbeds = extractLinks("SUB")
                 val dubEmbeds = extractLinks("DUB")
 
-                Log.i("Animeav1", "Total enlaces SUB: ${subEmbeds.size}")
-                Log.i("Animeav1", "Total enlaces DUB: ${dubEmbeds.size}")
+                Log.i("Animeav1", "Total enlaces Japonés: ${subEmbeds.size}")
+                Log.i("Animeav1", "Total enlaces Español Latino: ${dubEmbeds.size}")
 
                 var subProcessed = 0
                 var dubProcessed = 0
 
                 subEmbeds.forEach { (server, url) ->
-                    Log.d("Animeav1", "Procesando SUB enlace #${++subProcessed}: $server")
+                    Log.d("Animeav1", "Procesando Japonés enlace #${++subProcessed}: $server")
                     val startTime = System.currentTimeMillis()
 
                     try {
                         loadCustomExtractor(
-                            "Animeav1 [SUB:$server]",
+                            "Animeav1 [Japonés:$server]",
                             url,
                             "",
                             subtitleCallback,
@@ -227,23 +227,23 @@ class Animeav1 : MainAPI() {
                         val duration = System.currentTimeMillis() - startTime
 
                         stats[server] = (stats[server] ?: 0) + 1
-                        Log.d("Animeav1", "✓ SUB:$server procesado exitosamente en ${duration}ms")
+                        Log.d("Animeav1", "Japonés:$server procesado exitosamente en ${duration}ms")
 
                     } catch (e: Exception) {
-                        failedServers.add("SUB:$server")
-                        Log.e("Animeav1", "✗ Error al procesar SUB:$server - ${e.javaClass.simpleName}: ${e.message}")
+                        failedServers.add("Japonés:$server")
+                        Log.e("Animeav1", "Error al procesar Japonés:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
                         e.printStackTrace()
                     }
                 }
 
                 dubEmbeds.forEach { (server, url) ->
-                    Log.d("Animeav1", "Procesando DUB enlace #${++dubProcessed}: $server")
+                    Log.d("Animeav1", "Procesando Español Latino enlace #${++dubProcessed}: $server")
                     val startTime = System.currentTimeMillis()
 
                     try {
                         loadCustomExtractor(
-                            "Animeav1 [DUB:$server]",
+                            "Animeav1 [Español Latino:$server]",
                             url,
                             "",
                             subtitleCallback,
@@ -253,18 +253,18 @@ class Animeav1 : MainAPI() {
                         val duration = System.currentTimeMillis() - startTime
 
                         stats[server] = (stats[server] ?: 0) + 1
-                        Log.d("Animeav1", "✓ DUB:$server procesado exitosamente en ${duration}ms")
+                        Log.d("Animeav1", "Español Latino:$server procesado exitosamente en ${duration}ms")
 
                     } catch (e: Exception) {
-                        failedServers.add("DUB:$server")
-                        Log.e("Animeav1", "✗ Error al procesar DUB:$server - ${e.javaClass.simpleName}: ${e.message}")
+                        failedServers.add("Español Latino:$server")
+                        Log.e("Animeav1", "✗ Error al procesar Español Latino:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
                         e.printStackTrace()
                     }
                 }
 
                 Log.i("Animeav1", "RESUMEN DE PROCESAMIENTO:")
-                Log.i("Animeav1", "Total procesados - SUB: $subProcessed, DUB: $dubProcessed")
+                Log.i("Animeav1", "Total procesados - Japonés: $subProcessed, Español Latino: $dubProcessed")
                 Log.i("Animeav1", "Servidores exitosos: ${stats.entries.joinToString { "${it.key}(${it.value})" }}")
 
                 if (failedServers.isNotEmpty()) {
