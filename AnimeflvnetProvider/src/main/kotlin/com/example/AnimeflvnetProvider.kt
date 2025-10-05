@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.util.*
+import android.util.Log
 
 class AnimeflvnetProvider : MainAPI() {
     companion object {
@@ -134,23 +135,67 @@ class AnimeflvnetProvider : MainAPI() {
         val genre = doc.select("nav.Nvgnrs a")
             .map { it?.text()?.trim().toString() }
 
-        doc.select("script").map { script ->
-            if (script.data().contains("var episodes = [")) {
-                val data = script.data().substringAfter("var episodes = [").substringBefore("];")
-                data.split("],").forEach {
+        val episodesFromHTML = doc.select("ul.ListCaps#episodeList li")
+        Log.d("AnimeFlvProvider", "DEBUG: Episodios encontrados en HTML: ${episodesFromHTML.size}")
 
-                    val epNum = it.removePrefix("[").substringBefore(",")
-                    val animeid = doc.selectFirst("div.Strs.RateIt")?.attr("data-id")
-                    val link = url.replace("/anime/", "/ver/") + "-$epNum"
+        if (episodesFromHTML.isNotEmpty()) {
+            episodesFromHTML.forEachIndexed { index, episodeLi ->
+                val episodeLink = episodeLi.selectFirst("a")?.attr("href")
+                val episodeTitle = episodeLi.selectFirst("h3.Title")?.text()
+                val episodeNumber = episodeLi.selectFirst("p")?.text()?.replace("Episodio ", "")?.toIntOrNull()
+
+                val episodeImg = episodeLi.selectFirst("figure img")
+                val imgSrc = episodeImg?.attr("src")
+                val imgDataSrc = episodeImg?.attr("data-src")
+
+                Log.d("AnimeFlvProvider", "DEBUG: Episodio ${index + 1} - src: '$imgSrc', data-src: '$imgDataSrc'")
+
+                val episodePoster = when {
+                    imgSrc?.startsWith("https://") == true -> imgSrc
+                    !imgDataSrc.isNullOrEmpty() -> imgDataSrc
+                    else -> imgSrc
+                }
+
+                Log.d("AnimeFlvProvider", "DEBUG: Poster final seleccionado: '$episodePoster'")
+
+                if (!episodeLink.isNullOrEmpty() && episodeNumber != null) {
+                    val fullLink = if (episodeLink.startsWith("http")) episodeLink else "https://www3.animeflv.net$episodeLink"
+
                     episodes.add(
-                        newEpisode(link) {
-                            this.episode = epNum.toIntOrNull()
+                        newEpisode(fullLink) {
+                            this.name = episodeTitle ?: "Episodio $episodeNumber"
+                            this.episode = episodeNumber
+                            this.posterUrl = episodePoster?.let { fixUrl(it) }
                             this.runTime = null
                         }
                     )
                 }
             }
+            Log.d("AnimeFlvProvider", "DEBUG: Total episodios agregados desde HTML: ${episodes.size}")
         }
+
+        if (episodes.isEmpty()) {
+            Log.d("AnimeFlvProvider", "DEBUG: No se encontraron episodios en HTML, usando JavaScript")
+            doc.select("script").map { script ->
+                if (script.data().contains("var episodes = [")) {
+                    val data = script.data().substringAfter("var episodes = [").substringBefore("];")
+                    data.split("],").forEach {
+                        val epNum = it.removePrefix("[").substringBefore(",")
+                        val link = url.replace("/anime/", "/ver/") + "-$epNum"
+                        episodes.add(
+                            newEpisode(link) {
+                                this.name = "Episodio $epNum"
+                                this.episode = epNum.toIntOrNull()
+                                this.posterUrl = fixUrl(poster)
+                                this.runTime = null
+                            }
+                        )
+                    }
+                }
+            }
+            Log.d("AnimeFlvProvider", "DEBUG: Total episodios agregados desde JavaScript: ${episodes.size}")
+        }
+
         return newAnimeLoadResponse(title, url, getType(type)) {
             posterUrl = fixUrl(poster)
             addEpisodes(DubStatus.Subbed, episodes.reversed())
