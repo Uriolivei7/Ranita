@@ -115,8 +115,30 @@ class DoramasflixProvider:MainAPI() {
     )
 
     private fun getImageUrl(link: String?): String? {
-        if (link == null) return null
-        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w1280/$link" else link
+        if (link.isNullOrEmpty()) {
+            Log.d("DoramasflixProvider", "getImageUrl: link es null o vacío")
+            return null
+        }
+
+        return when {
+            // Si ya es una URL completa
+            link.startsWith("http://") || link.startsWith("https://") -> {
+                Log.d("DoramasflixProvider", "getImageUrl: URL completa: $link")
+                link
+            }
+            // Si empieza con /
+            link.startsWith("/") -> {
+                val url = "https://image.tmdb.org/t/p/w1280$link" // Sin / extra
+                Log.d("DoramasflixProvider", "getImageUrl: Path con /: $link -> $url")
+                url
+            }
+            // Si no empieza con /
+            else -> {
+                val url = "https://image.tmdb.org/t/p/w1280/$link"
+                Log.d("DoramasflixProvider", "getImageUrl: Path sin /: $link -> $url")
+                url
+            }
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
@@ -195,10 +217,20 @@ class DoramasflixProvider:MainAPI() {
         val metadataRequestBody = if (!isMovie) detailDoramaRequestbody.toRequestBody(mediaType) else detailMovieBody.toRequestBody(mediaType)
         val metadatarequest = app.post(doraflixapi, requestBody = metadataRequestBody).parsed<MainDoramas>()
         val metaInfo = if (isMovie) metadatarequest.data?.detailMovie else metadatarequest.data?.detailDorama
+        Log.d("DoramasflixProvider", "MetaInfo completo: $metaInfo")
+
         val title = metaInfo?.name
         val plot = metaInfo?.overview
+
         val posterinfo = metaInfo?.poster ?: metaInfo?.posterPath ?: ""
+        Log.d("DoramasflixProvider", "Title: ${metaInfo?.name}")
+        Log.d("DoramasflixProvider", "poster field: ${metaInfo?.poster}")
+        Log.d("DoramasflixProvider", "posterPath field: ${metaInfo?.posterPath}")
+        Log.d("DoramasflixProvider", "posterinfo final: $posterinfo")
+
         val poster = getImageUrl(posterinfo)
+        Log.d("DoramasflixProvider", "Poster URL procesada: $poster")
+
         val backgroundPosterinfo = metaInfo?.backdrop ?: metaInfo?.backdropPath ?: ""
         val bgposter = getImageUrl(backgroundPosterinfo)
         val tags = ArrayList<String>()
@@ -207,6 +239,7 @@ class DoramasflixProvider:MainAPI() {
         val episodes = ArrayList<Episode>()
         var movieData: String? = ""
         val datatwo = "{\"id\":\"${parse.id}\",\"slug\":\"${parse.slug}\",\"type\":\"${parse.type}\",\"isTV\":${parse.isTV}}"
+
 
         if (!isMovie) {
             val listSeasonsbody = "{\"operationName\":\"listSeasons\",\"variables\":{\"serie_id\":\"$id\"},\"query\":\"query listSeasons(\$serie_id: MongoID!) {\\n  listSeasons(sort: NUMBER_ASC, filter: {serie_id: \$serie_id}) {\\n    slug\\n    season_number\\n    poster_path\\n    air_date\\n    serie_name\\n    poster\\n    backdrop\\n    __typename\\n  }\\n}\\n\"}"
