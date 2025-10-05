@@ -151,45 +151,92 @@ class PelispediaProvider:MainAPI() {
             Pair(seriesid, dataseason)
         }
         val epi = ArrayList<Episode>()
+
         if (tvType == TvType.TvSeries) {
             Log.d("PelispediaProvider", "DEBUG: Contenido es TvSeries. Buscando temporadas/episodios.")
-            seasonsdoc.forEach {(serieid, data) -> // Reemplazado apmap con forEach
-                if (serieid.isNullOrEmpty() || data.isNullOrEmpty()) {
-                    Log.w("PelispediaProvider", "WARN: ID de serie o dato de temporada nulo/vacío, saltando.")
-                    return@forEach
-                }
 
-                val seasonsrequest = app.post("https://pelispedia.is/wp-admin/admin-ajax.php",
-                    data = mapOf(
-                        "action" to "action_select_season",
-                        "season" to data,
-                        "post" to serieid,
-                    )
-                ).document
-                seasonsrequest.select("li article.episodes").mapNotNull { li ->
-                    val href = li.selectFirst("a.lnk-blk")?.attr("href")
+            val directEpisodes = doc.select("ul#episode_by_temp li article.episodes")
+            Log.d("PelispediaProvider", "DEBUG: Episodios encontrados directamente en HTML: ${directEpisodes.size}")
+
+            if (directEpisodes.isNotEmpty()) {
+                directEpisodes.mapNotNull { episodeArticle ->
+                    val href = episodeArticle.selectFirst("a.lnk-blk")?.attr("href")
+                    val episodePoster = episodeArticle.selectFirst("div.post-thumbnail img")?.attr("src")
+                    val episodeTitle = episodeArticle.selectFirst("h2.entry-title")?.text()
+
                     if (href.isNullOrEmpty()) {
-                        Log.w("PelispediaProvider", "WARN: Link de episodio nulo o vacío en temporada $data, saltando.")
+                        Log.w("PelispediaProvider", "WARN: Link de episodio nulo o vacío, saltando.")
                         return@mapNotNull null
                     }
+
                     val seasonregex = Regex("temporada-(\\d+)-capitulo-(\\d+)")
                     val match = seasonregex.find(href)
                     val season = match?.groupValues?.getOrNull(1)?.toIntOrNull()
                     val episode = match?.groupValues?.getOrNull(2)?.toIntOrNull()
 
-                    Log.d("PelispediaProvider", "DEBUG: Añadiendo episodio: S:$season E:$episode URL: $href")
+                    Log.d("PelispediaProvider", "DEBUG: Añadiendo episodio directo: S:$season E:$episode URL: $href")
+                    Log.d("PelispediaProvider", "DEBUG: Poster del episodio: $episodePoster")
+
                     epi.add(
                         newEpisode(href) {
+                            this.name = episodeTitle
                             this.season = season
                             this.episode = episode
+                            this.posterUrl = episodePoster?.let {
+                                fixUrl(it.replace(Regex("\\/w\\d+\\/"), "/original/"))
+                            }
                             this.runTime = null
                         }
                     )
                 }
+            } else {
+                seasonsdoc.forEach { (serieid, data) ->
+                    if (serieid.isNullOrEmpty() || data.isNullOrEmpty()) {
+                        Log.w("PelispediaProvider", "WARN: ID de serie o dato de temporada nulo/vacío, saltando.")
+                        return@forEach
+                    }
+
+                    val seasonsrequest = app.post("https://pelispedia.is/wp-admin/admin-ajax.php",
+                        data = mapOf(
+                            "action" to "action_select_season",
+                            "season" to data,
+                            "post" to serieid,
+                        )
+                    ).document
+
+                    seasonsrequest.select("li article.episodes").mapNotNull { li ->
+                        val href = li.selectFirst("a.lnk-blk")?.attr("href")
+                        val episodePoster = li.selectFirst("div.post-thumbnail img")?.attr("src")
+                        val episodeTitle = li.selectFirst("h2.entry-title")?.text()
+
+                        if (href.isNullOrEmpty()) {
+                            Log.w("PelispediaProvider", "WARN: Link de episodio nulo o vacío en temporada $data, saltando.")
+                            return@mapNotNull null
+                        }
+                        val seasonregex = Regex("temporada-(\\d+)-capitulo-(\\d+)")
+                        val match = seasonregex.find(href)
+                        val season = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+                        val episode = match?.groupValues?.getOrNull(2)?.toIntOrNull()
+
+                        Log.d("PelispediaProvider", "DEBUG: Añadiendo episodio AJAX: S:$season E:$episode URL: $href")
+                        Log.d("PelispediaProvider", "DEBUG: Poster del episodio: $episodePoster")
+
+                        epi.add(
+                            newEpisode(href) {
+                                this.name = episodeTitle
+                                this.season = season
+                                this.episode = episode
+                                this.posterUrl = episodePoster?.let {
+                                    fixUrl(it.replace(Regex("\\/w\\d+\\/"), "/original/"))
+                                }
+                                this.runTime = null
+                            }
+                        )
+                    }
+                }
             }
             Log.d("PelispediaProvider", "DEBUG: Total de episodios añadidos: ${epi.size}")
         }
-
 
         val recs = doc.select("article.movies").mapNotNull { rec ->
             val recTitle = rec.selectFirst(".entry-title")?.text()
@@ -221,14 +268,11 @@ class PelispediaProvider:MainAPI() {
         }
         Log.d("PelispediaProvider", "DEBUG: Total de recomendaciones añadidas: ${recs.size}")
 
-
         return when (tvType) {
             TvType.TvSeries -> {
                 newTvSeriesLoadResponse(title, url, tvType, epi) {
-                    this.posterUrl = poster?.let { fixUrl(it) }
-                        ?: ""
-                    this.backgroundPosterUrl = backimage?.let { fixUrl(it) }
-                        ?: ""
+                    this.posterUrl = poster?.let { fixUrl(it) } ?: ""
+                    this.backgroundPosterUrl = backimage?.let { fixUrl(it) } ?: ""
                     this.plot = plot
                     this.tags = tags
                     this.year = yearrr
@@ -238,10 +282,8 @@ class PelispediaProvider:MainAPI() {
             }
             TvType.Movie -> {
                 newMovieLoadResponse(title, url, tvType, url) {
-                    this.posterUrl = poster?.let { fixUrl(it) }
-                        ?: ""
-                    this.backgroundPosterUrl = backimage?.let { fixUrl(it) }
-                        ?: ""
+                    this.posterUrl = poster?.let { fixUrl(it) } ?: ""
+                    this.backgroundPosterUrl = backimage?.let { fixUrl(it) } ?: ""
                     this.plot = plot
                     this.tags = tags
                     this.year = yearrr
