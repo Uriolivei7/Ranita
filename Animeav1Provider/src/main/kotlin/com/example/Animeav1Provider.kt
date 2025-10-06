@@ -89,40 +89,89 @@ class Animeav1 : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-        val title= document.selectFirst("article h1")?.text() ?: "Unknown"
+        val title = document.selectFirst("article h1")?.text() ?: "Unknown"
         val poster = document.select("img.aspect-poster.w-full.rounded-lg").attr("src")
         val description = document.selectFirst("div.entry.text-lead p")?.text()
-        val rawtype= document.select("div.flex.flex-wrap.items-center.gap-2.text-sm > span:nth-child(1)")
+        val rawtype = document.select("div.flex.flex-wrap.items-center.gap-2.text-sm > span:nth-child(1)")
             .text()
         val type = getTvType(rawtype)
-        val tags=document.select("header > div:nth-child(3) a").map { it.text() }
-        val href=fixUrl(document.select("div.grid > article a").attr("href"))
-        return if (type==TvType.TvSeries)
-        {
+        val tags = document.select("header > div:nth-child(3) a").map { it.text() }
+        val href = fixUrl(document.select("div.grid > article a").attr("href"))
+
+        val recommendations = try {
+            Log.d("Animeav1", "Buscando contenido relacionado...")
+
+            val relacionadosSection = document.select("h2:contains(Relacionados)").firstOrNull()
+
+            if (relacionadosSection == null) {
+                Log.d("Animeav1", "No se encontró sección de Relacionados")
+                emptyList()
+            } else {
+                val relatedArticles = document.select("h2:contains(Relacionados) ~ div article")
+                Log.d("Animeav1", "Encontrados ${relatedArticles.size} elementos relacionados")
+
+                relatedArticles.mapNotNull { article ->
+                    try {
+                        val recTitle = article.selectFirst("h3")?.text()
+                        val recPoster = article.selectFirst("img")?.attr("src")
+                        val recUrl = article.selectFirst("a")?.attr("href")
+                        val recType = article.selectFirst("span.text-xs")?.text() ?: ""
+
+                        Log.d("Animeav1", "Procesando relacionado: $recTitle")
+
+                        if (recTitle.isNullOrBlank() || recUrl.isNullOrBlank()) {
+                            Log.w("Animeav1", "Datos incompletos para relacionado: title=$recTitle, url=$recUrl")
+                            return@mapNotNull null
+                        }
+
+                        newMovieSearchResponse(
+                            name = recTitle,
+                            url = fixUrl(recUrl),
+                            type = TvType.Movie
+                        ) {
+                            this.posterUrl = recPoster
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Animeav1", "Error procesando elemento relacionado: ${e.message}", e)
+                        null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("Animeav1", "Error general extrayendo relacionados: ${e.message}", e)
+            emptyList()
+        }
+
+        Log.d("Animeav1", "Total de recomendaciones procesadas: ${recommendations.size}")
+
+        return if (type == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
             document.select("div.grid > article").map {
-                val epposter=it.select("img").attr("src")
-                val epno=it.select("span.text-lead > font > font").text()
-                val ephref=it.select("a").attr("href")
+                val epposter = it.select("img").attr("src")
+                val epno = it.select("span.text-lead > font > font").text()
+                val ephref = it.select("a").attr("href")
                 episodes.add(
-                    newEpisode(ephref)
-                    {
-                        this.name="Episode $epno"
-                        this.episode=epno.toIntOrNull()
-                        this.posterUrl=epposter
-                    })
-
+                    newEpisode(ephref) {
+                        this.name = "Episode $epno"
+                        this.episode = epno.toIntOrNull()
+                        this.posterUrl = epposter
+                    }
+                )
             }
+
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
+                this.recommendations = recommendations
             }
-        }
-        else newMovieLoadResponse(title, url, TvType.Movie, href) {
-            this.posterUrl = poster
-            this.plot = description
-            this.tags = tags
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, href) {
+                this.posterUrl = poster
+                this.plot = description
+                this.tags = tags
+                this.recommendations = recommendations
+            }
         }
     }
 
