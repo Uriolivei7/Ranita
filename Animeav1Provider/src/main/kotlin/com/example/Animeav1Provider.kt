@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import android.util.Log
+import org.jsoup.select.Elements
 
 class Animeav1 : MainAPI() {
     override var mainUrl              = "https://animeav1.com"
@@ -101,45 +102,45 @@ class Animeav1 : MainAPI() {
         val recommendations = try {
             Log.d("Animeav1", "Buscando contenido relacionado...")
 
-            val relacionadosSection = document.select("h2:contains(Relacionados)").firstOrNull()
+            var relatedArticles = document.select("section:has(h2:contains(Relacionados)) article.bg-mute")
 
-            if (relacionadosSection == null) {
-                Log.d("Animeav1", "No se encontró sección de Relacionados")
-                emptyList()
-            } else {
-                val relatedArticles = document.select("h2:contains(Relacionados) ~ div article")
-                Log.d("Animeav1", "Encontrados ${relatedArticles.size} elementos relacionados")
+            if (relatedArticles.isEmpty()) {
+                Log.d("Animeav1", "Primer selector no funcionó, probando alternativo...")
+                val relatedSection = document.selectFirst("h2:contains(Relacionados)")?.parent()?.parent()
+                relatedArticles = relatedSection?.select("article") ?: Elements()
+            }
 
-                relatedArticles.mapNotNull { article ->
-                    try {
-                        val recTitle = article.selectFirst("h3")?.text()
-                        val recPoster = article.selectFirst("img")?.attr("src")
-                        val recUrl = article.selectFirst("a")?.attr("href")
-                        val recType = article.selectFirst("span.text-xs")?.text() ?: ""
+            Log.d("Animeav1", "Encontrados ${relatedArticles.size} elementos relacionados")
 
-                        Log.d("Animeav1", "Procesando relacionado: $recTitle")
+            relatedArticles.mapNotNull { article ->
+                try {
+                    val recTitle = article.selectFirst("h3")?.text()
+                    val recPoster = article.selectFirst("img")?.attr("src")
+                    val recUrl = article.selectFirst("a[href]")?.attr("href")
+                    val recType = article.selectFirst("span.text-xs")?.text() ?: ""
 
-                        if (recTitle.isNullOrBlank() || recUrl.isNullOrBlank()) {
-                            Log.w("Animeav1", "Datos incompletos para relacionado: title=$recTitle, url=$recUrl")
-                            return@mapNotNull null
-                        }
+                    Log.d("Animeav1", "Procesando relacionado: $recTitle - URL: $recUrl - Tipo: $recType")
 
-                        newMovieSearchResponse(
-                            name = recTitle,
-                            url = fixUrl(recUrl),
-                            type = TvType.Movie
-                        ) {
-                            this.posterUrl = recPoster
-                        }
-                    } catch (e: Exception) {
-                        Log.e("Animeav1", "Error procesando elemento relacionado: ${e.message}", e)
-                        null
+                    if (recTitle.isNullOrBlank() || recUrl.isNullOrBlank()) {
+                        Log.w("Animeav1", "Datos incompletos para relacionado: title=$recTitle, url=$recUrl")
+                        return@mapNotNull null
                     }
+
+                    newMovieSearchResponse(
+                        name = recTitle,
+                        url = fixUrl(recUrl),
+                        type = TvType.Movie
+                    ) {
+                        this.posterUrl = recPoster
+                    }
+                } catch (e: Exception) {
+                    Log.e("Animeav1", "Error procesando elemento relacionado: ${e.message}", e)
+                    null
                 }
             }
         } catch (e: Exception) {
             Log.e("Animeav1", "Error general extrayendo relacionados: ${e.message}", e)
-            emptyList()
+            emptyList<SearchResponse>()
         }
 
         Log.d("Animeav1", "Total de recomendaciones procesadas: ${recommendations.size}")
@@ -174,7 +175,6 @@ class Animeav1 : MainAPI() {
             }
         }
     }
-
 
     override suspend fun loadLinks(
         data: String,
