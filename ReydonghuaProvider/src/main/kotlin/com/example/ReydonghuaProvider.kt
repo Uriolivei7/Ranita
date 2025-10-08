@@ -104,6 +104,7 @@ class ReydonghuaProvider : MainAPI() {
     data class Ep(
         val episodio: Int?,
         val url: String?,
+        val thumb: String? = null
     )
 
     suspend fun getCaps(caplist: String, referer: String): NiceResponse {
@@ -153,13 +154,17 @@ class ReydonghuaProvider : MainAPI() {
             }
         val pagurl = getCaps(caplist, url).parsed<PaginateUrl>()
         val capJson = getCaps(pagurl.paginateUrl, url).parsed<CapList>()
+
         val epList = capJson.caps.map { epnum ->
             newEpisode(
                 epnum.url
             ) {
                 this.episode = epnum.episodio
+                // Agregar el poster del episodio si existe
+                this.posterUrl = epnum.thumb
             }
         }
+
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             posterUrl = poster
             backgroundPosterUrl = poster
