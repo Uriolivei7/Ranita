@@ -243,5 +243,23 @@
     "iconUrl": "https://doramasflix.co/favicon.ico",
     "language": "mx",
     "fileSize": 34000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MundodonghuaProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 14,
+    "name": "MundoDonghua",
+    "internalName": "MundodonghuaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.mundodonghua.com",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://www.mundodonghua.com/images/favicon.png",
+    "language": "mx",
+    "fileSize": 19000
   }
 ]
