@@ -261,5 +261,41 @@
     "iconUrl": "https://www.mundodonghua.com/images/favicon.png",
     "language": "mx",
     "fileSize": 20000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReydonghuaProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 15,
+    "name": "ReyDonghua",
+    "internalName": "ReydonghuaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para reydonghua.org",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://reydonghua.org/public/favicon.ico?v=4.75",
+    "language": "mx",
+    "fileSize": 16000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 16,
+    "name": "JKAnime",
+    "internalName": "JkanimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para jkanime.net",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://cdn.jkdesu.com/assets3/css/img/favicon.ico?v=2.0.140",
+    "language": "mx",
+    "fileSize": 31000
   }
 ]
