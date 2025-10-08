@@ -51,24 +51,24 @@ class MundoDonghuaProvider : MainAPI() {
             val home = app.get(url, timeout = 120).document.select(".col-xs-4").map {
                 val title = it.selectFirst(".fs-14")?.text() ?: ""
                 val poster = it.selectFirst(".fit-1 img")?.attr("src") ?: ""
-                AnimeSearchResponse(
+                newAnimeSearchResponse(
                     title,
                     fixUrl(it.selectFirst("a")?.attr("href") ?: ""),
-                    this.name,
-                    TvType.Anime,
-                    fixUrl(poster),
-                    null,
-                    if (title.contains("Latino") || title.contains("Castellano")) EnumSet.of(
-                        DubStatus.Dubbed
-                    ) else EnumSet.of(DubStatus.Subbed),
-                )
+                    TvType.Anime
+                ) {
+                    this.posterUrl = fixUrl(poster)
+                    this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
+                        EnumSet.of(DubStatus.Dubbed)
+                    else
+                        EnumSet.of(DubStatus.Subbed)
+                }
             }
 
             items.add(HomePageList(name, home))
         }
 
         if (items.size <= 0) throw ErrorLoadingException()
-        return HomePageResponse(items)
+        return newHomePageResponse(items, hasNext = false)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -76,17 +76,17 @@ class MundoDonghuaProvider : MainAPI() {
             val title = it.selectFirst(".fs-14")?.text() ?: ""
             val href = fixUrl(it.selectFirst("a")?.attr("href") ?: "")
             val image = it.selectFirst(".fit-1 img")?.attr("src")
-            AnimeSearchResponse(
+            newAnimeSearchResponse(
                 title,
                 href,
-                this.name,
-                TvType.Anime,
-                fixUrl(image ?: ""),
-                null,
-                if (title.contains("Latino") || title.contains("Castellano")) EnumSet.of(
-                    DubStatus.Dubbed
-                ) else EnumSet.of(DubStatus.Subbed),
-            )
+                TvType.Anime
+            ) {
+                this.posterUrl = fixUrl(image ?: "")
+                this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
+                    EnumSet.of(DubStatus.Dubbed)
+                else
+                    EnumSet.of(DubStatus.Subbed)
+            }
         }
     }
 
@@ -112,11 +112,10 @@ class MundoDonghuaProvider : MainAPI() {
             val episodePoster = it.selectFirst("img.avatar")?.attr("src")
 
             newEpisodes.add(
-                Episode(
-                    fixUrl(link),
-                    episode = epnum.toString().toIntOrNull(),
-                    posterUrl = if (!episodePoster.isNullOrEmpty()) fixUrl(episodePoster) else null
-                )
+                newEpisode(fixUrl(link)) {
+                    this.episode = epnum.toString().toIntOrNull()
+                    this.posterUrl = if (!episodePoster.isNullOrEmpty()) fixUrl(episodePoster) else null
+                }
             )
         }
 
@@ -127,10 +126,9 @@ class MundoDonghuaProvider : MainAPI() {
                 val existingEpisode = newEpisodes.find { ep -> ep.episode == epnum.toString().toIntOrNull() }
                 if (existingEpisode == null) {
                     newEpisodes.add(
-                        Episode(
-                            fixUrl(href),
-                            episode = epnum.toString().toIntOrNull()
-                        )
+                        newEpisode(fixUrl(href)) {
+                            this.episode = epnum.toString().toIntOrNull()
+                        }
                     )
                 }
             }
