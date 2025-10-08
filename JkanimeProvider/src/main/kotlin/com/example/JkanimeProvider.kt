@@ -29,13 +29,12 @@ class JkanimeProvider : MainAPI() {
 
     override var mainUrl = "https://jkanime.net"
     override var name = "JKAnime"
-    override var lang = "es"
+    override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
         TvType.AnimeMovie,
-        TvType.OVA,
         TvType.Anime,
     )
 
