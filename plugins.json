@@ -301,7 +301,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 17,
     "name": "TVporInternet",
     "internalName": "TvporinternetProvider",
@@ -314,6 +314,6 @@
     ],
     "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
     "language": "mx",
-    "fileSize": 22000
+    "fileSize": 21000
   }
 ]

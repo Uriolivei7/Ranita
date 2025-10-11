@@ -346,109 +346,23 @@ class TvporinternetProvider : MainAPI() {
                 "Upgrade-Insecure-Requests" to "1"
             )
 
-            var m3u8Url: String? = null
-            val maxAttempts = 3
+            val embedResponse = app.get(originalEmbedUrl, headers = embedHeaders, cookies = cookies, timeout = 20L)
+            val embedHtml = embedResponse.text
 
-            for (attempt in 1..maxAttempts) {
-                Log.d("TvporInternet", "Intento $attempt de $maxAttempts")
+            Log.d("TvporInternet", "Respuesta código: ${embedResponse.code}")
 
-                try {
-                    val embedResponse = app.get(
-                        originalEmbedUrl,
-                        headers = embedHeaders,
-                        cookies = cookies,
-                        timeout = 20L
-                    )
-
-                    val embedHtml = embedResponse.text
-                    Log.d("TvporInternet", "Respuesta código: ${embedResponse.code}")
-
-                    if (embedHtml.contains("Acceso denegado") || embedHtml.contains("Access denied")) {
-                        Log.d("TvporInternet", "Acceso denegado detectado")
-
-                        val altHeaders = embedHeaders + mapOf(
-                            "Referer" to "https://www.tvporinternet2.com/",
-                            "Origin" to "https://www.tvporinternet2.com"
-                        )
-
-                        val altResponse = app.get(originalEmbedUrl, headers = altHeaders)
-                        val altHtml = altResponse.text
-
-                        if (!altHtml.contains("Acceso denegado")) {
-                            m3u8Url = extractM3u8FromHtml(altHtml)
-                        }
-                    } else {
-                        m3u8Url = extractM3u8FromHtml(embedHtml)
-                    }
-
-                    if (m3u8Url != null) {
-                        Log.d("TvporInternet", "M3U8 encontrado: $m3u8Url")
-                        break
-                    }
-
-                    val secondaryIframe = Regex("""<iframe[^>]+src=["']([^"']+)["']""").find(embedHtml)
-                    if (secondaryIframe != null && secondaryIframe.groupValues.size > 1) {
-                        val secondaryUrl = fixUrl(secondaryIframe.groupValues[1])
-                        Log.d("TvporInternet", "Iframe secundario encontrado: $secondaryUrl")
-
-                        val secondaryResponse = app.get(secondaryUrl, headers = embedHeaders)
-                        m3u8Url = extractM3u8FromHtml(secondaryResponse.text)
-
-                        if (m3u8Url != null) break
-                    }
-
-                } catch (e: Exception) {
-                    Log.e("TvporInternet", "Error en intento $attempt: ${e.message}")
-                    if (attempt < maxAttempts) {
-                        delay(2000)
-                    }
-                }
-            }
+            var m3u8Url = extractM3u8FromHtml(embedHtml)
 
             if (m3u8Url == null) {
-                Log.d("TvporInternet", "Intentando extraer channelId y construir URL...")
-
-                val channelId = originalEmbedUrl
-                    .substringAfter("canal=")
-                    .substringBefore("&")
-                    .takeIf { it.isNotEmpty() }
-                    ?: originalEmbedUrl
-                        .substringAfter("c=")
-                        .substringBefore("&")
-
-                Log.d("TvporInternet", "Channel ID: $channelId")
-
-                val testUrls = listOf(
-                    "https://live.saohgdasregions.fun:9443/stream/$channelId/playlist.m3u8",
-                    "https://live.saohgdasregions.fun/hls/$channelId.m3u8",
-                    "https://cdn.live.saohgdasregions.fun/$channelId/index.m3u8",
-                    "https://live.saohgdasregions.fun:9092/${channelId}_HD.m3u8"
-                )
-
-                val testHeaders = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-                    "Referer" to "https://live.saohgdasregions.fun/"
-                )
-
-                for (testUrl in testUrls) {
-                    try {
-                        Log.d("TvporInternet", "Probando URL directa: $testUrl")
-                        val response = app.get(testUrl, headers = testHeaders, timeout = 10L)
-                        if (response.isSuccessful && (response.text.contains("#EXTM3U") || response.text.contains("#EXT-X-"))) {
-                            m3u8Url = testUrl
-                            Log.d("TvporInternet", "URL válida encontrada!")
-                            break
-                        }
-                    } catch (e: Exception) {
-                        continue
-                    }
-                }
-            }
-
-            if (m3u8Url == null) {
-                Log.e("TvporInternet", "No se pudo obtener la URL del stream después de todos los intentos")
+                Log.e("TvporInternet", "No se encontró URL m3u8")
                 return false
             }
+
+            m3u8Url = m3u8Url
+                .replace("\\/", "/")
+                .replace("\\u0026", "&")
+                .replace("\\u003D", "=")
+                .trim()
 
             if (!m3u8Url.startsWith("http")) {
                 m3u8Url = if (m3u8Url.startsWith("//")) {
@@ -458,25 +372,27 @@ class TvporinternetProvider : MainAPI() {
                 }
             }
 
-            Log.d("TvporInternet", "Stream final URL: $m3u8Url")
+            Log.d("TvporInternet", "Stream final URL (limpia): $m3u8Url")
 
             callback(
                 ExtractorLink(
                     source = this.name,
-                    name = this.name,
+                    name = "${this.name} - HD",
                     url = m3u8Url,
                     referer = "https://live.saohgdasregions.fun/",
-                    quality = Qualities.Unknown.value,
+                    quality = Qualities.P720.value,
                     type = ExtractorLinkType.M3U8,
                     headers = mapOf(
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
                         "Accept" to "*/*",
                         "Accept-Language" to "es-ES,es;q=0.9",
+                        "Accept-Encoding" to "gzip, deflate, br",
                         "Origin" to "https://live.saohgdasregions.fun",
                         "Referer" to "https://live.saohgdasregions.fun/",
                         "Sec-Fetch-Dest" to "empty",
                         "Sec-Fetch-Mode" to "cors",
-                        "Sec-Fetch-Site" to "same-origin"
+                        "Sec-Fetch-Site" to "same-origin",
+                        "Connection" to "keep-alive"
                     )
                 )
             )
@@ -491,10 +407,17 @@ class TvporinternetProvider : MainAPI() {
     }
 
     private fun extractM3u8FromHtml(html: String): String? {
-        val m3u8Pattern = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""")
-        val match = m3u8Pattern.find(html)
-        if (match != null) {
-            return match.value
+        val patterns = listOf(
+            """(https?://[^"'\s]+\.m3u8[^"'\s]*)""",
+            """(https?:\\\/\\\/[^"'\s]+\.m3u8[^"'\s]*)""",
+            """["'](https?:(?:\\\/\\\/|\/\/)[^"']+\.m3u8[^"']*)["']"""
+        )
+
+        for (pattern in patterns) {
+            val match = Regex(pattern).find(html)
+            if (match != null) {
+                return match.groupValues.getOrNull(1) ?: match.value
+            }
         }
 
         val scriptPatterns = listOf(
