@@ -336,40 +336,136 @@ class TvporinternetProvider : MainAPI() {
                 "Accept-Language" to "es-ES,es;q=0.9",
                 "Accept-Encoding" to "gzip, deflate, br",
                 "Referer" to playerUrl,
-                "Origin" to "https://www.tvporinternet2.com",
                 "Sec-Fetch-Dest" to "iframe",
                 "Sec-Fetch-Mode" to "navigate",
                 "Sec-Fetch-Site" to "cross-site",
                 "Upgrade-Insecure-Requests" to "1"
             )
 
-            val saohgdasResponse = app.get(saohgdasUrl, headers = saohgdasHeaders)
-            val saohgdasHtml = saohgdasResponse.text
+            var attempts = 0
+            var m3u8Url: String? = null
 
-            Log.d("TvporInternet", "Response code: ${saohgdasResponse.code}")
-            Log.d("TvporInternet", "HTML length: ${saohgdasHtml.length}")
+            while (attempts < 3 && m3u8Url == null) {
+                attempts++
+                Log.d("TvporInternet", "Intento $attempts de obtener stream")
 
-            val m3u8Url = findM3u8Url(saohgdasHtml)
+                val response = app.get(saohgdasUrl, headers = saohgdasHeaders, allowRedirects = true)
+                val html = response.text
 
-            if (m3u8Url == null) {
-                Log.d("TvporInternet", "Buscando m3u8 en todo el HTML...")
-                val allM3u8Regex = Regex("(https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*)")
-                val m3u8Match = allM3u8Regex.find(saohgdasHtml)
-                if (m3u8Match != null) {
-                    val foundUrl = m3u8Match.value
-                    Log.d("TvporInternet", "M3U8 encontrado: $foundUrl")
-
-                    createExtractorLink(foundUrl, callback)
-                    return true
+                val directM3u8 = Regex("(https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*)").find(html)
+                if (directM3u8 != null) {
+                    m3u8Url = directM3u8.value
+                    Log.d("TvporInternet", "M3U8 encontrado directo: $m3u8Url")
+                    break
                 }
 
-                Log.e("TvporInternet", "No se encontró URL del stream")
-                Log.d("TvporInternet", "HTML preview: ${saohgdasHtml.take(2000)}")
+                val doc = Jsoup.parse(html)
+                val scripts = doc.select("script").filter { script ->
+                    val content = script.html()
+                    !content.contains("split") && !content.contains("reduce") && content.length < 5000
+                }
+
+                for (script in scripts) {
+                    val scriptContent = script.html()
+
+                    val patterns = listOf(
+                        """player\.source\s*=\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """source:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """file:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """src:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """hls:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """url:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""",
+                        """stream:\s*['"]([^'"]+\.m3u8[^'"]*)['"]"""
+                    )
+
+                    for (pattern in patterns) {
+                        val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+                        val match = regex.find(scriptContent)
+                        if (match != null && match.groupValues.size > 1) {
+                            m3u8Url = match.groupValues[1]
+                            Log.d("TvporInternet", "M3U8 encontrado con patrón: $m3u8Url")
+                            break
+                        }
+                    }
+
+                    if (m3u8Url != null) break
+                }
+
+                val comments = Regex("<!--([^>]+)-->").findAll(html)
+                for (comment in comments) {
+                    val m3u8InComment = Regex("(https?://[^\\s]+\\.m3u8[^\\s]*)").find(comment.value)
+                    if (m3u8InComment != null) {
+                        m3u8Url = m3u8InComment.value
+                        Log.d("TvporInternet", "M3U8 encontrado en comentario: $m3u8Url")
+                        break
+                    }
+                }
+
+                if (m3u8Url == null && attempts < 3) {
+                    Log.d("TvporInternet", "No se encontró m3u8, esperando antes de reintentar...")
+                    kotlinx.coroutines.delay(1000)
+                }
+            }
+
+            if (m3u8Url == null) {
+                Log.d("TvporInternet", "Intentando estrategia alternativa...")
+
+                val channelId = saohgdasUrl.substringAfter("canal=").substringBefore("&")
+                val possibleStreamUrls = listOf(
+                    "https://live.saohgdasregions.fun:9092/MzguMjUwLjE1OS43NQ==/5_.m3u8",
+                    "https://live.saohgdasregions.fun:9092/${channelId}/playlist.m3u8",
+                    "https://live.saohgdasregions.fun:9092/stream/${channelId}.m3u8"
+                )
+
+                for (testUrl in possibleStreamUrls) {
+                    try {
+                        Log.d("TvporInternet", "Probando URL: $testUrl")
+                        val testHeaders = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                            "Referer" to "https://live.saohgdasregions.fun/"
+                        )
+
+                        val testResponse = app.head(testUrl, headers = testHeaders, timeout = 5)
+                        if (testResponse.code in 200..299) {
+                            Log.d("TvporInternet", "URL base funciona, necesita token")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("TvporInternet", "Error probando URL: ${e.message}")
+                    }
+                }
+
+                Log.e("TvporInternet", "No se pudo extraer el stream URL")
                 return false
             }
 
-            Log.d("TvporInternet", "Stream URL encontrada: $m3u8Url")
-            createExtractorLink(m3u8Url, callback)
+            Log.d("TvporInternet", "Stream URL final: $m3u8Url")
+
+            val streamHeaders = mapOf(
+                "Accept" to "*/*",
+                "Accept-Language" to "es-ES,es;q=0.9",
+                "Cache-Control" to "no-cache",
+                "Connection" to "keep-alive",
+                "Origin" to "https://live.saohgdasregions.fun",
+                "Pragma" to "no-cache",
+                "Referer" to "https://live.saohgdasregions.fun/",
+                "Sec-Fetch-Dest" to "empty",
+                "Sec-Fetch-Mode" to "cors",
+                "Sec-Fetch-Site" to "same-site",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+            )
+
+            callback(
+                ExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = m3u8Url,
+                    referer = "https://live.saohgdasregions.fun/",
+                    quality = Qualities.Unknown.value,
+                    type = ExtractorLinkType.M3U8,
+                    headers = streamHeaders
+                )
+            )
+
             return true
 
         } catch (e: Exception) {
@@ -378,6 +474,7 @@ class TvporinternetProvider : MainAPI() {
             return false
         }
     }
+
 
     private fun findM3u8Url(html: String): String? {
         val doc = Jsoup.parse(html)
