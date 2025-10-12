@@ -268,8 +268,41 @@ class DoramasytProvider : MainAPI() {
         Log.d("Doramasyt", "loadLinks iniciado - data: $data, isCasting: $isCasting")
 
         try {
-            val response = app.get(data)
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
+                "Accept-Encoding" to "gzip, deflate, br",
+                "Connection" to "keep-alive",
+                "Upgrade-Insecure-Requests" to "1",
+                "Sec-Fetch-Dest" to "document",
+                "Sec-Fetch-Mode" to "navigate",
+                "Sec-Fetch-Site" to "same-origin",
+                "Cache-Control" to "max-age=0"
+            )
+
+            val response = app.get(data, headers = headers)
             Log.d("Doramasyt", "Respuesta obtenida de: $data")
+            Log.d("Doramasyt", "Código de respuesta: ${response.code}")
+
+            if (response.code != 200) {
+                Log.e("Doramasyt", "Error en la respuesta HTTP: ${response.code}")
+                return false
+            }
+
+            val htmlContent = response.document.html()
+            Log.d("Doramasyt", "Longitud del HTML recibido: ${htmlContent.length}")
+
+            if (!htmlContent.contains("myTab") && !htmlContent.contains("play-video")) {
+                Log.e("Doramasyt", "El HTML no contiene los elementos esperados")
+                Log.d("Doramasyt", "Primeros 1000 caracteres del HTML: ${htmlContent.take(1000)}")
+
+                if (htmlContent.contains("cloudflare", ignoreCase = true)) {
+                    Log.e("Doramasyt", "Detectado Cloudflare - el sitio requiere bypass de protección")
+                }
+
+                return false
+            }
 
             var buttons = response.document.select("ul#myTab li button.play-video")
             Log.d("Doramasyt", "Número de botones encontrados con ul#myTab li button.play-video: ${buttons.size}")
@@ -286,10 +319,25 @@ class DoramasytProvider : MainAPI() {
             }
 
             if (buttons.isEmpty()) {
+                buttons = response.document.select("button.play-video")
+                Log.d("Doramasyt", "Botones encontrados con button.play-video: ${buttons.size}")
+            }
+
+            if (buttons.isEmpty()) {
                 Log.e("Doramasyt", "No se encontraron botones de reproducción")
 
-                val htmlSnippet = response.document.select("#myTab").html()
-                Log.d("Doramasyt", "HTML de #myTab (primeros 500 chars): ${htmlSnippet.take(500)}")
+                val myTabElement = response.document.select("#myTab").html()
+                Log.d("Doramasyt", "HTML de #myTab (primeros 500 chars): ${myTabElement.take(500)}")
+
+                val directIframe = response.document.select("iframe").firstOrNull()
+                if (directIframe != null) {
+                    val iframeSrc = directIframe.attr("src")
+                    Log.d("Doramasyt", "Iframe directo encontrado: $iframeSrc")
+                    if (iframeSrc.isNotEmpty()) {
+                        customLoadExtractor(iframeSrc, data, subtitleCallback, callback)
+                        return true
+                    }
+                }
 
                 return false
             }
@@ -298,11 +346,11 @@ class DoramasytProvider : MainAPI() {
 
             buttons.forEachIndexed { index, button ->
                 try {
-                    val serverName = button.text().trim()
+                    val serverName = button.text().trim().ifEmpty { "Servidor ${index + 1}" }
                     Log.d("Doramasyt", "Procesando servidor $index: $serverName")
 
                     val encodedurl = button.attr("data-player")
-                    val useApi = button.attr("data-usa-api")
+                    val useApi = button.attr("data-usa-api").ifEmpty { "1" }
 
                     Log.d("Doramasyt", "URL codificada del servidor $serverName: ${encodedurl.take(50)}...")
                     Log.d("Doramasyt", "Usa API: $useApi")
@@ -328,21 +376,30 @@ class DoramasytProvider : MainAPI() {
                         Log.d("Doramasyt", "Obteniendo iframe de: $iframeUrl")
 
                         try {
-                            val iframeResponse = app.get(
-                                iframeUrl,
-                                headers = mapOf(
-                                    "Referer" to data,
-                                    "X-Requested-With" to "XMLHttpRequest"
-                                )
+                            val iframeHeaders = headers + mapOf(
+                                "Referer" to data,
+                                "X-Requested-With" to "XMLHttpRequest"
                             )
+
+                            val iframeResponse = app.get(iframeUrl, headers = iframeHeaders)
 
                             var iframeSrc = iframeResponse.document.selectFirst("iframe")?.attr("src")
                                 ?: iframeResponse.document.selectFirst(".ifplay iframe")?.attr("src")
                                 ?: iframeResponse.document.selectFirst("div.player iframe")?.attr("src")
                                 ?: iframeResponse.document.selectFirst("div.ifplay iframe")?.attr("src")
+                                ?: iframeResponse.document.selectFirst("[src*='embed']")?.attr("src")
 
                             if (!iframeSrc.isNullOrEmpty()) {
                                 Log.d("Doramasyt", "iframe src encontrado para $serverName: $iframeSrc")
+
+                                if (!iframeSrc.startsWith("http")) {
+                                    iframeSrc = if (iframeSrc.startsWith("//")) {
+                                        "https:$iframeSrc"
+                                    } else {
+                                        "$mainUrl$iframeSrc"
+                                    }
+                                }
+
                                 customLoadExtractor(iframeSrc, iframeUrl, subtitleCallback, callback)
                                 linksFound = true
                             } else {
@@ -354,14 +411,15 @@ class DoramasytProvider : MainAPI() {
                                     Regex("(https?://[^\"'\\s]+\\.mp4[^\"'\\s]*)"),
                                     Regex("file[\"']?:\\s*[\"']([^\"']+)[\"']"),
                                     Regex("source[\"']?:\\s*[\"']([^\"']+)[\"']"),
-                                    Regex("src[\"']?:\\s*[\"']([^\"']+)[\"']")
+                                    Regex("src[\"']?:\\s*[\"']([^\"']+)[\"']"),
+                                    Regex("\"(https?://[^\"]+\\.(mp4|m3u8)[^\"]*?)\"")
                                 )
 
                                 for (pattern in urlPatterns) {
                                     val matches = pattern.findAll(htmlContent)
                                     for (match in matches) {
                                         val videoUrl = match.groups[1]?.value ?: match.value
-                                        if (videoUrl.startsWith("http")) {
+                                        if (videoUrl.startsWith("http") && (videoUrl.contains(".m3u8") || videoUrl.contains(".mp4"))) {
                                             Log.d("Doramasyt", "URL de video encontrada para $serverName: $videoUrl")
 
                                             if (videoUrl.contains(".m3u8")) {
