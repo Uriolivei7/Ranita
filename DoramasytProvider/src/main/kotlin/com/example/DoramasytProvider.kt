@@ -274,7 +274,17 @@ class DoramasytProvider : MainAPI() {
                 "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8"
             )
 
-            val response = app.get(data, headers = headers, referer = mainUrl)
+            var response = app.get(data, headers = headers, referer = mainUrl)
+
+            if (response.code == 404 && data.contains("twinkling-watermelon")) {
+                Log.d("Doramasyt", "Error 404 detectado, intentando con URL alternativa")
+                val alternativeUrl = data.replace("twinkling-watermelon", "winkling-watermelon")
+                response = app.get(alternativeUrl, headers = headers, referer = mainUrl)
+                if (response.code == 200) {
+                    Log.d("Doramasyt", "URL alternativa funcionó: $alternativeUrl")
+                }
+            }
+
             Log.d("Doramasyt", "Código de respuesta: ${response.code}")
 
             if (response.code != 200) {
