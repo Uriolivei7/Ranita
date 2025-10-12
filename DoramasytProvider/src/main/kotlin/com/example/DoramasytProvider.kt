@@ -271,18 +271,26 @@ class DoramasytProvider : MainAPI() {
             val response = app.get(data)
             Log.d("Doramasyt", "Respuesta obtenida de: $data")
 
-            // Primero intentar con el selector más específico
-            var buttons = response.document.select("#myTab button.play-video")
-            Log.d("Doramasyt", "Número de botones encontrados con #myTab button.play-video: ${buttons.size}")
+            var buttons = response.document.select("ul#myTab li button.play-video")
+            Log.d("Doramasyt", "Número de botones encontrados con ul#myTab li button.play-video: ${buttons.size}")
 
             if (buttons.isEmpty()) {
                 Log.w("Doramasyt", "No se encontraron botones con el selector principal")
                 buttons = response.document.select("button[data-player]")
-                Log.d("Doramasyt", "Botones encontrados con selector alternativo: ${buttons.size}")
+                Log.d("Doramasyt", "Botones encontrados con selector alternativo button[data-player]: ${buttons.size}")
+            }
+
+            if (buttons.isEmpty()) {
+                buttons = response.document.select("[data-player]")
+                Log.d("Doramasyt", "Botones encontrados con selector más general [data-player]: ${buttons.size}")
             }
 
             if (buttons.isEmpty()) {
                 Log.e("Doramasyt", "No se encontraron botones de reproducción")
+
+                val htmlSnippet = response.document.select("#myTab").html()
+                Log.d("Doramasyt", "HTML de #myTab (primeros 500 chars): ${htmlSnippet.take(500)}")
+
                 return false
             }
 
@@ -329,28 +337,24 @@ class DoramasytProvider : MainAPI() {
                             )
 
                             var iframeSrc = iframeResponse.document.selectFirst("iframe")?.attr("src")
-
-                            if (iframeSrc.isNullOrEmpty()) {
-                                iframeSrc = iframeResponse.document.selectFirst(".ifplay iframe")?.attr("src")
-                            }
-
-                            if (iframeSrc.isNullOrEmpty()) {
-                                iframeSrc = iframeResponse.document.selectFirst("div.player iframe")?.attr("src")
-                            }
+                                ?: iframeResponse.document.selectFirst(".ifplay iframe")?.attr("src")
+                                ?: iframeResponse.document.selectFirst("div.player iframe")?.attr("src")
+                                ?: iframeResponse.document.selectFirst("div.ifplay iframe")?.attr("src")
 
                             if (!iframeSrc.isNullOrEmpty()) {
-                                Log.d("Doramasyt_LoadLinks", "iframe src encontrado para $serverName: $iframeSrc")
+                                Log.d("Doramasyt", "iframe src encontrado para $serverName: $iframeSrc")
                                 customLoadExtractor(iframeSrc, iframeUrl, subtitleCallback, callback)
                                 linksFound = true
                             } else {
-                                Log.w("Doramasyt_LoadLinks", "No se encontró iframe para el servidor $serverName")
+                                Log.w("Doramasyt", "No se encontró iframe para el servidor $serverName")
 
                                 val htmlContent = iframeResponse.document.html()
                                 val urlPatterns = listOf(
                                     Regex("(https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*)"),
                                     Regex("(https?://[^\"'\\s]+\\.mp4[^\"'\\s]*)"),
                                     Regex("file[\"']?:\\s*[\"']([^\"']+)[\"']"),
-                                    Regex("source[\"']?:\\s*[\"']([^\"']+)[\"']")
+                                    Regex("source[\"']?:\\s*[\"']([^\"']+)[\"']"),
+                                    Regex("src[\"']?:\\s*[\"']([^\"']+)[\"']")
                                 )
 
                                 for (pattern in urlPatterns) {
@@ -448,6 +452,5 @@ class DoramasytProvider : MainAPI() {
             Log.e("Doramasyt_LoadExtractor", "Error al ejecutar loadExtractor: ${e.message}", e)
         }
     }
-
 
 }
