@@ -254,6 +254,103 @@ class DoramasytProvider : MainAPI() {
         }
     }
 
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        Log.d("Doramasyt", "loadLinks iniciado - data: $data, isCasting: $isCasting")
+
+        try {
+            val response = app.get(data)
+            Log.d("Doramasyt", "Respuesta obtenida de: $data")
+
+            val buttons = response.document.select("#myTab button.play-video")
+            Log.d("Doramasyt", "Número de botones encontrados: ${buttons.size}")
+
+            if (buttons.isEmpty()) {
+                Log.w("Doramasyt", "No se encontraron botones con el selector '#myTab button.play-video'")
+                val alternativeButtons = response.document.select("button[data-player]")
+                Log.d("Doramasyt", "Botones alternativos encontrados: ${alternativeButtons.size}")
+
+                if (alternativeButtons.isNotEmpty()) {
+                    buttons.addAll(alternativeButtons)
+                }
+            }
+
+            buttons.forEachIndexed { index, button ->
+                try {
+                    val serverName = button.text()
+                    Log.d("Doramasyt", "Procesando servidor $index: $serverName")
+
+                    val encodedurl = button.attr("data-player")
+                    val useApi = button.attr("data-usa-api")
+
+                    Log.d("Doramasyt", "URL codificada del servidor $serverName: $encodedurl")
+                    Log.d("Doramasyt", "Usa API: $useApi")
+
+                    if (encodedurl.isEmpty()) {
+                        Log.w("Doramasyt", "URL codificada vacía para el servidor $serverName")
+                        return@forEachIndexed
+                    }
+
+                    val urlDecoded = try {
+                        base64Decode(encodedurl)
+                    } catch (e: Exception) {
+                        Log.e("Doramasyt", "Error al decodificar base64 para $serverName: ${e.message}", e)
+                        return@forEachIndexed
+                    }
+
+                    Log.d("Doramasyt", "URL decodificada del servidor $serverName: $urlDecoded")
+
+                    if (useApi == "1") {
+                        Log.d("Doramasyt", "Servidor $serverName usa API, obteniendo iframe")
+
+                        val iframeUrl = "$mainUrl/reproductor?video=$encodedurl"
+                        Log.d("Doramasyt", "Obteniendo iframe de: $iframeUrl")
+
+                        try {
+                            val iframeResponse = app.get(iframeUrl)
+                            val iframeSrc = iframeResponse.document.selectFirst("iframe")?.attr("src")
+
+                            if (iframeSrc != null) {
+                                Log.d("Doramasyt", "iframe src encontrado para $serverName: $iframeSrc")
+                                customLoadExtractor(iframeSrc, mainUrl, subtitleCallback, callback)
+                            } else {
+                                Log.w("Doramasyt", "No se encontró iframe para el servidor $serverName")
+                                val ifplayContent = iframeResponse.document.select(".ifplay iframe").attr("src")
+                                if (ifplayContent.isNotEmpty()) {
+                                    Log.d("Doramasyt", "iframe encontrado en .ifplay: $ifplayContent")
+                                    customLoadExtractor(ifplayContent, mainUrl, subtitleCallback, callback)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Doramasyt", "Error al obtener iframe para $serverName: ${e.message}", e)
+                        }
+                    } else {
+                        if (urlDecoded.startsWith("http")) {
+                            Log.d("Doramasyt", "URL directa para $serverName: $urlDecoded")
+                            customLoadExtractor(urlDecoded, mainUrl, subtitleCallback, callback)
+                        } else {
+                            Log.w("Doramasyt", "URL decodificada no es HTTP para $serverName: $urlDecoded")
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    Log.e("Doramasyt", "Error al procesar servidor $index: ${e.message}", e)
+                }
+            }
+
+            Log.d("Doramasyt", "loadLinks completado")
+            return true
+
+        } catch (e: Exception) {
+            Log.e("Doramasyt", "Error general en loadLinks: ${e.message}", e)
+            return false
+        }
+    }
+
     suspend fun customLoadExtractor(
         url: String,
         referer: String?,
@@ -267,26 +364,5 @@ class DoramasytProvider : MainAPI() {
             .replaceFirst("https://filemoon.link", "https://filemoon.sx")
             .replaceFirst("https://sblona.com", "https://watchsb.com")
             , referer, subtitleCallback, callback)
-    }
-
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        app.get(data).document.select("#myTab li").amap {
-            val encodedurl = it.select(".play-video").attr("data-player")
-            val urlDecoded = base64Decode(encodedurl)
-            if(urlDecoded.startsWith("http")){
-                val url = (urlDecoded).replace("https://monoschinos2.com/reproductor?url=", "")
-                customLoadExtractor(url, mainUrl, subtitleCallback, callback)
-            }else{
-                app.get("$mainUrl/reproductor?video=$encodedurl").document.selectFirst("iframe")?.attr("src")?.let {
-                    customLoadExtractor(it, mainUrl, subtitleCallback, callback)
-                }
-            }
-        }
-        return true
     }
 }

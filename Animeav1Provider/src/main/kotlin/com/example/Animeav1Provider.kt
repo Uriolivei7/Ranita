@@ -266,7 +266,7 @@ class Animeav1 : MainAPI() {
 
                     try {
                         loadCustomExtractor(
-                            "Subtitulado:$server",
+                            "$server: Subtitulado",
                             url,
                             "",
                             subtitleCallback,
@@ -292,7 +292,7 @@ class Animeav1 : MainAPI() {
 
                     try {
                         loadCustomExtractor(
-                            "Español Latino:$server",
+                            "$server: Español Latino",
                             url,
                             "",
                             subtitleCallback,
