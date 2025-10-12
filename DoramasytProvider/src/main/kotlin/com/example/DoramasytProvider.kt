@@ -7,6 +7,11 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import java.util.*
 import kotlin.collections.ArrayList
 import android.util.Log
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.net.URI
 
 
 class DoramasytProvider : MainAPI() {
@@ -266,28 +271,32 @@ class DoramasytProvider : MainAPI() {
             val response = app.get(data)
             Log.d("Doramasyt", "Respuesta obtenida de: $data")
 
-            val buttons = response.document.select("#myTab button.play-video")
-            Log.d("Doramasyt", "Número de botones encontrados: ${buttons.size}")
+            // Primero intentar con el selector más específico
+            var buttons = response.document.select("#myTab button.play-video")
+            Log.d("Doramasyt", "Número de botones encontrados con #myTab button.play-video: ${buttons.size}")
 
             if (buttons.isEmpty()) {
-                Log.w("Doramasyt", "No se encontraron botones con el selector '#myTab button.play-video'")
-                val alternativeButtons = response.document.select("button[data-player]")
-                Log.d("Doramasyt", "Botones alternativos encontrados: ${alternativeButtons.size}")
-
-                if (alternativeButtons.isNotEmpty()) {
-                    buttons.addAll(alternativeButtons)
-                }
+                Log.w("Doramasyt", "No se encontraron botones con el selector principal")
+                buttons = response.document.select("button[data-player]")
+                Log.d("Doramasyt", "Botones encontrados con selector alternativo: ${buttons.size}")
             }
+
+            if (buttons.isEmpty()) {
+                Log.e("Doramasyt", "No se encontraron botones de reproducción")
+                return false
+            }
+
+            var linksFound = false
 
             buttons.forEachIndexed { index, button ->
                 try {
-                    val serverName = button.text()
+                    val serverName = button.text().trim()
                     Log.d("Doramasyt", "Procesando servidor $index: $serverName")
 
                     val encodedurl = button.attr("data-player")
                     val useApi = button.attr("data-usa-api")
 
-                    Log.d("Doramasyt", "URL codificada del servidor $serverName: $encodedurl")
+                    Log.d("Doramasyt", "URL codificada del servidor $serverName: ${encodedurl.take(50)}...")
                     Log.d("Doramasyt", "Usa API: $useApi")
 
                     if (encodedurl.isEmpty()) {
@@ -298,7 +307,7 @@ class DoramasytProvider : MainAPI() {
                     val urlDecoded = try {
                         base64Decode(encodedurl)
                     } catch (e: Exception) {
-                        Log.e("Doramasyt", "Error al decodificar base64 para $serverName: ${e.message}", e)
+                        Log.e("Doramasyt", "Error al decodificar base64 para $serverName: ${e.message}")
                         return@forEachIndexed
                     }
 
@@ -311,27 +320,91 @@ class DoramasytProvider : MainAPI() {
                         Log.d("Doramasyt", "Obteniendo iframe de: $iframeUrl")
 
                         try {
-                            val iframeResponse = app.get(iframeUrl)
-                            val iframeSrc = iframeResponse.document.selectFirst("iframe")?.attr("src")
+                            val iframeResponse = app.get(
+                                iframeUrl,
+                                headers = mapOf(
+                                    "Referer" to data,
+                                    "X-Requested-With" to "XMLHttpRequest"
+                                )
+                            )
 
-                            if (iframeSrc != null) {
-                                Log.d("Doramasyt", "iframe src encontrado para $serverName: $iframeSrc")
-                                customLoadExtractor(iframeSrc, mainUrl, subtitleCallback, callback)
+                            var iframeSrc = iframeResponse.document.selectFirst("iframe")?.attr("src")
+
+                            if (iframeSrc.isNullOrEmpty()) {
+                                iframeSrc = iframeResponse.document.selectFirst(".ifplay iframe")?.attr("src")
+                            }
+
+                            if (iframeSrc.isNullOrEmpty()) {
+                                iframeSrc = iframeResponse.document.selectFirst("div.player iframe")?.attr("src")
+                            }
+
+                            if (!iframeSrc.isNullOrEmpty()) {
+                                Log.d("Doramasyt_LoadLinks", "iframe src encontrado para $serverName: $iframeSrc")
+                                customLoadExtractor(iframeSrc, iframeUrl, subtitleCallback, callback)
+                                linksFound = true
                             } else {
-                                Log.w("Doramasyt", "No se encontró iframe para el servidor $serverName")
-                                val ifplayContent = iframeResponse.document.select(".ifplay iframe").attr("src")
-                                if (ifplayContent.isNotEmpty()) {
-                                    Log.d("Doramasyt", "iframe encontrado en .ifplay: $ifplayContent")
-                                    customLoadExtractor(ifplayContent, mainUrl, subtitleCallback, callback)
+                                Log.w("Doramasyt_LoadLinks", "No se encontró iframe para el servidor $serverName")
+
+                                val htmlContent = iframeResponse.document.html()
+                                val urlPatterns = listOf(
+                                    Regex("(https?://[^\"'\\s]+\\.m3u8[^\"'\\s]*)"),
+                                    Regex("(https?://[^\"'\\s]+\\.mp4[^\"'\\s]*)"),
+                                    Regex("file[\"']?:\\s*[\"']([^\"']+)[\"']"),
+                                    Regex("source[\"']?:\\s*[\"']([^\"']+)[\"']")
+                                )
+
+                                for (pattern in urlPatterns) {
+                                    val matches = pattern.findAll(htmlContent)
+                                    for (match in matches) {
+                                        val videoUrl = match.groups[1]?.value ?: match.value
+                                        if (videoUrl.startsWith("http")) {
+                                            Log.d("Doramasyt", "URL de video encontrada para $serverName: $videoUrl")
+
+                                            if (videoUrl.contains(".m3u8")) {
+                                                val videoHost = try {
+                                                    URI(videoUrl).host
+                                                } catch (e: Exception) {
+                                                    ""
+                                                }
+
+                                                M3u8Helper.generateM3u8(
+                                                    serverName,
+                                                    videoUrl,
+                                                    iframeUrl,
+                                                    headers = if (videoHost.isNotEmpty()) {
+                                                        mapOf("Origin" to "https://$videoHost")
+                                                    } else {
+                                                        mapOf()
+                                                    }
+                                                ).forEach(callback)
+                                            } else {
+                                                callback.invoke(
+                                                    newExtractorLink(
+                                                        source = "Doramasyt",
+                                                        name = serverName,
+                                                        url = videoUrl,
+                                                        type = ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = iframeUrl
+                                                        this.quality = Qualities.Unknown.value
+                                                    }
+                                                )
+                                            }
+                                            linksFound = true
+                                            break
+                                        }
+                                    }
+                                    if (linksFound) break
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e("Doramasyt", "Error al obtener iframe para $serverName: ${e.message}", e)
+                            Log.e("Doramasyt", "Error al obtener iframe para $serverName: ${e.message}")
                         }
                     } else {
                         if (urlDecoded.startsWith("http")) {
                             Log.d("Doramasyt", "URL directa para $serverName: $urlDecoded")
-                            customLoadExtractor(urlDecoded, mainUrl, subtitleCallback, callback)
+                            customLoadExtractor(urlDecoded, data, subtitleCallback, callback)
+                            linksFound = true
                         } else {
                             Log.w("Doramasyt", "URL decodificada no es HTTP para $serverName: $urlDecoded")
                         }
@@ -342,8 +415,8 @@ class DoramasytProvider : MainAPI() {
                 }
             }
 
-            Log.d("Doramasyt", "loadLinks completado")
-            return true
+            Log.d("Doramasyt", "loadLinks completado. Links encontrados: $linksFound")
+            return linksFound
 
         } catch (e: Exception) {
             Log.e("Doramasyt", "Error general en loadLinks: ${e.message}", e)
@@ -355,14 +428,26 @@ class DoramasytProvider : MainAPI() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit)
-    {
-        loadExtractor(url
+        callback: (ExtractorLink) -> Unit
+    ) {
+        Log.d("Doramasyt_LoadExtractor", "customLoadExtractor - URL original: $url")
+
+        val modifiedUrl = url
             .replaceFirst("https://hglink.to", "https://streamwish.to")
-            .replaceFirst("https://swdyu.com","https://streamwish.to")
+            .replaceFirst("https://swdyu.com", "https://streamwish.to")
             .replaceFirst("https://mivalyo.com", "https://vidhidepro.com")
             .replaceFirst("https://filemoon.link", "https://filemoon.sx")
             .replaceFirst("https://sblona.com", "https://watchsb.com")
-            , referer, subtitleCallback, callback)
+
+        Log.d("Doramasyt_LoadExtractor", "customLoadExtractor - URL modificada: $modifiedUrl")
+
+        try {
+            loadExtractor(modifiedUrl, referer, subtitleCallback, callback)
+            Log.d("Doramasyt_LoadExtractor", "loadExtractor ejecutado exitosamente")
+        } catch (e: Exception) {
+            Log.e("Doramasyt_LoadExtractor", "Error al ejecutar loadExtractor: ${e.message}", e)
+        }
     }
+
+
 }
