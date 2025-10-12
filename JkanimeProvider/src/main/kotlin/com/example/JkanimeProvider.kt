@@ -115,31 +115,6 @@ class JkanimeProvider : MainAPI() {
         return HomePageResponse(items)
     }
 
-    /* data class MainSearch(
-         @JsonProperty("animes") val animes: List<Animes>,
-         @JsonProperty("anime_types") val animeTypes: AnimeTypes
-     )
-
-     data class Animes(
-         @JsonProperty("id") val id: String,
-         @JsonProperty("slug") val slug: String,
-         @JsonProperty("title") val title: String,
-         @JsonProperty("image") val image: String,
-         @JsonProperty("synopsis") val synopsis: String,
-         @JsonProperty("type") val type: String,
-         @JsonProperty("status") val status: String,
-         @JsonProperty("thumbnail") val thumbnail: String
-     )
-
-     data class AnimeTypes(
-         @JsonProperty("TV") val TV: String,
-         @JsonProperty("OVA") val OVA: String,
-         @JsonProperty("Movie") val Movie: String,
-         @JsonProperty("Special") val Special: String,
-         @JsonProperty("ONA") val ONA: String,
-         @JsonProperty("Music") val Music: String
-     ) */
-
     override suspend fun search(query: String): List<SearchResponse> {
         val search = ArrayList<SearchResponse>()
         val doc = app.get("$mainUrl/buscar/$query").document

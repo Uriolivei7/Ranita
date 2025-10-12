@@ -319,7 +319,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 18,
     "name": "DoramasYT",
     "internalName": "DoramasytProvider",
@@ -332,6 +332,6 @@
     ],
     "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
     "language": "mx",
-    "fileSize": 25000
+    "fileSize": 26000
   }
 ]

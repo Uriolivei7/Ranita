@@ -121,18 +121,15 @@ class DoramasflixProvider:MainAPI() {
         }
 
         return when {
-            // Si ya es una URL completa
             link.startsWith("http://") || link.startsWith("https://") -> {
                 Log.d("DoramasflixProvider", "getImageUrl: URL completa: $link")
                 link
             }
-            // Si empieza con /
             link.startsWith("/") -> {
                 val url = "https://image.tmdb.org/t/p/w1280$link" // Sin / extra
                 Log.d("DoramasflixProvider", "getImageUrl: Path con /: $link -> $url")
                 url
             }
-            // Si no empieza con /
             else -> {
                 val url = "https://image.tmdb.org/t/p/w1280/$link"
                 Log.d("DoramasflixProvider", "getImageUrl: Path sin /: $link -> $url")

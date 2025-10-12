@@ -207,8 +207,6 @@ class DoramasytProvider : MainAPI() {
         val doc = app.get(url, timeout = 120).document
         val poster = doc.selectFirst("img.rounded-3")?.attr("data-src") ?: ""
         val backimage = doc.selectFirst("img.w-100")?.attr("data-src") ?: ""
-        //val backimageregex = Regex("url\\((.*)\\)")
-        //val backimage = backimageregex.find(backimagedoc)?.destructured?.component1() ?: ""
         val title = doc.selectFirst(".fs-2")?.text() ?: ""
         val type = doc.selectFirst("div.bg-transparent > dl:nth-child(1) > dd")?.text() ?: ""
         val description = doc.selectFirst("div.mb-3")?.text()?.replace("Ver menos", "") ?: ""
@@ -221,31 +219,49 @@ class DoramasytProvider : MainAPI() {
         val caplist = doc.selectFirst(".caplist")?.attr("data-ajax") ?: throw ErrorLoadingException("Intenta de nuevo")
 
         val capJson = app.post(caplist,
-                headers = mapOf(
-                        "Host" to "www.doramasyt.com",
-                        "User-Agent" to USER_AGENT,
-                        "Accept" to "application/json, text/javascript, */*; q=0.01",
-                        "Accept-Language" to "en-US,en;q=0.5",
-                        "Referer" to url,
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "Origin" to mainUrl,
-                        "DNT" to "1",
-                        "Alt-Used" to "www.doramasyt.com",
-                        "Connection" to "keep-alive",
-                        "Sec-Fetch-Dest" to "empty",
-                        "Sec-Fetch-Mode" to "cors",
-                        "Sec-Fetch-Site" to "same-origin",
-                        "TE" to "trailers"
-                ),
-                cookies = latestCookie,
-                data = mapOf("_token" to latestToken)).parsed<CapList>()
+            headers = mapOf(
+                "Host" to "www.doramasyt.com",
+                "User-Agent" to USER_AGENT,
+                "Accept" to "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language" to "en-US,en;q=0.5",
+                "Referer" to url,
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With" to "XMLHttpRequest",
+                "Origin" to mainUrl,
+                "DNT" to "1",
+                "Alt-Used" to "www.doramasyt.com",
+                "Connection" to "keep-alive",
+                "Sec-Fetch-Dest" to "empty",
+                "Sec-Fetch-Mode" to "cors",
+                "Sec-Fetch-Site" to "same-origin",
+                "TE" to "trailers"
+            ),
+            cookies = latestCookie,
+            data = mapOf("_token" to latestToken)).parsed<CapList>()
+
+        val episodeLinks = doc.select("a[href*='/ver/'][href*='episodio']")
+        val correctSlug = if (episodeLinks.isNotEmpty()) {
+            val firstEpLink = episodeLinks.first()?.attr("href") ?: ""
+            if (firstEpLink.isNotEmpty()) {
+                Regex("/ver/([^/]+)-episodio-\\d+").find(firstEpLink)?.groupValues?.get(1)
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+
         val epList = capJson.eps.map { epnum ->
-            val epUrl = "${url.replace("-sub-espanol","").replace("/dorama/","/ver/")}-episodio-${epnum.num}"
-            newEpisode(
-                    epUrl
-            ){
-                this.episode = epnum.toString().toIntOrNull()
+            val epUrl = if (correctSlug != null) {
+                "$mainUrl/ver/$correctSlug-episodio-${epnum.num}"
+            } else {
+                "${url.replace("-sub-espanol","").replace("/dorama/","/ver/")}-episodio-${epnum.num}"
+            }
+
+            Log.d("Doramasyt", "Episodio ${epnum.num} URL: $epUrl")
+
+            newEpisode(epUrl) {
+                this.episode = epnum.num
             }
         }
 
