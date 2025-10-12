@@ -315,5 +315,23 @@
     "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
     "language": "mx",
     "fileSize": 21000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 18,
+    "name": "DoramasYT",
+    "internalName": "DoramasytProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para doramasyt.com",
+    "tvTypes": [
+      "AsianDrama"
+    ],
+    "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
+    "language": "mx",
+    "fileSize": 20000
   }
 ]

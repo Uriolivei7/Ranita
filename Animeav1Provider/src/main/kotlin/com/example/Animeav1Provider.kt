@@ -254,19 +254,19 @@ class Animeav1 : MainAPI() {
                 val subEmbeds = extractLinks("SUB")
                 val dubEmbeds = extractLinks("DUB")
 
-                Log.i("Animeav1", "Total enlaces Japonés: ${subEmbeds.size}")
+                Log.i("Animeav1", "Total enlaces Subtitulado: ${subEmbeds.size}")
                 Log.i("Animeav1", "Total enlaces Español Latino: ${dubEmbeds.size}")
 
                 var subProcessed = 0
                 var dubProcessed = 0
 
                 subEmbeds.forEach { (server, url) ->
-                    Log.d("Animeav1", "Procesando Japonés enlace #${++subProcessed}: $server")
+                    Log.d("Animeav1", "Procesando Subtitulado enlace #${++subProcessed}: $server")
                     val startTime = System.currentTimeMillis()
 
                     try {
                         loadCustomExtractor(
-                            "Animeav1 [Japonés:$server]",
+                            "Subtitulado:$server",
                             url,
                             "",
                             subtitleCallback,
@@ -276,11 +276,11 @@ class Animeav1 : MainAPI() {
                         val duration = System.currentTimeMillis() - startTime
 
                         stats[server] = (stats[server] ?: 0) + 1
-                        Log.d("Animeav1", "Japonés:$server procesado exitosamente en ${duration}ms")
+                        Log.d("Animeav1", "Subtitulado:$server procesado exitosamente en ${duration}ms")
 
                     } catch (e: Exception) {
-                        failedServers.add("Japonés:$server")
-                        Log.e("Animeav1", "Error al procesar Japonés:$server - ${e.javaClass.simpleName}: ${e.message}")
+                        failedServers.add("Subtitulado:$server")
+                        Log.e("Animeav1", "Error al procesar Subtitulado:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
                         e.printStackTrace()
                     }
@@ -292,7 +292,7 @@ class Animeav1 : MainAPI() {
 
                     try {
                         loadCustomExtractor(
-                            "Animeav1 [Español Latino:$server]",
+                            "Español Latino:$server",
                             url,
                             "",
                             subtitleCallback,
@@ -306,7 +306,7 @@ class Animeav1 : MainAPI() {
 
                     } catch (e: Exception) {
                         failedServers.add("Español Latino:$server")
-                        Log.e("Animeav1", "✗ Error al procesar Español Latino:$server - ${e.javaClass.simpleName}: ${e.message}")
+                        Log.e("Animeav1", "Error al procesar Español Latino:$server - ${e.javaClass.simpleName}: ${e.message}")
                         Log.e("Animeav1", "URL problemática: $url")
                         e.printStackTrace()
                     }
