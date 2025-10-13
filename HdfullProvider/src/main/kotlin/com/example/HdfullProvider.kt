@@ -65,7 +65,7 @@ class HdfullProvider : MainAPI() {
             )
         ).document
         val csfr = csfrDoc.selectFirst("input[value*='sid']")!!.attr("value")
-        Log.d("TAG", "search: $csfr")
+        //Log.d("TAG", "search: $csfr")
         val doc = app.post(
             url, cookies = latestCookie, referer = "$mainUrl/buscar", data = mapOf(
                 "__csrf_magic" to csfr,
@@ -73,7 +73,7 @@ class HdfullProvider : MainAPI() {
                 "query" to query,
             )
         ).document
-        Log.d("TAG", "search: $doc")
+        //Log.d("TAG", "search: $doc")
         return doc.select("div.container div.view").amap {
             val title = it.selectFirst("h5.left a.link")?.attr("title")
             val link = it.selectFirst("h5.left a.link")?.attr("href")
@@ -250,44 +250,81 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-    private fun decodeHash(hash: String): List<ProviderCode> {
-        val base64Decoded = Base64.decode(hash, Base64.DEFAULT).decodeToString()
+    fun decodeHash(hash: String): List<ProviderCode> {
+        val result = run {
+            try {
+                val decodedBytes = Base64.decode(hash, Base64.DEFAULT)
+                val decodedString = String(decodedBytes, Charsets.UTF_8)
 
-        val startBracket = base64Decoded.indexOf('{')
-        if (startBracket == -1) {
-            throw Exception("No se encontró el corchete inicial '{' en el JSON decodificado.")
+                val deobfuscated = StringBuilder()
+                for (i in 14 until decodedString.length) {
+                    val char = decodedString[i]
+                    val code = char.code
+
+                    val newChar = when {
+                        code in 32..126 -> {
+                            val shifted = code - 14
+                            if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
+                        }
+                        else -> char
+                    }
+                    deobfuscated.append(newChar)
+                }
+                var jsonString = deobfuscated.toString()
+
+                jsonString = jsonString
+                    .replace(Regex("\"\\?\\?\\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                    .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                    .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
+
+                    .replace("ddi??", "dvdrip")
+                    .replace("hd\u0004\u0006", "hdtv")
+                    .replace("d\u0006d\u0002i\u0000", "dvdrip")
+                    .replace("hd72\"\"", "hd720")
+                    .replace("7SPSU4", "ESPSUB")
+                    .replace("7N9", "ENG")
+                    .replace("7SP", "ESP")
+                    .replace("L3T", "LAT")
+
+                    .replace(Regex("[\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F]"), "")
+                    .replace(Regex("[\\p{Cntrl}]"), "")
+                    .replace('\n', ' ')
+                    .replace("}{", "},{")
+
+                    .replace(Regex(""""(\d+)""""), "$1")
+
+                    .replace("\"\"", "\"")
+
+                val firstBrace = jsonString.indexOf("{")
+
+                if (firstBrace > -1) {
+                    jsonString = jsonString.substring(firstBrace).trim()
+                } else {
+                    Log.e("HDFull", "Error: No se encontró el carácter de inicio de objeto '{'.")
+                    return@run emptyList()
+                }
+
+                if (!jsonString.startsWith("[")) {
+                    jsonString = "[${jsonString}"
+                }
+
+                if (!jsonString.endsWith("]")) {
+                    jsonString = "${jsonString}]"
+                }
+
+                jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
+
+                Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
+
+                AppUtils.parseJson<List<ProviderCode>>(jsonString)
+
+            } catch (e: Exception) {
+                Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
+                emptyList()
+            }
         }
 
-        var jsonString = base64Decoded.substring(startBracket)
-
-        if (!jsonString.startsWith('[')) {
-            jsonString = "[$jsonString]"
-        }
-
-        jsonString = jsonString.replace(Regex("[\\p{Cntrl}&&[^\r\n\t]]"), "")
-
-        jsonString = jsonString
-            .replace("\"oide\"", "\"id_ofuscada\"")
-            .replace("\"id_ofuscada\"", "\"oide\"")
-            .replace("\"ali\"", "\"ali\"")
-            .replace("\"??oide\"", "\"oide\"")
-            .replace("\"ali\t\"", "\"ali\"")
-            .replace("\"??oide\"", "\"oide\"")
-            .replace("\"\u0000\u0002o\u0006ide\u0002\"", "\"oide\"")
-            .replace("\"\u0001\u0005ali\u0004\t\"", "\"ali\"")
-            .replace("\"\u0000\u0002o\u0006ide\u0002\":\"1\"\"", "\"oide\":\"1\"")
-
-        jsonString = jsonString
-            .replace("\"id\":\"", "\"id\":")
-            .replace("\"\"", "\"")
-
-        jsonString = jsonString
-            .replace("code\":\"","code\":\"")
-            .replace("id\":\"","id\":\"")
-
-        jsonString = jsonString.replace(""""", "\"").replace(""""", "\"")
-
-        return mapper.readValue(jsonString)
+        return result
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
