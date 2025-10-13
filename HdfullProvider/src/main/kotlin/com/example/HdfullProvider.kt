@@ -192,14 +192,6 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-    data class ProviderCode(
-        val id: String,
-        val provider: String,
-        val code: String,
-        val lang: String,
-        val quality: String
-    )
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -258,11 +250,11 @@ class HdfullProvider : MainAPI() {
             Log.d("HDFull", "Decodificando hash de longitud: ${str.length}")
 
             val decodedBytes = Base64.decode(str, Base64.DEFAULT)
-            val decodedString = String(decodedBytes)
-            Log.d("HDFull", "String decodificado: $decodedString")
+            val decodedString = String(decodedBytes, Charsets.UTF_8)
+            Log.d("HDFull", "String decodificado Base64: $decodedString")
 
-            val jsonString = decodedString.substrings(14)
-            Log.d("HDFull", "JSON después de substrings: $jsonString")
+            val jsonString = decodedString.substring(14).deobfuscate()
+            Log.d("HDFull", "JSON después de desofuscar: $jsonString")
 
             AppUtils.parseJson<List<ProviderCode>>(jsonString)
         } catch (e: Exception) {
@@ -271,56 +263,52 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-    fun String.obfs(key: Int, n: Int = 126): String {
-        if (key % 1 != 0 || n % 1 != 0) {
-            return this
-        }
-        val chars = this.toCharArray()
-        for (i in chars.indices) {
-            val c = chars[i].code
-            if (c <= n) {
-                chars[i] = ((c + key) % n).toChar()
+    fun String.deobfuscate(key: Int = 112): String {
+        val result = StringBuilder()
+        for (char in this) {
+            val code = char.code
+            if (code <= 126) {
+                var newCode = code - key
+                if (newCode < 0) {
+                    newCode += 126
+                }
+                result.append(newCode.toChar())
+            } else {
+                result.append(char)
             }
         }
-        return String(chars)
-    }
-
-    fun String.substrings(key: Int, n: Int = 126): String {
-        if (key % 1 != 0 || n % 1 != 0) {
-            return this
-        }
-        return this.obfs(n - key)
+        return result.toString()
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
         val url = when (providerIdx) {
-            "1" -> "https://powvideo.org/$id"
-            "2" -> "https://streamplay.to/$id"
-            "4" -> "https://clicknupload.com/embed/$id"
+            "1" -> "https://powvideo.net/embed-$id.html"
+            "2" -> "https://streamplay.to/embed-$id.html"
+            "4" -> "https://clicknupload.link/embed-$id.html"
             "5" -> "https://gounlimited.to/embed-$id.html"
-            "6" -> "https://streamtape.com/v/$id"
+            "6" -> "https://streamtape.com/e/$id"
             "7" -> "https://jetload.net/e/$id"
-            "9" -> "https://vivo.sx/$id"
+            "9" -> "https://vivo.sx/embed/$id.html"
             "10" -> "https://ok.ru/videoembed/$id"
             "11" -> "https://1fichier.com/?$id"
-            "12" -> "https://gamovideo.com/$id"
+            "12" -> "https://gamovideo.com/embed-$id.html"
             "13" -> "https://clipwatching.com/embed-$id.html"
             "14" -> "https://jawcloud.co/embed-$id.html"
-            "15" -> "https://mixdrop.bz/f/$id"
+            "15" -> "https://mixdrop.co/e/$id"
             "17" -> "https://upstream.to/embed-$id.html"
             "18" -> "https://videobin.co/embed-$id.html"
             "21" -> "https://evoload.io/e/$id"
             "22" -> "https://embedsito.com/v/$id"
             "23" -> "https://dood.to/e/$id"
-            "24" -> "https://sb.fcdn.stream/e/$id"
+            "24" -> "https://streamsb.net/e/$id"
             "25" -> "https://uqload.com/embed-$id.html"
             "26" -> "https://voe.sx/e/$id"
-            "27" -> "https://sendvid.com/$id"
+            "27" -> "https://sendvid.com/embed/$id"
             "31" -> "https://mega.nz/embed#!$id"
             "33" -> "https://wishfast.top/e/$id"
             "35" -> "https://streamlare.com/e/$id"
             "36" -> "https://hexload.com/embed-$id.html"
-            "40" -> "https://vidmoly.me/w/$id"
+            "40" -> "https://vidmoly.to/embed-$id.html"
             "41" -> "https://streamvid.net/embed-$id"
             "43" -> "https://filelions.to/v/$id"
             "44" -> "https://filemoon.sx/e/$id"
@@ -332,5 +320,13 @@ class HdfullProvider : MainAPI() {
         Log.d("HDFull", "Proveedor $providerIdx -> URL: $url")
         return url
     }
+
+    data class ProviderCode(
+        val id: String,
+        val provider: String,
+        val code: String,
+        val lang: String,
+        val quality: String
+    )
 
 }
