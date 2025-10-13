@@ -250,78 +250,76 @@ class HdfullProvider : MainAPI() {
     }
 
     fun decodeHash(str: String): List<ProviderCode> {
-        return try {
-            Log.d("HDFull", "Decodificando hash de longitud: ${str.length}")
+        val result = run {
+            try {
+                Log.d("HDFull", "Decodificando hash de longitud: ${str.length}")
 
-            val decodedBytes = Base64.decode(str, Base64.DEFAULT)
-            val decodedString = String(decodedBytes, Charsets.UTF_8)
-            Log.d("HDFull", "String decodificado Base64: ${decodedString.replace('\n', ' ')}") // Limpiar nueva línea
+                val decodedBytes = Base64.decode(str, Base64.DEFAULT)
+                val decodedString = String(decodedBytes, Charsets.UTF_8)
 
-            val result = StringBuilder()
-            for (i in 14 until decodedString.length) {
-                val char = decodedString[i]
-                val code = char.code
+                val deobfuscated = StringBuilder()
+                for (i in 14 until decodedString.length) {
+                    val char = decodedString[i]
+                    val code = char.code
 
-                val newChar = when {
-                    code in 32..126 -> {
-                        var shifted = code - 14
-                        if (shifted < 32) {
-                            shifted += 95
+                    val newChar = when {
+                        code in 32..126 -> {
+                            val shifted = code - 14
+                            if (shifted < 32) {
+                                (shifted + 95).toChar()
+                            } else {
+                                shifted.toChar()
+                            }
                         }
-                        shifted.toChar()
+                        else -> char
                     }
-                    else -> char
+                    deobfuscated.append(newChar)
                 }
-                result.append(newChar)
+
+                val deobfuscatedString = deobfuscated.toString()
+
+                var jsonString = deobfuscatedString
+                    .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                    .replace(Regex("\"\\?\\?\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                    .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
+                    .replace("ddi??", "dvdrip")
+                    .replace("hd\u0004\u0006", "hdtv")
+                    .replace("7SPSU4", "ESPSUB")
+                    .replace("7N9", "ENG")
+                    .replace("7SP", "ESP")
+                    .replace(Regex("[\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F]"), "")
+                    .replace('\n', ' ')
+                    .replace("}{", "},{")
+                    .replace("\"\"", "\"")
+
+                val firstBrace = jsonString.indexOf("{")
+
+                if (firstBrace > -1) {
+                    jsonString = jsonString.substring(firstBrace).trim()
+                }
+
+                if (!jsonString.startsWith("[")) {
+                    jsonString = "[${jsonString}"
+                }
+
+                if (!jsonString.endsWith("]")) {
+                    jsonString = "${jsonString}]"
+                }
+
+                jsonString = jsonString.replace("},]", "}]")
+                jsonString = jsonString.replace(",]", "]")
+
+                Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
+
+                AppUtils.parseJson<List<ProviderCode>>(jsonString)
+
+            } catch (e: Exception) {
+                Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
+                emptyList()
             }
-
-            var jsonString = result.toString()
-
-            jsonString = jsonString
-                .replace("\",\"??oide\":\"1\"\"", "\",\"provider\":\"1\"\"")
-                .replace("\",\"\u0000\u0002o\u0006ide\u0002\":\"","\",\"provider\":\"")
-                .replace("\"ali\t", "\"quality")
-                .replace("\"ali", "\"quality")
-                .replace("ddi??", "dvdrip")
-                .replace("hd\u0004\u0006", "hdtv")
-                .replace("7SPSU4", "ESPSUB")
-                .replace("7N9", "ENG")
-                .replace("\u0000", "")
-                .replace("\u0001", "")
-                .replace("\u0002", "")
-                .replace("\u0003", "")
-                .replace("\u0004", "")
-                .replace("\u0005", "")
-                .replace("\u0006", "")
-                .replace("\u0007", "")
-                .replace("\u0008", "")
-                .replace("\u0009", "")
-                .replace("\u000B", "")
-                .replace("\n", "")
-
-            val firstBrace = jsonString.indexOf("{")
-            if (firstBrace > 0) {
-                jsonString = "[" + jsonString.substring(firstBrace).trim()
-            } else {
-                jsonString = "[" + jsonString.trim()
-            }
-
-            if (!jsonString.endsWith("]")) {
-                jsonString = jsonString.trimEnd() + "]"
-            }
-
-            jsonString = jsonString
-                .replace("\"\"", "\"")
-                .replace("}{", "},{")
-
-            Log.d("HDFull", "JSON corregido y limpio: $jsonString")
-
-            AppUtils.parseJson<List<ProviderCode>>(jsonString)
-
-        } catch (e: Exception) {
-            Log.e("HDFull", "Error decodificando hash: ${e.message}", e)
-            emptyList()
         }
+
+        return result
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
