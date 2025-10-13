@@ -253,7 +253,9 @@ class HdfullProvider : MainAPI() {
             val decodedString = String(decodedBytes, Charsets.UTF_8)
             Log.d("HDFull", "String decodificado Base64: $decodedString")
 
-            val jsonString = decodedString.substring(14).deobfuscate()
+            val obfuscatedJson = decodedString.substring(14)
+
+            val jsonString = deobfuscateJson(obfuscatedJson)
             Log.d("HDFull", "JSON después de desofuscar: $jsonString")
 
             AppUtils.parseJson<List<ProviderCode>>(jsonString)
@@ -263,20 +265,43 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-    fun String.deobfuscate(key: Int = 112): String {
+    fun deobfuscateJson(input: String): String {
         val result = StringBuilder()
-        for (char in this) {
-            val code = char.code
-            if (code <= 126) {
-                var newCode = code - key
-                if (newCode < 0) {
-                    newCode += 126
+
+        for (char in input) {
+            when (char) {
+                'M' -> result.append('1')
+                'N' -> result.append('2')
+                'O' -> result.append('3')
+                'P' -> result.append('4')
+                'Q' -> result.append('5')
+                'R' -> result.append('6')
+                'S' -> result.append('7')
+                'T' -> result.append('8')
+                'U' -> result.append('9')
+                'L' -> result.append('0')
+                '>' -> result.append('"')
+                'H' -> result.append(':')
+                'V' -> result.append(',')
+                '\u000E' -> result.append('[')
+                '\u001B' -> result.append(']')
+                '\u0019' -> result.append('{')
+                'y' -> result.append('}')
+                else -> {
+                    val code = char.code
+                    if (code in 32..126) {
+                        var newCode = code - 14
+                        if (newCode < 32) {
+                            newCode += 95
+                        }
+                        result.append(newCode.toChar())
+                    } else {
+                        result.append(char)
+                    }
                 }
-                result.append(newCode.toChar())
-            } else {
-                result.append(char)
             }
         }
+
         return result.toString()
     }
 
