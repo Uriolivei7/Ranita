@@ -225,7 +225,7 @@ class HdfullProvider : MainAPI() {
         Log.d("HDFull", "Hash extraído: $hash")
 
         return try {
-            val providers = decodeHash(hash)
+            val providers = decodeHashRobust(hash)
             Log.d("HDFull", "Proveedores decodificados: ${providers.size}")
 
             for (provider in providers) {
@@ -253,56 +253,151 @@ class HdfullProvider : MainAPI() {
             val decodedString = String(decodedBytes, Charsets.UTF_8)
             Log.d("HDFull", "String decodificado Base64: $decodedString")
 
-            val obfuscatedJson = decodedString.substring(14)
-
-            val jsonString = deobfuscateJson(obfuscatedJson)
+            val jsonString = deobfuscateString(decodedString.substring(14))
             Log.d("HDFull", "JSON después de desofuscar: $jsonString")
 
-            AppUtils.parseJson<List<ProviderCode>>(jsonString)
+            val fixedJson = fixJsonFormat(jsonString)
+            Log.d("HDFull", "JSON corregido: $fixedJson")
+
+            AppUtils.parseJson<List<ProviderCode>>(fixedJson)
         } catch (e: Exception) {
             Log.e("HDFull", "Error decodificando hash: ${e.message}", e)
             emptyList()
         }
     }
 
-    fun deobfuscateJson(input: String): String {
+    fun deobfuscateString(input: String): String {
         val result = StringBuilder()
 
         for (char in input) {
-            when (char) {
-                'M' -> result.append('1')
-                'N' -> result.append('2')
-                'O' -> result.append('3')
-                'P' -> result.append('4')
-                'Q' -> result.append('5')
-                'R' -> result.append('6')
-                'S' -> result.append('7')
-                'T' -> result.append('8')
-                'U' -> result.append('9')
-                'L' -> result.append('0')
-                '>' -> result.append('"')
-                'H' -> result.append(':')
-                'V' -> result.append(',')
-                '\u000E' -> result.append('[')
-                '\u001B' -> result.append(']')
-                '\u0019' -> result.append('{')
-                'y' -> result.append('}')
-                else -> {
-                    val code = char.code
-                    if (code in 32..126) {
-                        var newCode = code - 14
-                        if (newCode < 32) {
-                            newCode += 95
-                        }
-                        result.append(newCode.toChar())
-                    } else {
-                        result.append(char)
+            val code = char.code
+
+            val newChar = when {
+                code in 32..126 -> {
+                    var shifted = code - 14
+                    if (shifted < 32) {
+                        shifted += 95
                     }
+                    shifted.toChar()
                 }
+                else -> char
             }
+
+            result.append(newChar)
         }
 
         return result.toString()
+    }
+
+    fun fixJsonFormat(input: String): String {
+        var fixed = input
+            .replace("??oide", "provider")
+            .replace("ali\t", "quality")
+            .replace("ali", "quality")
+            .replace("\u0000", "")
+            .replace("\u0001", "")
+            .replace("\u0002", "")
+            .replace("\u0003", "")
+            .replace("\u0004", "")
+            .replace("\u0005", "")
+            .replace("\u0006", "")
+            .replace("\u0007", "")
+            .replace("\u0008", "")
+            .replace("\u0009", "")
+            .replace("\u000B", "")
+            .replace("ddi??", "dvdrip")
+            .replace("hd\u0004\u0006", "hdtv")
+
+        if (!fixed.startsWith("[")) {
+            val firstBrace = fixed.indexOf("{")
+            if (firstBrace > 0) {
+                fixed = "[" + fixed.substring(firstBrace)
+            } else {
+                fixed = "[{" + fixed
+            }
+        }
+
+        if (!fixed.endsWith("]")) {
+            fixed = fixed.trimEnd() + "]"
+        }
+
+        fixed = fixed.replace("\"\"", "\"")
+
+        fixed = fixed.replace("}{", "},{")
+
+        fixed = fixed.replace("\"1\"", "\"1\"")
+
+        return fixed
+    }
+
+    fun decodeHashRobust(str: String): List<ProviderCode> {
+        return try {
+            val decodedBytes = Base64.decode(str, Base64.DEFAULT)
+            val decodedString = String(decodedBytes)
+
+            val deobfuscated = StringBuilder()
+            for (i in 14 until decodedString.length) {
+                val char = decodedString[i]
+                val code = char.code
+
+                if (code in 32..126) {
+                    var newCode = code - 14
+                    if (newCode < 32) {
+                        newCode += 95
+                    }
+                    deobfuscated.append(newCode.toChar())
+                } else {
+                    deobfuscated.append(char)
+                }
+            }
+
+            val jsonString = deobfuscated.toString()
+            Log.d("HDFull", "JSON deobfuscated: $jsonString")
+
+            val providers = mutableListOf<ProviderCode>()
+
+            val pattern = """"id"\s*:\s*"(\d+)".*?"provider"\s*:\s*"(\d+)".*?"code"\s*:\s*"([^"]+)".*?"lang"\s*:\s*"([^"]+)".*?"quality"\s*:\s*"([^"]+)"""".toRegex(RegexOption.DOT_MATCHES_ALL)
+
+            pattern.findAll(jsonString).forEach { match ->
+                val (id, provider, code, lang, quality) = match.destructured
+                providers.add(
+                    ProviderCode(
+                        id = id,
+                        provider = provider,
+                        code = code,
+                        lang = lang.replace("7SPSU4", "ESPSUB").replace("7N9", "ENG"),
+                        quality = quality
+                    )
+                )
+            }
+
+            if (providers.isEmpty()) {
+                val ids = """"id"\s*:\s*"(\d+)"""".toRegex().findAll(jsonString).map { it.groupValues[1] }.toList()
+                val provs = """"provider"\s*:\s*"(\d+)"""".toRegex().findAll(jsonString).map { it.groupValues[1] }.toList()
+                val codes = """"code"\s*:\s*"([^"]+)"""".toRegex().findAll(jsonString).map { it.groupValues[1] }.toList()
+
+                for (i in ids.indices) {
+                    if (i < provs.size && i < codes.size) {
+                        providers.add(
+                            ProviderCode(
+                                id = ids[i],
+                                provider = provs[i],
+                                code = codes[i],
+                                lang = if (i < 5) "ESPSUB" else "ENG",
+                                quality = "dvdrip"
+                            )
+                        )
+                    }
+                }
+            }
+
+            Log.d("HDFull", "Proveedores extraídos: ${providers.size}")
+            providers
+
+        } catch (e: Exception) {
+            Log.e("HDFull", "Error en decodeHashRobust: ${e.message}")
+            emptyList()
+        }
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
