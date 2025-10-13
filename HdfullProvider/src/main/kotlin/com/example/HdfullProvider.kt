@@ -296,15 +296,40 @@ class HdfullProvider : MainAPI() {
         val url = when (providerIdx) {
             "1" -> "https://powvideo.org/$id"
             "2" -> "https://streamplay.to/$id"
+            "4" -> "https://clicknupload.com/embed/$id"
+            "5" -> "https://gounlimited.to/embed-$id.html"
             "6" -> "https://streamtape.com/v/$id"
+            "7" -> "https://jetload.net/e/$id"
+            "9" -> "https://vivo.sx/$id"
+            "10" -> "https://ok.ru/videoembed/$id"
+            "11" -> "https://1fichier.com/?$id"
             "12" -> "https://gamovideo.com/$id"
+            "13" -> "https://clipwatching.com/embed-$id.html"
+            "14" -> "https://jawcloud.co/embed-$id.html"
             "15" -> "https://mixdrop.bz/f/$id"
+            "17" -> "https://upstream.to/embed-$id.html"
+            "18" -> "https://videobin.co/embed-$id.html"
+            "21" -> "https://evoload.io/e/$id"
+            "22" -> "https://embedsito.com/v/$id"
+            "23" -> "https://dood.to/e/$id"
+            "24" -> "https://sb.fcdn.stream/e/$id"
+            "25" -> "https://uqload.com/embed-$id.html"
+            "26" -> "https://voe.sx/e/$id"
+            "27" -> "https://sendvid.com/$id"
+            "31" -> "https://mega.nz/embed#!$id"
+            "33" -> "https://wishfast.top/e/$id"
+            "35" -> "https://streamlare.com/e/$id"
+            "36" -> "https://hexload.com/embed-$id.html"
             "40" -> "https://vidmoly.me/w/$id"
+            "41" -> "https://streamvid.net/embed-$id"
+            "43" -> "https://filelions.to/v/$id"
+            "44" -> "https://filemoon.sx/e/$id"
             else -> {
                 Log.w("HDFull", "Proveedor no reconocido: $providerIdx")
                 ""
             }
         }
+        Log.d("HDFull", "Proveedor $providerIdx -> URL: $url")
         return url
     }
 
