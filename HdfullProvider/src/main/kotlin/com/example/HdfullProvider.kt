@@ -3,6 +3,7 @@ package com.example
 import android.util.Base64
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -249,89 +250,44 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-    fun decodeHash(str: String): List<ProviderCode> {
-        val result = run {
-            try {
-                Log.d("HDFull", "Decodificando hash de longitud: ${str.length}")
+    private fun decodeHash(hash: String): List<ProviderCode> {
+        val base64Decoded = Base64.decode(hash, Base64.DEFAULT).decodeToString()
 
-                val decodedBytes = Base64.decode(str, Base64.DEFAULT)
-                val decodedString = String(decodedBytes, Charsets.UTF_8)
-
-                val deobfuscated = StringBuilder()
-                for (i in 14 until decodedString.length) {
-                    val char = decodedString[i]
-                    val code = char.code
-
-                    val newChar = when {
-                        code in 32..126 -> {
-                            val shifted = code - 14
-                            if (shifted < 32) {
-                                (shifted + 95).toChar()
-                            } else {
-                                shifted.toChar()
-                            }
-                        }
-                        else -> char
-                    }
-                    deobfuscated.append(newChar)
-                }
-
-                var jsonString = deobfuscated.toString()
-
-                jsonString = jsonString
-                    .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                    .replace(Regex("\"\\?\\?\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                    .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
-
-                    .replace("ddi??", "dvdrip")
-                    .replace("hd\u0004\u0006", "hdtv")
-                    .replace("hd72\"\"", "hd720")
-                    .replace("d\u0006d\u0002i\u0000", "dvdrip")
-                    .replace("7SPSU4", "ESPSUB")
-                    .replace("7N9", "ENG")
-                    .replace("7SP", "ESP")
-                    .replace("L3T", "LAT")
-
-                    .replace(Regex("[\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F]"), "")
-                    .replace('\n', ' ')
-                    .replace("}{", "},{")
-                    .replace("\"\"", "\"")
-
-
-                val firstBrace = jsonString.indexOf("{")
-
-                if (firstBrace > -1) {
-                    jsonString = jsonString.substring(firstBrace).trim()
-                } else {
-                    Log.e("HDFull", "Error: No se encontró el carácter de inicio de objeto '{'.")
-                    return@run emptyList()
-                }
-
-                if (!jsonString.startsWith("[")) {
-                    jsonString = "[${jsonString}"
-                }
-
-                if (!jsonString.endsWith("]")) {
-                    jsonString = "${jsonString}]"
-                }
-
-                jsonString = jsonString.replace("},]", "}]")
-                jsonString = jsonString.replace(",]", "]")
-
-                jsonString = jsonString.replace(Regex("\"\\\"(\\d+)\\\"\""), "$1")
-
-
-                Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
-
-                AppUtils.parseJson<List<ProviderCode>>(jsonString)
-
-            } catch (e: Exception) {
-                Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
-                emptyList()
-            }
+        val startBracket = base64Decoded.indexOf('{')
+        if (startBracket == -1) {
+            throw Exception("No se encontró el corchete inicial '{' en el JSON decodificado.")
         }
 
-        return result
+        var jsonString = base64Decoded.substring(startBracket)
+
+        if (!jsonString.startsWith('[')) {
+            jsonString = "[$jsonString]"
+        }
+
+        jsonString = jsonString.replace(Regex("[\\p{Cntrl}&&[^\r\n\t]]"), "")
+
+        jsonString = jsonString
+            .replace("\"oide\"", "\"id_ofuscada\"")
+            .replace("\"id_ofuscada\"", "\"oide\"")
+            .replace("\"ali\"", "\"ali\"")
+            .replace("\"??oide\"", "\"oide\"")
+            .replace("\"ali\t\"", "\"ali\"")
+            .replace("\"??oide\"", "\"oide\"")
+            .replace("\"\u0000\u0002o\u0006ide\u0002\"", "\"oide\"")
+            .replace("\"\u0001\u0005ali\u0004\t\"", "\"ali\"")
+            .replace("\"\u0000\u0002o\u0006ide\u0002\":\"1\"\"", "\"oide\":\"1\"")
+
+        jsonString = jsonString
+            .replace("\"id\":\"", "\"id\":")
+            .replace("\"\"", "\"")
+
+        jsonString = jsonString
+            .replace("code\":\"","code\":\"")
+            .replace("id\":\"","id\":\"")
+
+        jsonString = jsonString.replace(""""", "\"").replace(""""", "\"")
+
+        return mapper.readValue(jsonString)
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
