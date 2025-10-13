@@ -265,22 +265,27 @@ class HdfullProvider : MainAPI() {
                     val newChar = when {
                         code in 32..126 -> {
                             val shifted = code - 14
-                            if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
+                            if (shifted < 32) {
+                                (shifted + 95).toChar()
+                            } else {
+                                shifted.toChar()
+                            }
                         }
                         else -> char
                     }
                     deobfuscated.append(newChar)
                 }
 
-                val deobfuscatedString = deobfuscated.toString()
+                var jsonString = deobfuscated.toString()
 
-                var jsonString = deobfuscatedString
+                jsonString = jsonString
                     .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
                     .replace(Regex("\"\\?\\?\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
                     .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
 
                     .replace("ddi??", "dvdrip")
                     .replace("hd\u0004\u0006", "hdtv")
+                    .replace("hd72\"\"", "hd720")
                     .replace("d\u0006d\u0002i\u0000", "dvdrip")
                     .replace("7SPSU4", "ESPSUB")
                     .replace("7N9", "ENG")
@@ -292,6 +297,7 @@ class HdfullProvider : MainAPI() {
                     .replace("}{", "},{")
                     .replace("\"\"", "\"")
 
+
                 val firstBrace = jsonString.indexOf("{")
 
                 if (firstBrace > -1) {
@@ -300,8 +306,6 @@ class HdfullProvider : MainAPI() {
                     Log.e("HDFull", "Error: No se encontró el carácter de inicio de objeto '{'.")
                     return@run emptyList()
                 }
-
-                jsonString = jsonString.replace(Regex("^[^\\{\\[]*"), "")
 
                 if (!jsonString.startsWith("[")) {
                     jsonString = "[${jsonString}"
@@ -314,7 +318,8 @@ class HdfullProvider : MainAPI() {
                 jsonString = jsonString.replace("},]", "}]")
                 jsonString = jsonString.replace(",]", "]")
 
-                jsonString = jsonString.trimStart(',','"', ' ').trimEnd(',','"', ' ')
+                jsonString = jsonString.replace(Regex("\"\\\"(\\d+)\\\"\""), "$1")
+
 
                 Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
 
