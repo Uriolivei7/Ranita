@@ -276,7 +276,6 @@ class HdfullProvider : MainAPI() {
                     .replace(Regex("\"\\?\\?\\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
                     .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
                     .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
-
                     .replace("ddi??", "dvdrip")
                     .replace("hd\u0004\u0006", "hdtv")
                     .replace("d\u0006d\u0002i\u0000", "dvdrip")
@@ -291,9 +290,9 @@ class HdfullProvider : MainAPI() {
                     .replace('\n', ' ')
                     .replace("}{", "},{")
 
-                    .replace(Regex(""""(\d+)""""), "$1")
-
-                    .replace("\"\"", "\"")
+                    .replace(Regex(""""(\d+)"([^:])"""), "$1$2")
+                    .replace(Regex("\"\"\""), "\"")
+                    .replace("\"\"","\"")
 
                 val firstBrace = jsonString.indexOf("{")
 
@@ -316,7 +315,7 @@ class HdfullProvider : MainAPI() {
 
                 Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
 
-                AppUtils.parseJson<List<ProviderCode>>(jsonString)
+                mapper.readValue<List<ProviderCode>>(jsonString)
 
             } catch (e: Exception) {
                 Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
