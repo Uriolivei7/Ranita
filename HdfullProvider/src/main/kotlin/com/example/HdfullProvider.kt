@@ -8,6 +8,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async // Importar para uso de asincronía no bloqueante
 
 class HdfullProvider : MainAPI() {
     override var mainUrl = "https://hdfull.love"
@@ -21,39 +23,60 @@ class HdfullProvider : MainAPI() {
         TvType.TvSeries,
     )
 
-//    usr:yji0r4c6 pass:@1YU1kc1
+    //    usr:yji0r4c6 pass:@1YU1kc1
     var latestCookie: Map<String, String> = mapOf(
         "language" to "es",
         "PHPSESSID" to "hqh4vktr8m29pfd1dsthiatpk0",
         "guid" to "1525945|2fc755227682457813590604c5a6717d",
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? = coroutineScope {
         val items = ArrayList<HomePageList>()
         val urls = listOf(
             Pair("Películas Estreno", "$mainUrl/peliculas-estreno"),
             Pair("Películas Actualizadas", "$mainUrl/peliculas-actualizadas"),
-//            Pair("Top IMDB", "$mainUrl/peliculas/imdb_rating"),
+            // Pair("Top IMDB", "$mainUrl/peliculas/imdb_rating"), // Descomentar si es necesario
             Pair("Series", "$mainUrl/series"),
         )
-        urls.apmap { (name, url) ->
-            val doc = app.get(url, cookies = latestCookie).document
-            val home =
-                doc.select("div.center div.view").apmap {
-                    val title = it.selectFirst("h5.left a.link")?.attr("title")
-                    val link = it.selectFirst("h5.left a.link")?.attr("href")
-                        ?.replaceFirst("/", "$mainUrl/")
-                    val type = if (link!!.contains("/pelicula")) TvType.Movie else TvType.TvSeries
-                    val img =
-                        it.selectFirst("div.item a.spec-border-ie img.img-preview")?.attr("src")
-                    newTvSeriesSearchResponse(title!!, link, type){
-                        this.posterUrl = fixUrl(img!!)
-                        this.posterHeaders = mapOf("Referer" to "$mainUrl/")
+
+        val deferredPages = urls.map { (name, url) ->
+            async {
+                val doc = app.get(url, cookies = latestCookie).document
+
+                val home = doc.select("div.center div.view").mapNotNull { viewElement ->
+                    val title = viewElement.selectFirst("h5.left a.link")?.attr("title")
+                    val link = viewElement.selectFirst("h5.left a.link")?.attr("href")
+                    val img = viewElement.selectFirst("div.item a.spec-border-ie img.img-preview")?.attr("src")
+
+                    if (title.isNullOrEmpty() || link.isNullOrEmpty() || img.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    val absoluteLink = link.replaceFirst("/", "$mainUrl/")
+                    val type = if (absoluteLink.contains("/pelicula")) TvType.Movie else TvType.TvSeries
+
+                    when (type) {
+                        TvType.Movie -> newMovieSearchResponse(title, absoluteLink, type) {
+                            this.posterUrl = fixUrl(img)
+                            this.posterHeaders = mapOf("Referer" to "$mainUrl/")
+                        }
+
+                        TvType.TvSeries -> newTvSeriesSearchResponse(title, absoluteLink, type) {
+                            this.posterUrl = fixUrl(img)
+                            this.posterHeaders = mapOf("Referer" to "$mainUrl/")
+                        }
+
+                        else -> null
                     }
                 }
-            items.add(HomePageList(name, home))
+
+                HomePageList(name, home)
+            }
         }
-        return newHomePageResponse(items)
+
+        items.addAll(deferredPages.map { it.await() })
+
+        newHomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -64,8 +87,12 @@ class HdfullProvider : MainAPI() {
                 "query" to query,
             )
         ).document
-        val csfr = csfrDoc.selectFirst("input[value*='sid']")!!.attr("value")
-        //Log.d("TAG", "search: $csfr")
+
+        val csfr = csfrDoc.selectFirst("input[value*='sid']")?.attr("value")
+            ?: run {
+                Log.e(name, "CSRF token not found during search."); return emptyList()
+            }
+
         val doc = app.post(
             url, cookies = latestCookie, referer = "$mainUrl/buscar", data = mapOf(
                 "__csrf_magic" to csfr,
@@ -73,19 +100,21 @@ class HdfullProvider : MainAPI() {
                 "query" to query,
             )
         ).document
-        //Log.d("TAG", "search: $doc")
+
         return doc.select("div.container div.view").amap {
-            val title = it.selectFirst("h5.left a.link")?.attr("title")
             val link = it.selectFirst("h5.left a.link")?.attr("href")
                 ?.replaceFirst("/", "$mainUrl/")
-            val type = if (link!!.contains("/pelicula")) TvType.Movie else TvType.TvSeries
-            val img =
-                it.selectFirst("div.item a.spec-border-ie img.img-preview")?.attr("src")
-            newTvSeriesSearchResponse(title!!, link!!, type){
-                this.posterUrl = fixUrl(img!!)
+
+            val finalLink = link ?: return@amap null
+            val title = it.selectFirst("h5.left a.link")?.attr("title") ?: ""
+            val type = if (finalLink.contains("/pelicula")) TvType.Movie else TvType.TvSeries
+            val img = it.selectFirst("div.item a.spec-border-ie img.img-preview")?.attr("src")
+
+            newTvSeriesSearchResponse(title, finalLink, type){
+                this.posterUrl = fixUrl(img ?: "")
                 this.posterHeaders = mapOf("Referer" to "$mainUrl/")
             }
-        }
+        }.filterNotNull()
     }
 
     data class EpisodeJson(
@@ -112,33 +141,34 @@ class HdfullProvider : MainAPI() {
         val en: String?
     )
 
-    override suspend fun load(url: String): LoadResponse? {
+    override suspend fun load(url: String): LoadResponse? = coroutineScope {
         val doc = app.get(url, cookies = latestCookie).document
         val tvType = if (url.contains("pelicula")) TvType.Movie else TvType.TvSeries
+
         val title = doc.selectFirst("div#summary-title")?.text() ?: ""
-        val backimage =
-            doc.selectFirst("div#summary-fanart-wrapper")!!.attr("style").substringAfter("url(")
-                .substringBefore(")").trim()
-        val poster =
-            doc.selectFirst("div#summary-overview-wrapper div.show-poster img.video-page-thumbnail")!!
-                .attr("src")
-        val description =
-            doc.selectFirst("div#summary-overview-wrapper div.show-overview div.show-overview-text")!!
-                .text()
-        val tags =
-            doc.selectFirst("div#summary-overview-wrapper div.show-details p:contains(Género:)")
-                ?.text()?.substringAfter("Género:")
-                ?.split(" ")
+        val backImage = doc.selectFirst("div#summary-fanart-wrapper")?.attr("style")?.substringAfter("url(")?.substringBefore(")")?.trim()
+        val poster = doc.selectFirst("div#summary-overview-wrapper div.show-poster img.video-page-thumbnail")?.attr("src") ?: ""
+        val description = doc.selectFirst("div#summary-overview-wrapper div.show-overview div.show-overview-text")?.text() ?: ""
+        val tags = doc.selectFirst("div#summary-overview-wrapper div.show-details p:contains(Género:)")
+            ?.text()?.substringAfter("Género:")
+            ?.split(" ")
         val year = doc.selectFirst("div#summary-overview-wrapper div.show-details p")?.text()
             ?.substringAfter(":")?.trim()
             ?.toIntOrNull()
+
         var episodes = if (tvType == TvType.TvSeries) {
-            val sid = doc.select("script").firstOrNull { it.html().contains("var sid =") }!!.html()
-                .substringAfter("var sid = '").substringBefore("';")
+            val sid = doc.select("script").firstOrNull { it.html().contains("var sid =") }?.html()
+                ?.substringAfter("var sid = '")?.substringBefore("';")
+
+            if (sid == null) {
+                Log.e(name, "SID not found for TV Series episodes."); return@coroutineScope null
+            }
+
             doc.select("div#non-mashable div.main-wrapper div.container-wrap div div.container div.span-24 div.flickr")
                 .flatMap { seasonDiv ->
                     val seasonNumber = seasonDiv.selectFirst("a img")?.attr("original-title")
                         ?.substringAfter("Temporada")?.trim()?.toIntOrNull()
+
                     val result = app.post(
                         "$mainUrl/a/episodes", cookies = latestCookie, data = mapOf(
                             "action" to "season",
@@ -146,11 +176,12 @@ class HdfullProvider : MainAPI() {
                             "limit" to "0",
                             "show" to sid,
                             "season" to "$seasonNumber",
-
-                            )
+                        )
                     )
+
                     val episodesJson = AppUtils.parseJson<List<EpisodeJson>>(result.document.text())
-                    episodesJson.apmap {
+
+                    episodesJson.amap {
                         val episodeNumber = it.episode?.toIntOrNull()
                         val epTitle = it.title?.es?.trim() ?: "Episodio $episodeNumber"
                         val epurl = "$url/temporada-${it.season}/episodio-${it.episode}"
@@ -160,35 +191,33 @@ class HdfullProvider : MainAPI() {
                             this.episode = episodeNumber
                         }
                     }
-                }
+                }.filterNotNull()
         } else listOf()
 
-        return when (tvType) {
+        when (tvType) {
             TvType.TvSeries -> {
                 newTvSeriesLoadResponse(
                     title,
                     url, tvType, episodes,
                 ) {
                     this.posterUrl = poster
-                    this.backgroundPosterUrl = backimage
+                    this.backgroundPosterUrl = backImage
                     this.plot = description
                     this.tags = tags
                     this.year = year
                     this.posterHeaders = mapOf("Referer" to "$mainUrl/")
                 }
             }
-
             TvType.Movie -> {
                 newMovieLoadResponse(title, url, tvType, url) {
                     this.posterUrl = poster
-                    this.backgroundPosterUrl = backimage
+                    this.backgroundPosterUrl = backImage
                     this.plot = description
                     this.tags = tags
                     this.year = year
                     this.posterHeaders = mapOf("Referer" to "$mainUrl/")
                 }
             }
-
             else -> null
         }
     }
@@ -250,9 +279,12 @@ class HdfullProvider : MainAPI() {
         }
     }
 
+
     fun decodeHash(hash: String): List<ProviderCode> {
         val result = run {
             try {
+                // Log.d("HDFull", "Decodificando hash de longitud: ${hash.length}")
+
                 val decodedBytes = Base64.decode(hash, Base64.DEFAULT)
                 val decodedString = String(decodedBytes, Charsets.UTF_8)
 
@@ -299,7 +331,7 @@ class HdfullProvider : MainAPI() {
                 if (firstBrace > -1) {
                     jsonString = jsonString.substring(firstBrace).trim()
                 } else {
-                    Log.e("HDFull", "Error: No se encontró el carácter de inicio de objeto '{'.")
+                    Log.e(name, "Error: No se encontró el carácter de inicio de objeto '{' después de la desofuscación.")
                     return@run emptyList()
                 }
 
@@ -313,12 +345,12 @@ class HdfullProvider : MainAPI() {
 
                 jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
 
-                Log.d("HDFull", "JSON corregido y limpio: ${jsonString.take(500)}")
+                // Log.d(name, "JSON corregido y limpio: ${jsonString.take(500)}")
 
-                mapper.readValue<List<ProviderCode>>(jsonString)
+                AppUtils.parseJson<List<ProviderCode>>(jsonString)
 
             } catch (e: Exception) {
-                Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
+                Log.e(name, "Error crítico decodificando hash: ${e.message}", e)
                 emptyList()
             }
         }
