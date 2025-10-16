@@ -40,14 +40,9 @@ class PlushdProvider : MainAPI() {
             urls.map { (name, url) ->
                 Log.d("PlushdProvider", "DEBUG: Obteniendo datos para la lista: $name de $url")
                 val doc = app.get(url).document
-
-                val home = doc.select(".articlesList article:has(a.itemA)").mapNotNull { article ->
-
-                    val linkElement = article.selectFirst("a.itemA")
-
-                    val title = linkElement?.selectFirst(".title_over span")?.text()
-                    val link = linkElement?.attr("href")
-
+                val home = doc.select(".articlesList article").mapNotNull { article ->
+                    val title = article.selectFirst("a h2")?.text()
+                    val link = article.selectFirst("a.itemA")?.attr("href")
                     val img = article.selectFirst("picture img")?.attr("data-src") ?: article.selectFirst("picture img")?.attr("src")
 
                     if (title.isNullOrEmpty() || link.isNullOrEmpty()) {
