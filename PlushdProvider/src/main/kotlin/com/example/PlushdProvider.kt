@@ -30,8 +30,8 @@ class PlushdProvider : MainAPI() {
         Log.d("PlushdProvider", "DEBUG: Iniciando getMainPage, página: $page, solicitud: ${request.name}")
         val items = ArrayList<HomePageList>()
         val urls = listOf(
-            Pair("Peliculas", "$mainUrl/peliculas"),
             Pair("Series", "$mainUrl/series"),
+            Pair("Peliculas", "$mainUrl/peliculas"),
             Pair("Animes", "$mainUrl/animes"),
             Pair("Doramas", "$mainUrl/doramas"),
         )
@@ -40,9 +40,12 @@ class PlushdProvider : MainAPI() {
             urls.map { (name, url) ->
                 Log.d("PlushdProvider", "DEBUG: Obteniendo datos para la lista: $name de $url")
                 val doc = app.get(url).document
-                val home = doc.select(".articlesList article").mapNotNull { article ->
-                    val title = article.selectFirst("a h2")?.text()
-                    val link = article.selectFirst("a.itemA")?.attr("href")
+                val home = doc.select(".articlesList article:has(a.itemA)").mapNotNull { article ->
+
+                    val linkElement = article.selectFirst("a.itemA")
+                    val link = linkElement?.attr("href")
+                    val title = linkElement?.selectFirst(".title_over span")?.text()
+
                     val img = article.selectFirst("picture img")?.attr("data-src") ?: article.selectFirst("picture img")?.attr("src")
 
                     if (title.isNullOrEmpty() || link.isNullOrEmpty()) {
@@ -53,8 +56,8 @@ class PlushdProvider : MainAPI() {
                     Log.d("PlushdProvider", "DEBUG: Elemento principal - Título: $title, Link: $link, Imagen: $img")
 
                     val searchType = when {
-                        link.contains("/pelicula") -> TvType.Movie
                         link.contains("/serie") -> TvType.TvSeries
+                        link.contains("/pelicula") -> TvType.Movie
                         link.contains("/anime") -> TvType.Anime
                         link.contains("/dorama") -> TvType.AsianDrama
                         else -> {
