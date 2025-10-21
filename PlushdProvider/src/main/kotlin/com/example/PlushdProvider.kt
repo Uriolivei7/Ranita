@@ -225,7 +225,6 @@ class PlushdProvider : MainAPI() {
                                             this.season = seasonNum
                                             this.episode = epNum
                                             this.posterUrl = realimg
-                                            this.rating = null
                                             this.description = null
                                             this.runTime = null
                                         }

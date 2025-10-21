@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
-    "version": 6,
+    "version": 7,
     "apiVersion": 1,
     "name": "SoloLatino",
     "internalName": "SoloLatinoProvider",
@@ -23,7 +23,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",
     "status": 1,
-    "version": 4,
+    "version": 5,
     "apiVersion": 2,
     "name": "PlusHD",
     "internalName": "PlushdProvider",
@@ -38,7 +38,7 @@
     ],
     "iconUrl": "https://ww3.pelisplus.to/images/faviconhd.png",
     "language": "mx",
-    "fileSize": 22000
+    "fileSize": 21000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LatanimeProvider.cs3",
@@ -265,7 +265,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReydonghuaProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 15,
     "name": "ReyDonghua",
     "internalName": "ReydonghuaProvider",
@@ -278,7 +278,7 @@
     ],
     "iconUrl": "https://reydonghua.org/public/favicon.ico?v=4.75",
     "language": "mx",
-    "fileSize": 16000
+    "fileSize": 17000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",

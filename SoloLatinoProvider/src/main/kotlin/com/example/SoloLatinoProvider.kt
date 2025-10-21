@@ -109,7 +109,7 @@ class SoloLatinoProvider : MainAPI() {
             Pair("Animes", "$mainUrl/animes")
         )
 
-        val homePageLists = urls.apmap { (name, url) ->
+        val homePageLists = urls.map { (name, url) ->
             val tvType = when (name) {
                 "Peliculas" -> TvType.Movie
                 "Series" -> TvType.TvSeries
@@ -119,7 +119,7 @@ class SoloLatinoProvider : MainAPI() {
             val html = safeAppGet(url)
             if (html == null) {
                 Log.e("SoloLatino", "getMainPage - No se pudo obtener HTML para $url")
-                return@apmap null
+                return@map null
             }
             val doc = Jsoup.parse(html)
             val homeItems = doc.select("div.items article.item").mapNotNull { article ->

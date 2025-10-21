@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.nicehttp.NiceResponse
+import kotlinx.coroutines.coroutineScope
 import java.net.URL
 import java.util.*
 import kotlin.collections.ArrayList
@@ -72,7 +73,7 @@ class ReydonghuaProvider : MainAPI() {
             )
         )
         if (items.size <= 0) throw ErrorLoadingException()
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -180,13 +181,12 @@ class ReydonghuaProvider : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        app.get(data).document.select("#myTab li").apmap {
-            val encodedurl = it.select(".play-video").attr("data-player")
-            val urlDecoded =
-                base64Decode(encodedurl).replace("https://playerwish.com", "https://streamwish.to")
+    ): Boolean = coroutineScope {
+        app.get(data).document.select("#myTab li").map { element ->
+            val encodedurl = element.select(".play-video").attr("data-player")
+            val urlDecoded = base64Decode(encodedurl).replace("https://playerwish.com", "https://streamwish.to")
             loadExtractor(urlDecoded, mainUrl, subtitleCallback, callback)
         }
-        return true
+        true
     }
 }
