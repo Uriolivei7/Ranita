@@ -230,7 +230,12 @@ class HdfullProvider : MainAPI() {
     ): Boolean {
         Log.d("HDFull", "loadLinks iniciado - URL: $data")
 
-        val doc = app.get(data, cookies = latestCookie).document
+        val doc = try {
+            app.get(data, cookies = latestCookie).document
+        } catch (e: Exception) {
+            Log.e("HDFull", "Error al obtener documento: ${e.message}", e)
+            return false
+        }
 
         val script = doc.select("script").firstOrNull {
             it.html().contains("var ad =")
@@ -242,7 +247,7 @@ class HdfullProvider : MainAPI() {
         }
 
         val scriptContent = script.html()
-        Log.d("HDFull", "Script encontrado: ${scriptContent.take(200)}...")
+        Log.d("HDFull", "Script encontrado (primeros 200 chars): ${scriptContent.take(200)}")
 
         val hash = scriptContent
             .substringAfter("var ad = '")
@@ -253,26 +258,35 @@ class HdfullProvider : MainAPI() {
             return false
         }
 
-        Log.d("HDFull", "Hash extraído: $hash")
+        Log.d("HDFull", "Hash extraído: ${hash.take(200)}")
 
         return try {
             val providers = decodeHash(hash)
             Log.d("HDFull", "Proveedores decodificados: ${providers.size}")
 
+            if (providers.isEmpty()) {
+                Log.e("HDFull", "No se encontraron proveedores válidos")
+                return false
+            }
+
+            var success = false
             for (provider in providers) {
                 val providerId = provider.provider ?: continue
                 val code = provider.code
+                val lang = provider.lang
+                val quality = provider.quality
 
-                Log.d("HDFull", "Proveedor: $providerId, Code: $code, Lang: ${provider.lang}")
+                Log.d("HDFull", "Procesando proveedor: ID=$providerId, Code=$code, Lang=$lang, Quality=$quality")
 
                 val url = getUrlByProvider(providerId, code)
-                Log.d("HDFull", "URL generada: $url")
-
                 if (url.isNotEmpty()) {
-                    loadExtractor(url, mainUrl, subtitleCallback, callback)
+                    Log.d("HDFull", "URL generada: $url")
+                    success = loadExtractor(url, mainUrl, subtitleCallback, callback) || success
+                } else {
+                    Log.w("HDFull", "No se generó URL para proveedor: $providerId")
                 }
             }
-            true
+            success
         } catch (e: Exception) {
             Log.e("HDFull", "Error en loadLinks: ${e.message}", e)
             false
@@ -281,81 +295,76 @@ class HdfullProvider : MainAPI() {
 
 
     fun decodeHash(hash: String): List<ProviderCode> {
-        val result = run {
-            try {
-                // Log.d("HDFull", "Decodificando hash de longitud: ${hash.length}")
+        try {
+            Log.d("HDFull", "Decodificando hash de longitud: ${hash.length}")
 
-                val decodedBytes = Base64.decode(hash, Base64.DEFAULT)
-                val decodedString = String(decodedBytes, Charsets.UTF_8)
-
-                val deobfuscated = StringBuilder()
-                for (i in 14 until decodedString.length) {
-                    val char = decodedString[i]
-                    val code = char.code
-
-                    val newChar = when {
-                        code in 32..126 -> {
-                            val shifted = code - 14
-                            if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
-                        }
-                        else -> char
-                    }
-                    deobfuscated.append(newChar)
-                }
-                var jsonString = deobfuscated.toString()
-
-                jsonString = jsonString
-                    .replace(Regex("\"\\?\\?\\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                    .replace(Regex("\"\u0000\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                    .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
-                    .replace("ddi??", "dvdrip")
-                    .replace("hd\u0004\u0006", "hdtv")
-                    .replace("d\u0006d\u0002i\u0000", "dvdrip")
-                    .replace("hd72\"\"", "hd720")
-                    .replace("7SPSU4", "ESPSUB")
-                    .replace("7N9", "ENG")
-                    .replace("7SP", "ESP")
-                    .replace("L3T", "LAT")
-
-                    .replace(Regex("[\\u0000-\\u0009\\u000B\\u000C\\u000E-\\u001F]"), "")
-                    .replace(Regex("[\\p{Cntrl}]"), "")
-                    .replace('\n', ' ')
-                    .replace("}{", "},{")
-
-                    .replace(Regex(""""(\d+)"([^:])"""), "$1$2")
-                    .replace(Regex("\"\"\""), "\"")
-                    .replace("\"\"","\"")
-
-                val firstBrace = jsonString.indexOf("{")
-
-                if (firstBrace > -1) {
-                    jsonString = jsonString.substring(firstBrace).trim()
-                } else {
-                    Log.e(name, "Error: No se encontró el carácter de inicio de objeto '{' después de la desofuscación.")
-                    return@run emptyList()
-                }
-
-                if (!jsonString.startsWith("[")) {
-                    jsonString = "[${jsonString}"
-                }
-
-                if (!jsonString.endsWith("]")) {
-                    jsonString = "${jsonString}]"
-                }
-
-                jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
-
-                // Log.d(name, "JSON corregido y limpio: ${jsonString.take(500)}")
-
-                AppUtils.parseJson<List<ProviderCode>>(jsonString)
-
+            val decodedBytes = try {
+                Base64.decode(hash, Base64.DEFAULT)
             } catch (e: Exception) {
-                Log.e(name, "Error crítico decodificando hash: ${e.message}", e)
-                emptyList()
+                Log.e("HDFull", "Error al decodificar Base64: ${e.message}", e)
+                return emptyList()
             }
-        }
+            val decodedString = String(decodedBytes, Charsets.UTF_8)
+            Log.d("HDFull", "Cadena decodificada (primeros 500 chars): ${decodedString.take(500)}")
 
-        return result
+            val deobfuscated = StringBuilder()
+            for (i in 14 until decodedString.length) {
+                val char = decodedString[i]
+                val code = char.code
+                val newChar = when {
+                    code in 32..126 -> {
+                        val shifted = code - 14
+                        if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
+                    }
+                    else -> char
+                }
+                deobfuscated.append(newChar)
+            }
+            var jsonString = deobfuscated.toString()
+            Log.d("HDFull", "Cadena desofuscada (primeros 500 chars): ${jsonString.take(500)}")
+
+            jsonString = jsonString
+                .replace(Regex("\"\\?\\?\\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                .replace(Regex("\"\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
+                .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
+                .replace("ddi??", "dvdrip")
+                .replace("hd\u0004\u0006", "hdtv")
+                .replace("d\u0006d\u0002i", "dvdrip")
+                .replace("hd72\"\"", "hd720")
+                .replace("7SPSU4", "ESPSUB")
+                .replace("7N9", "ENG")
+                .replace("7SP", "ESP")
+                .replace("L3T", "LAT")
+                .replace(Regex("[-\u001F]"), "")
+                .replace('\n', ' ')
+                .replace("}{", "},{")
+                .replace(Regex("\"\"\""), "\"")
+                .replace("\"\"", "\"")
+
+            Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
+
+            val firstBrace = jsonString.indexOf("{")
+            if (firstBrace == -1) {
+                Log.e("HDFull", "Error: No se encontró '{' en la cadena desofuscada")
+                return emptyList()
+            }
+
+            jsonString = jsonString.substring(firstBrace).trim()
+            if (!jsonString.startsWith("[")) {
+                jsonString = "[$jsonString"
+            }
+            if (!jsonString.endsWith("]")) {
+                jsonString = "$jsonString]"
+            }
+            jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
+
+            Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
+
+            return AppUtils.parseJson<List<ProviderCode>>(jsonString) ?: emptyList()
+        } catch (e: Exception) {
+            Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
+            return emptyList()
+        }
     }
 
     fun getUrlByProvider(providerIdx: String, id: String): String {
@@ -406,5 +415,4 @@ class HdfullProvider : MainAPI() {
         val lang: String,
         val quality: String
     )
-
 }
