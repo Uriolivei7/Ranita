@@ -293,7 +293,6 @@ class HdfullProvider : MainAPI() {
         }
     }
 
-
     fun decodeHash(hash: String): List<ProviderCode> {
         try {
             Log.d("HDFull", "Decodificando hash de longitud: ${hash.length}")
@@ -308,7 +307,7 @@ class HdfullProvider : MainAPI() {
             Log.d("HDFull", "Cadena decodificada (primeros 500 chars): ${decodedString.take(500)}")
 
             val deobfuscated = StringBuilder()
-            for (i in 14 until decodedString.length) {
+            for (i in 0 until decodedString.length) {
                 val char = decodedString[i]
                 val code = char.code
                 val newChar = when {
@@ -324,32 +323,28 @@ class HdfullProvider : MainAPI() {
             Log.d("HDFull", "Cadena desofuscada (primeros 500 chars): ${jsonString.take(500)}")
 
             jsonString = jsonString
-                .replace(Regex("\"\\?\\?\\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"\u0002o\u0006ide\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"\u0001\u0005ali\u0004\u0009\":\""), "\"quality\":\"")
+                .replace(Regex("\"\\?\\?\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
+                .replace(Regex("\"\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
+                .replace(Regex("\"\\u0001\\u0005ali\\u0004\\u0009\":\""), "\"quality\":\"")
                 .replace("ddi??", "dvdrip")
-                .replace("hd\u0004\u0006", "hdtv")
-                .replace("d\u0006d\u0002i", "dvdrip")
+                .replace("hd\\u0004\\u0006", "hdtv")
+                .replace("d\\u0006d\\u0002i", "dvdrip")
                 .replace("hd72\"\"", "hd720")
                 .replace("7SPSU4", "ESPSUB")
                 .replace("7N9", "ENG")
                 .replace("7SP", "ESP")
                 .replace("L3T", "LAT")
-                .replace(Regex("[-\u001F]"), "")
+                .replace(Regex("[\\u0000-\\u001F]"), "")
                 .replace('\n', ' ')
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
+                .replace(Regex(",+"), ",")
+                .replace(Regex("\\s+"), " ")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
 
-            val firstBrace = jsonString.indexOf("{")
-            if (firstBrace == -1) {
-                Log.e("HDFull", "Error: No se encontró '{' en la cadena desofuscada")
-                return emptyList()
-            }
-
-            jsonString = jsonString.substring(firstBrace).trim()
+            jsonString = jsonString.trim()
             if (!jsonString.startsWith("[")) {
                 jsonString = "[$jsonString"
             }
@@ -360,7 +355,14 @@ class HdfullProvider : MainAPI() {
 
             Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
 
-            return AppUtils.parseJson<List<ProviderCode>>(jsonString) ?: emptyList()
+            if (!jsonString.contains("{")) {
+                Log.e("HDFull", "Error: No se encontró '{' en el JSON final")
+                return emptyList()
+            }
+
+            val providers = AppUtils.parseJson<List<ProviderCode>>(jsonString)
+            Log.d("HDFull", "Proveedores parseados: ${providers?.size ?: 0}")
+            return providers ?: emptyList()
         } catch (e: Exception) {
             Log.e("HDFull", "Error crítico decodificando hash: ${e.message}", e)
             return emptyList()
