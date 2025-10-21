@@ -341,18 +341,20 @@ class HdfullProvider : MainAPI() {
                 .replace("L3T", "LAT")
                 .replace("ddi", "dvdrip")
                 .replace(Regex("\"code\":\"[^\"]*[\\{\\}][^\"]*\""), "\"code\":\"unknown\"")
+                // Reemplazos estructurales
                 .replace(Regex("\\p{Cntrl}"), "")
                 .replace(Regex("\\?\\?"), "")
                 .replace('\n', ' ')
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
-                .replace(Regex(":\"([^\"]+)\":\"([^\"]+)\":"), ":\"$1\",:\"$2\":")
+                // Añadir comas faltantes (más robusto)
+                .replace(Regex(":\"([^\"]+)\":\"([^\"]+)"), ":\"$1\",\"$2")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
-
+            // Asegurar formato de lista JSON
             jsonString = jsonString.trim()
             if (!jsonString.startsWith("[")) {
                 jsonString = "[$jsonString"
