@@ -327,10 +327,8 @@ class HdfullProvider : MainAPI() {
             Log.d("HDFull", "Cadena desofuscada (primeros 500 chars): ${jsonString.take(500)}")
 
             jsonString = jsonString
-                .replace(Regex("\"\\?\\?\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"\\}ide\\\":\""), "\"provider\":\"")
-                .replace(Regex("\"c\\}de\\\":\""), "\"code\":\"")
+                .replace(Regex("\"[^\"]*ide[^\"]*\":\""), "\"provider\":\"") // Capturar cualquier variante de "}ide" o "ide"
+                .replace(Regex("\"c\\}de\\\":\""), "\"code\":\"") // Corregir "c}de"
                 .replace(Regex("\"\\u0001\\u0005ali\\u0004\\u0009\":\""), "\"quality\":\"")
                 .replace(Regex("\"oide\":\""), "\"provider\":\"")
                 .replace(Regex("ddi\\?\\?"), "dvdrip")
@@ -350,6 +348,7 @@ class HdfullProvider : MainAPI() {
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
                 .replace(Regex(":\"([^\"]+)\":\""), ":\"$1\",")
+                .replace(Regex("([a-zA-Z0-9]+)\":\""), "$1\",\"")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
 
