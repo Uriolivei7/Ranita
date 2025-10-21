@@ -46,55 +46,59 @@ class PelisplusProvider : MainAPI() {
             Pair("Doramas", "$mainUrl/generos/dorama"),
         )
 
-        val homePageLists = urls.apmap { (name, url) ->
-            Log.d("Pelisplus", "getMainPage - Procesando categoría: $name desde URL: $url")
+        val homePageLists = coroutineScope {
+            urls.map { (name, url) ->
+                async {
+                    Log.d("Pelisplus", "getMainPage - Procesando categoría: $name desde URL: $url")
 
-            val tvType = when (name) {
-                "Películas" -> TvType.Movie
-                "Series" -> TvType.TvSeries
-                "Animes" -> TvType.Anime
-                "Doramas" -> TvType.TvSeries
-                else -> TvType.Others
-            }
-            val doc = try {
-                app.get(url).document
-            } catch (e: Exception) {
-                Log.e("Pelisplus", "getMainPage - ERROR al obtener documento de $url: ${e.message}", e)
-                return@apmap null
-            }
-
-            Log.d("Pelisplus", "getMainPage - Documento obtenido para $name. Intentando seleccionar posters con nuevo selector.")
-            val homeItems = doc.select("div.Posters a.Posters-link").mapNotNull { element ->
-                val title = element.attr("data-title")
-                val link = element.attr("href")
-                val img = element.selectFirst("img.Posters-img")?.attr("src")
-
-                if (title.isNullOrBlank() || link.isNullOrBlank()) {
-                    Log.d("Pelisplus", "getMainPage - Elemento de poster sin título o link. HTML: ${element.html()}")
-                    null
-                } else {
-                    val fixedLink = fixUrl(link)
-                    val fixedImg = fixUrl(img ?: "")
-
-                    Log.d("Pelisplus", "getMainPage - Encontrado: Título=$title, Link=$fixedLink, Img=$fixedImg")
-                    newAnimeSearchResponse(
-                        title,
-                        fixedLink
-                    ) {
-                        this.type = tvType
-                        this.posterUrl = fixedImg
+                    val tvType = when (name) {
+                        "Películas" -> TvType.Movie
+                        "Series" -> TvType.TvSeries
+                        "Animes" -> TvType.Anime
+                        "Doramas" -> TvType.TvSeries
+                        else -> TvType.Others
                     }
+                    val doc = try {
+                        app.get(url).document
+                    } catch (e: Exception) {
+                        Log.e("Pelisplus", "getMainPage - ERROR al obtener documento de $url: ${e.message}", e)
+                        return@async null
+                    }
+
+                    Log.d("Pelisplus", "getMainPage - Documento obtenido para $name. Intentando seleccionar posters con nuevo selector.")
+                    val homeItems = doc.select("div.Posters a.Posters-link").mapNotNull { element ->
+                        val title = element.attr("data-title")
+                        val link = element.attr("href")
+                        val img = element.selectFirst("img.Posters-img")?.attr("src")
+
+                        if (title.isNullOrBlank() || link.isNullOrBlank()) {
+                            Log.d("Pelisplus", "getMainPage - Elemento de poster sin título o link. HTML: ${element.html()}")
+                            null
+                        } else {
+                            val fixedLink = fixUrl(link)
+                            val fixedImg = fixUrl(img ?: "")
+
+                            Log.d("Pelisplus", "getMainPage - Encontrado: Título=$title, Link=$fixedLink, Img=$fixedImg")
+                            newAnimeSearchResponse(
+                                title,
+                                fixedLink
+                            ) {
+                                this.type = tvType
+                                this.posterUrl = fixedImg
+                            }
+                        }
+                    }
+                    if (homeItems.isEmpty()) {
+                        Log.w("Pelisplus", "getMainPage - No se encontraron items para la categoría $name en la URL $url con el nuevo selector.")
+                    } else {
+                        Log.d("Pelisplus", "getMainPage - Encontrados ${homeItems.size} items para la categoría $name.")
+                    }
+                    HomePageList(name, homeItems)
                 }
-            }
-            if (homeItems.isEmpty()) {
-                Log.w("Pelisplus", "getMainPage - No se encontraron items para la categoría $name en la URL $url con el nuevo selector.")
-            } else {
-                Log.d("Pelisplus", "getMainPage - Encontrados ${homeItems.size} items para la categoría $name.")
-            }
-            HomePageList(name, homeItems)
+            }.awaitAll().filterNotNull()
         }
 
-        items.addAll(homePageLists.filterNotNull())
+        items.addAll(homePageLists)
 
         return newHomePageResponse(items, false)
     }

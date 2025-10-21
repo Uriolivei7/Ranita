@@ -8,10 +8,11 @@ import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.util.*
 import kotlin.collections.ArrayList
-
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class MundoDonghuaProvider : MainAPI() {
-
     override var mainUrl = "https://www.mundodonghua.com"
     override var name = "MundoDonghua"
     override var lang = "mx"
@@ -22,7 +23,7 @@ class MundoDonghuaProvider : MainAPI() {
         TvType.Anime,
     )
 
-    override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val urls = listOf(
             Pair("$mainUrl/lista-donghuas", "Donghuas"),
         )
@@ -35,36 +36,39 @@ class MundoDonghuaProvider : MainAPI() {
                     val title = it.selectFirst("h5")?.text() ?: ""
                     val poster = it.selectFirst(".fit-1 img")?.attr("src")
                     val epRegex = Regex("(\\/(\\d+)\$|\\/(\\d+).\\/.*)")
-                    val url = it.selectFirst("a")?.attr("href")?.replace(epRegex,"")?.replace("/ver/","/donghua/")
-                        ?.replace(Regex("$/|$(\\d+)"),"")
+                    val url = it.selectFirst("a")?.attr("href")?.replace(epRegex, "")?.replace("/ver/", "/donghua/")
+                        ?.replace(Regex("$/|$(\\d+)"), "")
                     val epnumRegex = Regex("((\\d+)$)")
                     val epNum = epnumRegex.find(title)?.value?.toIntOrNull()
                     val dubstat = if (title.contains("Latino") || title.contains("Castellano")) DubStatus.Dubbed else DubStatus.Subbed
-                    newAnimeSearchResponse(title.replace(Regex("Episodio|(\\d+)"),"").trim(), fixUrl(url ?: "")) {
+                    newAnimeSearchResponse(title.replace(Regex("Episodio|(\\d+)"), "").trim(), fixUrl(url ?: "")) {
                         this.posterUrl = fixUrl(poster ?: "")
                         addDubStatus(dubstat, epNum)
                     }
                 })
         )
 
-        urls.apmap { (url, name) ->
-            val home = app.get(url, timeout = 120).document.select(".col-xs-4").map {
-                val title = it.selectFirst(".fs-14")?.text() ?: ""
-                val poster = it.selectFirst(".fit-1 img")?.attr("src") ?: ""
-                newAnimeSearchResponse(
-                    title,
-                    fixUrl(it.selectFirst("a")?.attr("href") ?: ""),
-                    TvType.Anime
-                ) {
-                    this.posterUrl = fixUrl(poster)
-                    this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
-                        EnumSet.of(DubStatus.Dubbed)
-                    else
-                        EnumSet.of(DubStatus.Subbed)
+        coroutineScope {
+            urls.map { (url, name) ->
+                async {
+                    val home = app.get(url, timeout = 120).document.select(".col-xs-4").map {
+                        val title = it.selectFirst(".fs-14")?.text() ?: ""
+                        val poster = it.selectFirst(".fit-1 img")?.attr("src") ?: ""
+                        newAnimeSearchResponse(
+                            title,
+                            fixUrl(it.selectFirst("a")?.attr("href") ?: ""),
+                            TvType.Anime
+                        ) {
+                            this.posterUrl = fixUrl(poster)
+                            this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
+                                EnumSet.of(DubStatus.Dubbed)
+                            else
+                                EnumSet.of(DubStatus.Subbed)
+                        }
+                    }
+                    items.add(HomePageList(name, home))
                 }
-            }
-
-            items.add(HomePageList(name, home))
+            }.awaitAll()
         }
 
         if (items.size <= 0) throw ErrorLoadingException()
@@ -163,7 +167,7 @@ class MundoDonghuaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val datafix = data.replace("ñ","%C3%B1")
+        val datafix = data.replace("ñ", "%C3%B1")
         val reqHEAD = mapOf(
             "User-Agent" to USER_AGENT,
             "Accept" to "*/*",
@@ -177,46 +181,54 @@ class MundoDonghuaProvider : MainAPI() {
             "Sec-Fetch-Site" to "same-origin",
             "TE" to "trailers"
         )
-        app.get(data).document.select("script").apmap { script ->
-            if (script.data().contains("eval(function(p,a,c,k,e")) {
-                val packedRegex = Regex("eval\\(function\\(p,a,c,k,e,.*\\)\\)")
-                packedRegex.findAll(script.data()).map {
-                    it.value
-                }.toList().apmap {
-                    val unpack = getAndUnpack(it).replace("diasfem","embedsito")
-                    fetchUrls(unpack).apmap { url ->
-                        val newUrl = url.replace("https://sbbrisk.com","https://watchsb.com")
-                        loadExtractor(newUrl, data, subtitleCallback, callback)
-                    }
-                    if (unpack.contains("protea_tab")) {
-                        val protearegex = Regex("protea_tab.*slug.*\\\"(.*)\\\".*,type")
-                        val ssee = protearegex.find(unpack)?.destructured?.component1()
-                        if (!ssee.isNullOrEmpty()) {
-                            val aa = app.get("$mainUrl/api_donghua.php?slug=$ssee", headers = reqHEAD).text
-                            val secondK = aa.substringAfter("url\":\"").substringBefore("\"}")
-                            val se = "https://www.mdnemonicplayer.xyz/nemonicplayer/dmplayer.php?key=$secondK"
-                            val aa3 = app.get(se, headers = reqHEAD, allowRedirects = false).text
-                            val idReg = Regex("video.*\\\"(.*?)\\\"")
-                            val vidID = idReg.find(aa3)?.destructured?.component1()
-                            if (!vidID.isNullOrEmpty()) {
-                                val newLink = "https://www.dailymotion.com/embed/video/$vidID"
-                                loadExtractor(newLink, subtitleCallback, callback)
+        var linksFound = false
+        coroutineScope {
+            app.get(data).document.select("script").forEach { script ->
+                if (script.data().contains("eval(function(p,a,c,k,e")) {
+                    val packedRegex = Regex("eval\\(function\\(p,a,c,k,e,.*\\)\\)")
+                    packedRegex.findAll(script.data()).forEach { match ->
+                        val unpack = getAndUnpack(match.value).replace("diasfem", "embedsito")
+                        fetchUrls(unpack).forEach { url ->
+                            val newUrl = url.replace("https://sbbrisk.com", "https://watchsb.com")
+                            if (loadExtractor(newUrl, data, subtitleCallback, callback)) {
+                                linksFound = true
                             }
                         }
-                    }
-                    if (unpack.contains("asura_player")) {
-                        val asuraRegex = Regex("file.*\\\"(.*)\\\".*type")
-                        val aass = asuraRegex.find(unpack)?.destructured?.component1()
-                        if (!aass.isNullOrEmpty()) {
-                            val test = app.get(aass).text
-                            if (test.contains(Regex("#EXTM3U"))) {
-                                generateM3u8("Asura", aass, "").forEach(callback)
+                        if (unpack.contains("protea_tab")) {
+                            val protearegex = Regex("protea_tab.*slug.*\\\"(.*)\\\".*,type")
+                            val ssee = protearegex.find(unpack)?.destructured?.component1()
+                            if (!ssee.isNullOrEmpty()) {
+                                val aa = app.get("$mainUrl/api_donghua.php?slug=$ssee", headers = reqHEAD).text
+                                val secondK = aa.substringAfter("url\":\"").substringBefore("\"}")
+                                val se = "https://www.mdnemonicplayer.xyz/nemonicplayer/dmplayer.php?key=$secondK"
+                                val aa3 = app.get(se, headers = reqHEAD, allowRedirects = false).text
+                                val idReg = Regex("video.*\\\"(.*?)\\\"")
+                                val vidID = idReg.find(aa3)?.destructured?.component1()
+                                if (!vidID.isNullOrEmpty()) {
+                                    val newLink = "https://www.dailymotion.com/embed/video/$vidID"
+                                    if (loadExtractor(newLink, data, subtitleCallback, callback)) {
+                                        linksFound = true
+                                    }
+                                }
+                            }
+                        }
+                        if (unpack.contains("asura_player")) {
+                            val asuraRegex = Regex("file.*\\\"(.*)\\\".*type")
+                            val aass = asuraRegex.find(unpack)?.destructured?.component1()
+                            if (!aass.isNullOrEmpty()) {
+                                val test = app.get(aass).text
+                                if (test.contains(Regex("#EXTM3U"))) {
+                                    generateM3u8("Asura", aass, "").forEach { link ->
+                                        callback(link)
+                                        linksFound = true
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        return true
+        return linksFound
     }
 }
