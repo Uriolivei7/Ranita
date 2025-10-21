@@ -337,7 +337,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HdfullProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 19,
     "name": "HDFull",
     "internalName": "HdfullProvider",

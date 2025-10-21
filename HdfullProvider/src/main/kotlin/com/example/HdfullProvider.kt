@@ -347,10 +347,13 @@ class HdfullProvider : MainAPI() {
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
+                // Añadir comas faltantes (más robusto)
                 .replace(Regex(":\"([^\"]+)\":\"([^\"]+)"), ":\"$1\",\"$2")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
-                .replace(Regex("(\"id\":[^}]+?),\"id\":"), "$1},{id:")
+                // Separar objetos por "id" (mantener comillas)
+                .replace(Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\"),\"id\":"),
+                    "$1},{\"id\":")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
 
@@ -362,6 +365,8 @@ class HdfullProvider : MainAPI() {
                 jsonString = "$jsonString]"
             }
             jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
+
+            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]")
 
             val objects = jsonString.substring(1, jsonString.length - 1).split("},").map { obj ->
                 val trimmed = obj.trim()
