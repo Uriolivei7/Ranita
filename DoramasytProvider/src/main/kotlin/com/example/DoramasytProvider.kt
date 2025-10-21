@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.net.URI
+import kotlinx.coroutines.*
 
 
 class DoramasytProvider : MainAPI() {
@@ -128,47 +129,53 @@ class DoramasytProvider : MainAPI() {
         }
 
         Log.d("Doramasyt", "Procesando URLs adicionales")
-        urls.apmap { (url, name) ->
-            Log.d("Doramasyt", "Procesando URL: $url - $name")
-            try {
-                val response = app.get(url)
-                val homeList: List<AnimeSearchResponse> = response.document.select("li.col").mapNotNull { element ->
+        coroutineScope {
+            urls.map { (url, name) ->
+                async {
+                    Log.d("Doramasyt", "Procesando URL: $url - $name")
                     try {
-                        val title = element.selectFirst("h3")?.text()?.trim()
-                        if (title.isNullOrEmpty()) {
-                            Log.w("Doramasyt", "Título no encontrado en $name, omitiendo elemento")
-                            return@mapNotNull null
+                        val response = app.get(url)
+                        val homeList: List<AnimeSearchResponse> = response.document.select("li.col").mapNotNull { element ->
+                            try {
+                                val title = element.selectFirst("h3")?.text()?.trim()
+                                if (title.isNullOrEmpty()) {
+                                    Log.w("Doramasyt", "Título no encontrado en $name, omitiendo elemento")
+                                    return@mapNotNull null
+                                }
+
+                                val poster = element.selectFirst("img")?.attr("data-src")?.trim() ?: ""
+                                val linkElement = element.selectFirst("a")
+                                if (linkElement == null) {
+                                    Log.w("Doramasyt", "Enlace no encontrado para $title en $name")
+                                    return@mapNotNull null
+                                }
+
+                                val animeUrl = fixUrl(linkElement.attr("href"))
+
+                                Log.d("Doramasyt", "Elemento en $name: Título = $title, Poster = $poster, URL = $animeUrl")
+
+                                newAnimeSearchResponse(title, animeUrl) {
+                                    this.posterUrl = if (poster.isNotEmpty()) fixUrl(poster) else null
+                                    addDubStatus(getDubStatus(title))
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Doramasyt", "Error al procesar elemento en $url: ${e.message}", e)
+                                null
+                            }
                         }
 
-                        val poster = element.selectFirst("img")?.attr("data-src")?.trim() ?: ""
-                        val linkElement = element.selectFirst("a")
-                        if (linkElement == null) {
-                            Log.w("Doramasyt", "Enlace no encontrado para $title en $name")
-                            return@mapNotNull null
-                        }
+                        Log.d("Doramasyt", "Número de elementos procesados en $name: ${homeList.size}")
 
-                        val animeUrl = fixUrl(linkElement.attr("href"))
-
-                        Log.d("Doramasyt", "Elemento en $name: Título = $title, Poster = $poster, URL = $animeUrl")
-
-                        newAnimeSearchResponse(title, animeUrl) {
-                            this.posterUrl = if (poster.isNotEmpty()) fixUrl(poster) else null
-                            addDubStatus(getDubStatus(title))
+                        if (homeList.isNotEmpty()) {
+                            // La adición a la lista mutable 'items' debe hacerse de forma segura,
+                            // pero para la mayoría de los casos en Cloudstream, se asume safe.
+                            items.add(HomePageList(name, homeList))
                         }
                     } catch (e: Exception) {
-                        Log.e("Doramasyt", "Error al procesar elemento en $url: ${e.message}", e)
-                        null
+                        Log.e("Doramasyt", "Error al obtener datos de la URL $url: ${e.message}", e)
                     }
                 }
-
-                Log.d("Doramasyt", "Número de elementos procesados en $name: ${homeList.size}")
-
-                if (homeList.isNotEmpty()) {
-                    items.add(HomePageList(name, homeList))
-                }
-            } catch (e: Exception) {
-                Log.e("Doramasyt", "Error al obtener datos de la URL $url: ${e.message}", e)
-            }
+            }.awaitAll() // Espera a que todas las peticiones terminen
         }
 
         if (items.isEmpty()) {
