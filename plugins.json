@@ -97,7 +97,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VerseriesonlineProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 6,
     "name": "Veronline",
     "internalName": "VeronlineProvider",
@@ -111,7 +111,7 @@
     ],
     "iconUrl": "https://www.veronline.tax/icon/favicon.ico",
     "language": "mx",
-    "fileSize": 20000
+    "fileSize": 22000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LacartoonsProvider.cs3",
