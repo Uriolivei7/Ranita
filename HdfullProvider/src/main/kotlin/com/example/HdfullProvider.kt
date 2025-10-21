@@ -329,8 +329,8 @@ class HdfullProvider : MainAPI() {
             jsonString = jsonString
                 .replace(Regex("\"\\?\\?\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
                 .replace(Regex("\"\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"}ide\":\""), "\"provider\":\"") // Corregir "}ide"
-                .replace(Regex("\"c}de\":\""), "\"code\":\"") // Corregir "c}de"
+                .replace(Regex("\"\\}ide\\\":\""), "\"provider\":\"") // Corregir "}ide"
+                .replace(Regex("\"c\\}de\\\":\""), "\"code\":\"") // Corregir "c}de"
                 .replace(Regex("\"\\u0001\\u0005ali\\u0004\\u0009\":\""), "\"quality\":\"")
                 .replace(Regex("ddi\\?\\?"), "dvdrip")
                 .replace("hd\\u0004\\u0006", "hdtv")
@@ -350,6 +350,7 @@ class HdfullProvider : MainAPI() {
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
                 .replace(Regex("\"oide\":\""), "\"provider\":\"")
+                .replace("ddi", "dvdrip")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
 
