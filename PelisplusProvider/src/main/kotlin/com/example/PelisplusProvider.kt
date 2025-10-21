@@ -10,11 +10,16 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Base64
+import com.google.gson.annotations.SerializedName
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.collections.ArrayList
 import kotlin.text.Charsets.UTF_8
+import kotlinx.coroutines.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.serialization.Serializable
 
 class PelisplusProvider : MainAPI() {
     override var mainUrl = "https://pelisplushd.bz"
@@ -234,47 +239,46 @@ class PelisplusProvider : MainAPI() {
         }
     }
 
+    @Serializable
     data class SortedEmbed(
-        val servername: String,
-        val link: String,
-        val type: String
+        @SerializedName("type") val type: String? = null,
+        @SerializedName("link") val link: String? = null, // Enlace cifrado
+        @SerializedName("servername") val servername: String? = null,
+        @SerializedName("download") val download: String? = null
     )
 
+    @Serializable
     data class DataLinkEntry(
-        val file_id: String,
-        val video_language: String,
-        val sortedEmbeds: List<SortedEmbed>
+        @SerializedName("serverName") val serverName: String? = null,
+        @SerializedName("sortedEmbeds") val sortedEmbeds: List<SortedEmbed>? = emptyList()
     )
 
-    private fun decryptLink(encryptedLinkBase64: String, secretKey: String): String? {
-        try {
-            val encryptedBytes = Base64.decode(encryptedLinkBase64, Base64.DEFAULT)
+    // Estructuras para la solicitud (Request) a la API de descifrado
+    @Serializable
+    data class DecryptRequestBody(
+        @SerializedName("links") val links: List<String> // Lista de enlaces cifrados (JWTs)
+    )
 
-            val ivBytes = encryptedBytes.copyOfRange(0, 16)
-            val ivSpec = IvParameterSpec(ivBytes)
+    // Estructuras para la respuesta (Response) de la API de descifrado
+    @Serializable
+    data class DecryptedLink(
+        @SerializedName("id") val id: Int? = null,
+        @SerializedName("link") val link: String? = null // Enlace descifrado final (ej. moevideo.net)
+    )
 
-            val cipherTextBytes = encryptedBytes.copyOfRange(16, encryptedBytes.size)
-
-            val keySpec = SecretKeySpec(secretKey.toByteArray(UTF_8), "AES")
-
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-
-            val decryptedBytes = cipher.doFinal(cipherTextBytes)
-
-            return String(decryptedBytes, UTF_8)
-        } catch (e: Exception) {
-            Log.e("Pelisplus", "Error al descifrar link de Embed69: ${e.message}", e)
-            return null
-        }
-    }
+    @Serializable
+    data class DecryptionResponse(
+        @SerializedName("success") val success: Boolean? = false,
+        @SerializedName("reason") val reason: String? = null,
+        @SerializedName("links") val links: List<DecryptedLink>? = emptyList()
+    )
 
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    ): Boolean = coroutineScope {
         Log.d("Pelisplus", "loadLinks - Data de entrada: $data")
 
         var cleanedData = data
@@ -300,10 +304,15 @@ class PelisplusProvider : MainAPI() {
 
         if (targetUrl.isBlank()) {
             Log.e("Pelisplus", "loadLinks - ERROR: URL objetivo está en blanco después de procesar 'data'.")
-            return false
+            return@coroutineScope false
         }
 
-        val doc = app.get(targetUrl).document
+        val doc = try {
+            app.get(targetUrl).document
+        } catch (e: Exception) {
+            Log.e("Pelisplus", "loadLinks - Error al obtener documento de la URL principal: ${e.message}")
+            return@coroutineScope false
+        }
 
         val playerUrls = mutableListOf<String>()
 
@@ -340,124 +349,184 @@ class PelisplusProvider : MainAPI() {
 
         if (playerUrls.isEmpty()) {
             Log.d("Pelisplus", "FINALMENTE: No se encontró ninguna URL de reproductor inicial en Pelisplus.")
-            return false
+            return@coroutineScope false
         }
 
         Log.d("Pelisplus", "URLs de reproductores iniciales encontradas: $playerUrls")
 
         var linksFound = false
-        for (playerUrl in playerUrls) {
-            Log.d("Pelisplus", "Procesando URL de reproductor: $playerUrl")
+        val jobs = playerUrls.map { playerUrl ->
+            async {
+                Log.d("Pelisplus", "Procesando URL de reproductor: $playerUrl")
 
-            if (playerUrl.contains("embed69.org")) {
-                Log.d("Pelisplus", "loadLinks - Detectado embed69.org URL: $playerUrl")
-                val frameDoc = try {
-                    app.get(fixUrl(playerUrl), referer = targetUrl).document
-                } catch (e: Exception) {
-                    Log.e("Pelisplus", "Error al obtener el contenido del reproductor de embed69.org ($playerUrl): ${e.message}")
-                    continue
-                }
+                if (playerUrl.contains("embed69.org")) {
+                    Log.d("Pelisplus", "loadLinks - Detectado embed69.org. Usando lógica de API.")
 
-                val scriptContentEmbed69 = frameDoc.select("script").map { it.html() }.joinToString("\n")
-                val dataLinkRegex = """const dataLink = (\[.*?\]);""".toRegex()
-                val dataLinkJsonString = dataLinkRegex.find(scriptContentEmbed69)?.groupValues?.get(1)
+                    val embedRes = try {
+                        app.get(fixUrl(playerUrl), referer = targetUrl)
+                    } catch (e: Exception) {
+                        Log.e("Pelisplus", "Error al obtener contenido de embed69.org: ${e.message}")
+                        return@async false
+                    }
 
-                if (dataLinkJsonString.isNullOrBlank()) {
-                    Log.e("Pelisplus", "No se encontró la variable dataLink en el script de embed69.org.")
-                    continue
-                }
+                    if (!embedRes.isSuccessful) {
+                        Log.e("Pelisplus", "Fallo al cargar la página de embed69.org. Código: ${embedRes.code}")
+                        return@async false
+                    }
 
-                Log.d("Pelisplus", "dataLink JSON string encontrado: $dataLinkJsonString")
-                val dataLinkEntries = tryParseJson<List<DataLinkEntry>>(dataLinkJsonString)
+                    val frameDoc = Jsoup.parse(embedRes.text)
+                    var scriptContent: String? = null
 
-                if (dataLinkEntries.isNullOrEmpty()) {
-                    Log.e("Pelisplus", "Error al parsear dataLink JSON o está vacío.")
-                    continue
-                }
-
-                val secretKey = "Ak7qrvvH4WKYxV2OgaeHAEg2a5eh16vE"
-
-                for (entry in dataLinkEntries) {
-                    for (embed in entry.sortedEmbeds) {
-                        if (embed.type == "video") {
-                            val decryptedLink = decryptLink(embed.link, secretKey)
-                            if (decryptedLink != null) {
-                                Log.d("Pelisplus", "Embed69: Link desencriptado para ${embed.servername}: $decryptedLink")
-                                if (loadExtractor(fixUrl(decryptedLink), playerUrl, subtitleCallback, callback)) {
-                                    linksFound = true
-                                }
-                            }
+                    for (script in frameDoc.select("script")) {
+                        val content = script.html()
+                        if (content.contains("let dataLink =") || content.contains("var dataLink =")) {
+                            scriptContent = content
+                            break
                         }
                     }
-                }
 
-            } else if (playerUrl.contains("xupalace.org/video/")) {
-                Log.d("Pelisplus", "loadLinks - Detectado xupalace.org/video/ URL: $playerUrl")
-                val xupalaceDoc = try {
-                    app.get(fixUrl(playerUrl), referer = targetUrl).document
-                } catch (e: Exception) {
-                    Log.e("Pelisplus", "Error al obtener el contenido del reproductor de Xupalace ($playerUrl): ${e.message}")
-                    continue
-                }
+                    if (scriptContent.isNullOrBlank()) {
+                        Log.e("Pelisplus", "ERROR: No se encontró el script que define 'dataLink'.")
+                        return@async false
+                    }
 
-                val regexPlayerUrl = Regex("""go_to_playerVast\('([^']+)'""")
-                val elementsWithOnclick = xupalaceDoc.select("*[onclick*='go_to_playerVast']")
+                    val dataLinkRegex = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""")
+                    val jsonMatch = dataLinkRegex.find(scriptContent)
 
-                if (elementsWithOnclick.isEmpty()) {
-                    Log.w("Pelisplus", "No se encontraron elementos con 'go_to_playerVast' en xupalace.org/video/.")
-                    continue
-                }
+                    if (jsonMatch == null) {
+                        Log.e("Pelisplus", "ERROR: No se pudo extraer la variable dataLink JSON del script.")
+                        return@async false
+                    }
 
-                for (element in elementsWithOnclick) {
-                    val onclickAttr = element.attr("onclick")
-                    val matchPlayerUrl = regexPlayerUrl.find(onclickAttr)
+                    val dataLinkJson = jsonMatch.groupValues[1]
+                    val files = tryParseJson<List<DataLinkEntry>>(dataLinkJson)
 
-                    if (matchPlayerUrl != null) {
-                        val videoUrlFromXupalace = matchPlayerUrl.groupValues[1]
-                        Log.d("Pelisplus", "Xupalace/video: Encontrado URL: $videoUrlFromXupalace")
-                        if (videoUrlFromXupalace.isNotBlank()) {
-                            if (videoUrlFromXupalace.contains("uqload.com", ignoreCase = true)) {
-                                Log.d("Pelisplus", "Xupalace/video: PRIORIDAD - Encontrado Uqload URL: $videoUrlFromXupalace")
-                                if (loadExtractor(fixUrl(videoUrlFromXupalace), playerUrl, subtitleCallback, callback)) {
-                                    linksFound = true
-                                }
-                            } else {
-                                if (loadExtractor(fixUrl(videoUrlFromXupalace), playerUrl, subtitleCallback, callback)) {
-                                    linksFound = true
-                                }
-                            }
+                    if (files.isNullOrEmpty()) {
+                        Log.e("Pelisplus", "ERROR: dataLink JSON se extrajo, pero no se pudo parsear a la lista de DataLinkEntry.")
+                        return@async false
+                    }
+
+                    val encryptedLinks = files.flatMap { file ->
+                        (file.sortedEmbeds ?: emptyList()).flatMap { embed ->
+                            listOfNotNull(embed.link, embed.download)
                         }
+                    }.distinct()
+
+                    if (encryptedLinks.isEmpty()) {
+                        Log.e("Pelisplus", "ERROR: No se encontraron enlaces cifrados (JWT) en dataLink.")
+                        return@async false
+                    }
+
+                    val decryptUrl = "https://embed69.org/api/decrypt"
+                    val body = DecryptRequestBody(encryptedLinks).toJson()
+                        .toRequestBody("application/json".toMediaTypeOrNull())
+
+                    val decryptedRes = try {
+                        app.post(decryptUrl, requestBody = body)
+                    } catch (e: Exception) {
+                        Log.e("Pelisplus", "Error en la llamada a la API de descifrado: ${e.message}")
+                        return@async false
+                    }
+
+                    if (!decryptedRes.isSuccessful) {
+                        Log.e(
+                            "Pelisplus",
+                            "ERROR: API de descifrado fallida con código ${decryptedRes.code}. Cuerpo: ${decryptedRes.text}"
+                        )
+                        return@async false
+                    }
+
+                    val decryptedData = tryParseJson<DecryptionResponse>(decryptedRes.text)
+                    val finalLinks = decryptedData?.links?.mapNotNull { it.link }
+
+                    if (decryptedData?.success != true || finalLinks.isNullOrEmpty()) {
+                        Log.e(
+                            "Pelisplus",
+                            "ERROR: Respuesta de descifrado inválida o vacía. Razón: ${decryptedData?.reason}"
+                        )
+                        return@async false
+                    }
+
+                    return@async coroutineScope {
+                        finalLinks.map { decryptedLink ->
+                            async {
+                                Log.d("Pelisplus", "Cargando extractor para enlace descifrado: $decryptedLink")
+                                loadExtractor(
+                                    fixUrl(decryptedLink.replace("`", "").trim()),
+                                    playerUrl,
+                                    subtitleCallback,
+                                    callback
+                                )
+                            }
+                        }.awaitAll().any { it }
+                    }
+
+                } else if (playerUrl.contains("xupalace.org/video/")) {
+                    Log.d("Pelisplus", "loadLinks - Detectado xupalace.org/video/ URL: $playerUrl")
+                    val xupalaceDoc = try {
+                        app.get(fixUrl(playerUrl), referer = targetUrl).document
+                    } catch (e: Exception) {
+                        Log.e("Pelisplus", "Error al obtener el contenido del reproductor de Xupalace ($playerUrl): ${e.message}")
+                        return@async false
+                    }
+
+                    val regexPlayerUrl = Regex("""go_to_playerVast\('([^']+)'""")
+                    val elementsWithOnclick = xupalaceDoc.select("*[onclick*='go_to_playerVast']")
+
+                    if (elementsWithOnclick.isEmpty()) {
+                        Log.w("Pelisplus", "No se encontraron elementos con 'go_to_playerVast' en xupalace.org/video/.")
+                        return@async false
+                    }
+
+                    val xupalaceJobs = elementsWithOnclick.mapNotNull { element ->
+                        val onclickAttr = element.attr("onclick")
+                        val matchPlayerUrl = regexPlayerUrl.find(onclickAttr)
+
+                        if (matchPlayerUrl != null) {
+                            val videoUrlFromXupalace = matchPlayerUrl.groupValues[1]
+                            Log.d("Pelisplus", "Xupalace/video: Encontrado URL: $videoUrlFromXupalace")
+
+                            async {
+                                if (videoUrlFromXupalace.isNotBlank()) {
+                                    if (videoUrlFromXupalace.contains("uqload.com", ignoreCase = true)) {
+                                        Log.d("Pelisplus", "Xupalace/video: PRIORIDAD - Encontrado Uqload URL: $videoUrlFromXupalace")
+                                    }
+                                    loadExtractor(fixUrl(videoUrlFromXupalace), playerUrl, subtitleCallback, callback)
+                                } else false
+                            }
+                        } else null
+                    }
+                    return@async xupalaceJobs.awaitAll().any { it }
+
+                } else if (playerUrl.contains("xupalace.org/uqlink.php?id=")) {
+                    Log.d("Pelisplus", "loadLinks - Detectado xupalace.org/uqlink.php URL (Manejo de Iframe Directo): $playerUrl")
+
+                    val uqlinkDoc = try {
+                        app.get(fixUrl(playerUrl), referer = targetUrl).document
+                    } catch (e: Exception) {
+                        Log.e("Pelisplus", "Error al obtener el contenido de uqlink.php ($playerUrl): ${e.message}")
+                        return@async false
+                    }
+
+                    val uqloadIframeSrc = uqlinkDoc.selectFirst("iframe")?.attr("src")
+
+                    if (!uqloadIframeSrc.isNullOrBlank() && uqloadIframeSrc.contains("uqload.io", ignoreCase = true)) {
+                        Log.d("Pelisplus", "Uqlink.php: Encontrado iframe de Uqload: $uqloadIframeSrc")
+                        return@async loadExtractor(fixUrl(uqloadIframeSrc), playerUrl, subtitleCallback, callback)
+                    } else {
+                        Log.w("Pelisplus", "Uqlink.php: No se encontró iframe de Uqload válido en $playerUrl.")
+                        return@async false
                     }
                 }
-            } else if (playerUrl.contains("xupalace.org/uqlink.php?id=")) {
-                Log.d("Pelisplus", "loadLinks - Detectado xupalace.org/uqlink.php URL (Manejo de Iframe Directo): $playerUrl")
-
-                val uqlinkDoc = try {
-                    app.get(fixUrl(playerUrl), referer = targetUrl).document
-                } catch (e: Exception) {
-                    Log.e("Pelisplus", "Error al obtener el contenido de uqlink.php ($playerUrl): ${e.message}")
-                    continue
-                }
-
-                val uqloadIframeSrc = uqlinkDoc.selectFirst("iframe")?.attr("src")
-
-                if (!uqloadIframeSrc.isNullOrBlank() && uqloadIframeSrc.contains("uqload.io", ignoreCase = true)) {
-                    Log.d("Pelisplus", "Uqlink.php: Encontrado iframe de Uqload: $uqloadIframeSrc")
-                    if (loadExtractor(fixUrl(uqloadIframeSrc), playerUrl, subtitleCallback, callback)) {
-                        linksFound = true
-                    }
-                } else {
-                    Log.w("Pelisplus", "Uqlink.php: No se encontró iframe de Uqload válido en $playerUrl.")
-                }
-            }
-            else {
-                Log.w("Pelisplus", "Tipo de reproductor desconocido o no manejado directamente en Pelisplus: $playerUrl. Intentando loadExtractor genérico.")
-                if (loadExtractor(fixUrl(playerUrl), targetUrl, subtitleCallback, callback)) {
-                    linksFound = true
+                else {
+                    Log.w("Pelisplus", "Tipo de reproductor desconocido o no manejado directamente en Pelisplus: $playerUrl. Intentando loadExtractor genérico.")
+                    return@async loadExtractor(fixUrl(playerUrl), targetUrl, subtitleCallback, callback)
                 }
             }
         }
 
-        return linksFound
+        linksFound = jobs.awaitAll().any { it }
+
+        return@coroutineScope linksFound
     }
 }

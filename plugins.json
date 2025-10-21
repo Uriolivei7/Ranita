@@ -210,7 +210,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 12,
     "name": "PelisPlus",
     "internalName": "PelisplusProvider",
@@ -224,7 +224,7 @@
     ],
     "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
     "language": "mx",
-    "fileSize": 23000
+    "fileSize": 28000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
