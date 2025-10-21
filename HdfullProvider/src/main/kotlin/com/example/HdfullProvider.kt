@@ -329,9 +329,10 @@ class HdfullProvider : MainAPI() {
             jsonString = jsonString
                 .replace(Regex("\"\\?\\?\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
                 .replace(Regex("\"\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
-                .replace(Regex("\"\\}ide\\\":\""), "\"provider\":\"") // Corregir "}ide"
-                .replace(Regex("\"c\\}de\\\":\""), "\"code\":\"") // Corregir "c}de"
+                .replace(Regex("\"\\}ide\\\":\""), "\"provider\":\"")
+                .replace(Regex("\"c\\}de\\\":\""), "\"code\":\"")
                 .replace(Regex("\"\\u0001\\u0005ali\\u0004\\u0009\":\""), "\"quality\":\"")
+                .replace(Regex("\"oide\":\""), "\"provider\":\"")
                 .replace(Regex("ddi\\?\\?"), "dvdrip")
                 .replace("hd\\u0004\\u0006", "hdtv")
                 .replace("d\\u0006d\\u0002i", "dvdrip")
@@ -340,17 +341,17 @@ class HdfullProvider : MainAPI() {
                 .replace("7N9", "ENG")
                 .replace("7SP", "ESP")
                 .replace("L3T", "LAT")
+                .replace("ddi", "dvdrip")
+                .replace(Regex("\"code\":\"[^\"]*[\\{\\}][^\"]*\""), "\"code\":\"unknown\"")
                 .replace(Regex("\\p{Cntrl}"), "")
                 .replace(Regex("\\?\\?"), "")
                 .replace('\n', ' ')
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
-                .replace(Regex(":(\\\"?[a-zA-Z0-9]+\\\")\\:"), ":$1,")
+                .replace(Regex(":\"([^\"]+)\":\""), ":\"$1\",")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
-                .replace(Regex("\"oide\":\""), "\"provider\":\"")
-                .replace("ddi", "dvdrip")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
 
@@ -377,6 +378,13 @@ class HdfullProvider : MainAPI() {
 
             if (!jsonString.contains("{")) {
                 Log.e("HDFull", "Error: No se encontró '{' en el JSON final")
+                return emptyList()
+            }
+
+            try {
+                AppUtils.parseJson<List<Any>>(jsonString)
+            } catch (e: Exception) {
+                Log.e("HDFull", "JSON inválido antes de parsear ProviderCode: ${e.message}")
                 return emptyList()
             }
 
