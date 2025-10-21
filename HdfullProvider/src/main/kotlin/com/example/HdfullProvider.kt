@@ -347,12 +347,12 @@ class HdfullProvider : MainAPI() {
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
-                // Añadir comas faltantes (más robusto)
                 .replace(Regex(":\"([^\"]+)\":\"([^\"]+)"), ":\"$1\",\"$2")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
-                // Separar objetos por "id" (mantener comillas)
                 .replace(Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\"),\"id\":"),
+                    "$1},{\"id\":")
+                .replace(Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\"),\\{\"id\":"),
                     "$1},{\"id\":")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
@@ -366,16 +366,20 @@ class HdfullProvider : MainAPI() {
             }
             jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
 
-            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]")
+            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]") // Eliminar cualquier objeto incompleto al final
 
             val objects = jsonString.substring(1, jsonString.length - 1).split("},").map { obj ->
                 val trimmed = obj.trim()
-                if (trimmed.isNotEmpty() && !trimmed.startsWith("{")) {
-                    "{$trimmed}"
+                if (trimmed.contains("\"id\":") && trimmed.contains("\"provider\":") && trimmed.contains("\"code\":") && trimmed.contains("\"lang\":") && trimmed.contains("\"quality\":")) {
+                    if (!trimmed.startsWith("{")) {
+                        "{$trimmed}"
+                    } else {
+                        trimmed
+                    }
                 } else {
-                    trimmed
+                    ""
                 }
-            }
+            }.filter { it.isNotEmpty() }
             jsonString = "[${objects.joinToString(",")}]"
 
             Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
