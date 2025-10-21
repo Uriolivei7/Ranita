@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import android.net.Uri
+import kotlinx.coroutines.*
 
 class AnimeioProvider : MainAPI() {
     override var mainUrl = "https://animeio.com"
@@ -202,7 +203,7 @@ class AnimeioProvider : MainAPI() {
             }
         }
 
-        return if (items.isNotEmpty()) HomePageResponse(items) else null
+        return if (items.isNotEmpty()) newHomePageResponse(items) else null
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -218,7 +219,9 @@ class AnimeioProvider : MainAPI() {
     data class EpisodeData (
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("episode") val episode: String? = null,
-        @JsonProperty("image") val image: String? = null
+        @JsonProperty("image") val image: String? = null,
+        @JsonProperty("season") val season: String? = null,
+        @JsonProperty("image2") val image2: String? = null
     )
 
     override suspend fun load(url: String): LoadResponse? {
@@ -304,13 +307,6 @@ class AnimeioProvider : MainAPI() {
             } else {
                 Log.d("AnimeioProvider", "Procesando como serie")
 
-                data class EpisodeData(
-                    val title: String?,
-                    val season: String?,
-                    val episode: String?,
-                    val image: String?,
-                    val image2: String?
-                )
 
                 val allEpisodes = ArrayList<Episode>()
 
@@ -429,7 +425,6 @@ class AnimeioProvider : MainAPI() {
                                 Log.i("AnimeioProvider", "CON imagen: $episodiosConImagen")
                                 Log.i("AnimeioProvider", "SIN imagen: $episodiosSinImagen")
 
-                                // Verificar algunos episodios aleatorios
                                 if (allEpisodes.isNotEmpty()) {
                                     val sampleSize = minOf(3, allEpisodes.size)
                                     val sampleEpisodes = allEpisodes.shuffled().take(sampleSize)
@@ -508,7 +503,7 @@ class AnimeioProvider : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    ): Boolean = coroutineScope {
         val episodeUrl = data
         val response = app.get(episodeUrl)
         val doc = response.document
@@ -517,32 +512,35 @@ class AnimeioProvider : MainAPI() {
         var linksFound = false
 
         if (players.isNotEmpty()) {
-            players.apmap { player ->
-                val playerPayload = player.attr("data-player")
-                val playerName = player.attr("data-player-name")
 
-                if (playerPayload.isNotBlank()) {
-                    try {
-                        Log.d("AnimeioProvider", "Procesando reproductor: $playerName con payload: $playerPayload")
-                        val finalUrl = when(playerName.lowercase()) {
-                            "san" -> "$mainUrl/sanplayer/um?e=$playerPayload"
-                            else -> playerPayload
+            val jobs = players.map { player ->
+                async {
+                    val playerPayload = player.attr("data-player")
+                    val playerName = player.attr("data-player-name")
+
+                    if (playerPayload.isNotBlank()) {
+                        try {
+                            Log.d("AnimeioProvider", "Procesando reproductor: $playerName con payload: $playerPayload")
+                            val finalUrl = when(playerName.lowercase()) {
+                                "san" -> "$mainUrl/sanplayer/um?e=$playerPayload"
+                                else -> playerPayload
+                            }
+
+                            loadExtractor(finalUrl, episodeUrl, subtitleCallback, callback)
+
+                        } catch (e: Exception) {
+                            Log.e("AnimeioProvider", "Error al procesar $playerName: ${e.message}")
+                            false
                         }
-
-                        if (loadExtractor(finalUrl, episodeUrl, subtitleCallback, callback)) {
-                            linksFound = true
-                            Log.d("AnimeioProvider", "Enlaces encontrados por loadExtractor para $playerName")
-                        }
-
-                    } catch (e: Exception) {
-                        Log.e("AnimeioProvider", "Error al procesar $playerName: ${e.message}")
-                    }
+                    } else false
                 }
             }
+
+            linksFound = jobs.awaitAll().any { it }
         }
 
         Log.d("AnimeioProvider", "Finalizando loadLinks. ¿Se encontraron enlaces? $linksFound")
-        return linksFound
+        return@coroutineScope linksFound
     }
 
     private fun fixUrl(url: String): String {

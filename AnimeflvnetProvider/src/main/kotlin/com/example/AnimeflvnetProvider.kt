@@ -7,6 +7,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.util.*
 import android.util.Log
+import com.lagradost.cloudstream3.amap
+import kotlinx.coroutines.*
 
 class AnimeflvnetProvider : MainAPI() {
     companion object {
@@ -59,27 +61,33 @@ class AnimeflvnetProvider : MainAPI() {
                         this.posterUrl = fixUrl(poster)
                         addDubStatus(getDubStatus(title), epNum)
                     }
-                }, isHorizontal)
+                }, isHorizontal
+            )
         )
 
-        urls.apmap { (url, name) ->
-            val doc = app.get(url).document
-            val home = doc.select("ul.ListAnimes li article").mapNotNull {
-                val title = it.selectFirst("h3.Title")?.text() ?: return@mapNotNull null
-                val poster = it.selectFirst("figure img")?.attr("src") ?: return@mapNotNull null
-                newAnimeSearchResponse(
-                    title,
-                    fixUrl(it.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
-                ) {
-                    this.posterUrl = fixUrl(poster)
-                    addDubStatus(getDubStatus(title))
-                }
-            }
+        coroutineScope {
+            urls.map { (url, name) ->
+                async { // Inicia una tarea asíncrona para cada URL
+                    val doc = app.get(url).document
+                    val home = doc.select("ul.ListAnimes li article").mapNotNull {
+                        val title = it.selectFirst("h3.Title")?.text() ?: return@mapNotNull null
+                        val poster =
+                            it.selectFirst("figure img")?.attr("src") ?: return@mapNotNull null
+                        newAnimeSearchResponse(
+                            title,
+                            fixUrl(it.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
+                        ) {
+                            posterUrl = fixUrl(poster)
+                            addDubStatus(getDubStatus(title))
+                        }
+                    }
 
-            items.add(HomePageList(name, home))
+                    items.add(HomePageList(name, home))
+                }
+            }.awaitAll() // Espera a que todas las tareas asíncronas terminen
         }
         if (items.size <= 0) throw ErrorLoadingException()
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     data class SearchObject(
@@ -222,7 +230,10 @@ class AnimeflvnetProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            app.get(data).document.select("script").apmap { script ->
+            val doc = app.get(data).document
+            var linksFound = false
+
+            doc.select("script").forEach { script ->
                 if (script.data().contains("var videos = {") || script.data()
                         .contains("var anime_id =") || script.data().contains("server")
                 ) {
@@ -233,25 +244,35 @@ class AnimeflvnetProvider : MainAPI() {
 
                     if (serversplain.isBlank()) {
                         println("No se encontró JSON válido en el script")
-                        return@apmap
+                        return@forEach
                     }
 
                     try {
                         val json = parseJson<MainServers>(serversplain)
-                        json.sub.apmap {
-                            val code = it.code
-                            println("Procesando servidor con código: $code")
-                            loadExtractor(code, data, subtitleCallback, callback)
+
+                        val serverJobs = coroutineScope {
+                            json.sub.map { sub ->
+                                async {
+                                    val code = sub.code
+                                    println("Procesando servidor con código: $code")
+                                    loadExtractor(code, data, subtitleCallback, callback)
+                                }
+                            }
                         }
+
+                        if (serverJobs.awaitAll().any { it }) {
+                            linksFound = true
+                        }
+
                     } catch (e: Exception) {
                         println("Error al analizar JSON: ${e.message}, JSON: $serversplain")
                     }
                 }
             }
+            return linksFound
         } catch (e: Exception) {
             println("Error general en loadLinks: ${e.message}")
             return false
         }
-        return true
     }
 }

@@ -32,15 +32,13 @@ import okhttp3.RequestBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class AnizoneProvider : MainAPI() {
 
+class AnizoneProvider : MainAPI() {
     override var mainUrl = "https://anizone.to"
     override var name = "AniZone"
     override val supportedTypes = setOf(
@@ -480,6 +478,5 @@ class AnizoneProvider : MainAPI() {
             Log.e(name, "loadLinks: Error al cargar enlaces para $data: ${e.message}", e)
             return false
         }
-        return false
     }
 }

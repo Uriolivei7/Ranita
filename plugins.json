@@ -79,7 +79,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 6,
     "name": "AnimeFLV",
     "internalName": "AnimeflvnetProvider",
@@ -92,7 +92,7 @@
     ],
     "iconUrl": "https://www3.animeflv.net/favicon.ico",
     "language": "mx",
-    "fileSize": 20000
+    "fileSize": 22000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VerseriesonlineProvider.cs3",
@@ -172,7 +172,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
-    "version": 4,
+    "version": 5,
     "apiVersion": 10,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
