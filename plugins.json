@@ -283,7 +283,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 16,
     "name": "JKAnime",
     "internalName": "JkanimeProvider",
@@ -296,7 +296,7 @@
     ],
     "iconUrl": "https://cdn.jkdesu.com/assets3/css/img/favicon.ico?v=2.0.140",
     "language": "mx",
-    "fileSize": 31000
+    "fileSize": 33000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
