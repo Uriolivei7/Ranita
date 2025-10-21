@@ -347,7 +347,7 @@ class HdfullProvider : MainAPI() {
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
-                .replace(Regex(":\"([^\"]+)\"([a-zA-Z]+)"), ":\"$1\",$2")
+                .replace(Regex(":\"([^\"]+)\":\"([^\"]+)\":"), ":\"$1\",:\"$2\":")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
 
