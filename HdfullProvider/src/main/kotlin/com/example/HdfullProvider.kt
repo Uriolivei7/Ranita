@@ -312,8 +312,12 @@ class HdfullProvider : MainAPI() {
                 val code = char.code
                 val newChar = when {
                     code in 32..126 -> {
-                        val shifted = code - 14
-                        if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
+                        if (char == '{' || char == '}' || char == '[' || char == ']' || char == ',' || char == ':') {
+                            char
+                        } else {
+                            val shifted = code - 14
+                            if (shifted < 32) (shifted + 95).toChar() else shifted.toChar()
+                        }
                     }
                     else -> char
                 }
@@ -326,7 +330,7 @@ class HdfullProvider : MainAPI() {
                 .replace(Regex("\"\\?\\?\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
                 .replace(Regex("\"\\u0002o\\u0006ide\\u0002\":\""), "\"provider\":\"")
                 .replace(Regex("\"\\u0001\\u0005ali\\u0004\\u0009\":\""), "\"quality\":\"")
-                .replace("ddi??", "dvdrip")
+                .replace(Regex("ddi\\?\\?"), "dvdrip")
                 .replace("hd\\u0004\\u0006", "hdtv")
                 .replace("d\\u0006d\\u0002i", "dvdrip")
                 .replace("hd72\"\"", "hd720")
@@ -334,13 +338,15 @@ class HdfullProvider : MainAPI() {
                 .replace("7N9", "ENG")
                 .replace("7SP", "ESP")
                 .replace("L3T", "LAT")
-                .replace(Regex("[\\u0000-\\u001F]"), "")
+                .replace(Regex("\\p{Cntrl}"), "")
+                .replace(Regex("\\?\\?"), "")
                 .replace('\n', ' ')
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
+                .replace(Regex("\"oide\":\""), "\"provider\":\"")
 
             Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
 
@@ -352,6 +358,16 @@ class HdfullProvider : MainAPI() {
                 jsonString = "$jsonString]"
             }
             jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
+
+            val objects = jsonString.substring(1, jsonString.length - 1).split("},").map { obj ->
+                val trimmed = obj.trim()
+                if (trimmed.isNotEmpty() && !trimmed.startsWith("{")) {
+                    "{$trimmed}"
+                } else {
+                    trimmed
+                }
+            }
+            jsonString = "[${objects.joinToString(",")}]"
 
             Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
 
