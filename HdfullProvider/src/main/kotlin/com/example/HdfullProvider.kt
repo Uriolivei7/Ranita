@@ -347,7 +347,6 @@ class HdfullProvider : MainAPI() {
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
-                // Añadir comas faltantes
                 .replace(Regex(":\"([^\"]+)\":\"([^\"]+)"), ":\"$1\",\"$2")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
@@ -357,7 +356,7 @@ class HdfullProvider : MainAPI() {
             val objects = mutableListOf<String>()
             val regex = Regex("\"id\":\"[^\"]+\"")
             val matches = regex.findAll(jsonString).toList()
-            var lastIndex = 0
+            var lastIndex = if (jsonString.startsWith("[")) 1 else 0
 
             for (i in matches.indices) {
                 val match = matches[i]
@@ -367,40 +366,45 @@ class HdfullProvider : MainAPI() {
                 } else {
                     jsonString.length
                 }
-                val objString = jsonString.substring(lastIndex, endIndex).trim()
+                var objString = jsonString.substring(lastIndex, endIndex).trim()
                 if (objString.isNotEmpty()) {
-                    if (objString.contains("\"id\":") && objString.contains("\"provider\":") && objString.contains("\"code\":") &&
-                        objString.contains("\"lang\":") && objString.contains("\"quality\":")) {
+                    objString = Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\").*,\"id\":")
+                        .replace(objString, "$1")
+                    if (objString.contains("\"id\":") && objString.contains("\"provider\":") &&
+                        objString.contains("\"code\":") && objString.contains("\"lang\":") &&
+                        objString.contains("\"quality\":")) {
+                        if (!objString.startsWith("{")) objString = "{$objString"
+                        if (!objString.endsWith("}")) objString = "$objString}"
                         objects.add(objString)
                     }
                 }
                 lastIndex = endIndex
             }
 
-            jsonString = objects.map { obj ->
-                // Limpiar claves "id" redundantes dentro del objeto
-                val cleanedObj = Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\").*,\"id\":")
-                    .replace(obj, "$1")
-                if (!cleanedObj.startsWith("{")) "{" + cleanedObj + "}" else cleanedObj
-            }.joinToString(",", "[", "]")
+            var finalJson = if (objects.isNotEmpty()) {
+                objects.joinToString(",", "[", "]")
+            } else {
+                "[]"
+            }
 
-            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]")
+            finalJson = finalJson.replace(Regex(",\\{[^}]*$"), "]")
+            finalJson = finalJson.replace("ddi", "dvdrip")
 
-            Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
+            Log.d("HDFull", "JSON final (primeros 500 chars): ${finalJson.take(500)}")
 
-            if (!jsonString.contains("{")) {
+            if (!finalJson.contains("{")) {
                 Log.e("HDFull", "Error: No se encontró '{' en el JSON final")
                 return emptyList()
             }
 
             try {
-                AppUtils.parseJson<List<Any>>(jsonString)
+                AppUtils.parseJson<List<Any>>(finalJson)
             } catch (e: Exception) {
                 Log.e("HDFull", "JSON inválido antes de parsear ProviderCode: ${e.message}")
                 return emptyList()
             }
 
-            val providers = AppUtils.parseJson<List<ProviderCode>>(jsonString)
+            val providers = AppUtils.parseJson<List<ProviderCode>>(finalJson)
             Log.d("HDFull", "Proveedores parseados: ${providers?.size ?: 0}")
             return providers ?: emptyList()
         } catch (e: Exception) {
