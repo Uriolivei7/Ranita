@@ -347,40 +347,44 @@ class HdfullProvider : MainAPI() {
                 .replace("}{", "},{")
                 .replace(Regex("\"\"\""), "\"")
                 .replace("\"\"", "\"")
+                // Añadir comas faltantes
                 .replace(Regex(":\"([^\"]+)\":\"([^\"]+)"), ":\"$1\",\"$2")
                 .replace(Regex(",+"), ",")
                 .replace(Regex("\\s+"), " ")
-                .replace(Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\"),\"id\":"),
-                    "$1},{\"id\":")
-                .replace(Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\"),\\{\"id\":"),
-                    "$1},{\"id\":")
 
-            Log.d("HDFull", "JSON después de reemplazos (primeros 500 chars): ${jsonString.take(500)}")
+            Log.d("HDFull", "JSON después de reemplazos iniciales (primeros 500 chars): ${jsonString.take(500)}")
 
-            jsonString = jsonString.trim()
-            if (!jsonString.startsWith("[")) {
-                jsonString = "[$jsonString"
-            }
-            if (!jsonString.endsWith("]")) {
-                jsonString = "$jsonString]"
-            }
-            jsonString = jsonString.replace("},]", "}]").replace(",]", "]")
+            val objects = mutableListOf<String>()
+            val regex = Regex("\"id\":\"[^\"]+\"")
+            val matches = regex.findAll(jsonString).toList()
+            var lastIndex = 0
 
-            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]") // Eliminar cualquier objeto incompleto al final
-
-            val objects = jsonString.substring(1, jsonString.length - 1).split("},").map { obj ->
-                val trimmed = obj.trim()
-                if (trimmed.contains("\"id\":") && trimmed.contains("\"provider\":") && trimmed.contains("\"code\":") && trimmed.contains("\"lang\":") && trimmed.contains("\"quality\":")) {
-                    if (!trimmed.startsWith("{")) {
-                        "{$trimmed}"
-                    } else {
-                        trimmed
-                    }
+            for (i in matches.indices) {
+                val match = matches[i]
+                val startIndex = match.range.first
+                val endIndex = if (i < matches.size - 1) {
+                    matches[i + 1].range.first
                 } else {
-                    ""
+                    jsonString.length
                 }
-            }.filter { it.isNotEmpty() }
-            jsonString = "[${objects.joinToString(",")}]"
+                val objString = jsonString.substring(lastIndex, endIndex).trim()
+                if (objString.isNotEmpty()) {
+                    if (objString.contains("\"id\":") && objString.contains("\"provider\":") && objString.contains("\"code\":") &&
+                        objString.contains("\"lang\":") && objString.contains("\"quality\":")) {
+                        objects.add(objString)
+                    }
+                }
+                lastIndex = endIndex
+            }
+
+            jsonString = objects.map { obj ->
+                // Limpiar claves "id" redundantes dentro del objeto
+                val cleanedObj = Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\").*,\"id\":")
+                    .replace(obj, "$1")
+                if (!cleanedObj.startsWith("{")) "{" + cleanedObj + "}" else cleanedObj
+            }.joinToString(",", "[", "]")
+
+            jsonString = jsonString.replace(Regex(",\\{[^}]*$"), "]")
 
             Log.d("HDFull", "JSON final (primeros 500 chars): ${jsonString.take(500)}")
 
