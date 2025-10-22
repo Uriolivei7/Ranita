@@ -366,25 +366,30 @@ class HdfullProvider : MainAPI() {
                     objString = Regex("(\"id\":\"[^\"]+\",\"provider\":\"[^\"]+\",\"code\":\"[^\"]+\",\"lang\":\"[^\"]+\",\"quality\":\"[^\"]+\").*,\"id\":")
                         .replace(objString, "$1")
                     objString = objString.replace(Regex(",$"), "")
-                    if (objString.contains("\"id\":") && objString.contains("\"provider\":") &&
-                        objString.contains("\"code\":") && objString.contains("\"lang\":") &&
+                    if (objString.contains("\"id\":") &&
+                        objString.contains("\"provider\":") &&
+                        objString.contains("\"code\":") &&
+                        objString.contains("\"lang\":") &&
                         objString.contains("\"quality\":")) {
                         if (!objString.startsWith("{")) objString = "{$objString"
                         if (!objString.endsWith("}")) objString = "$objString}"
                         objects.add(objString)
+                    } else {
+                        Log.d("HDFull", "Objeto descartado por claves incompletas: $objString")
                     }
                 }
                 lastIndex = endIndex
             }
 
             var finalJson = if (objects.isNotEmpty()) {
-                objects.joinToString(",", "[", "]")
+                "[" + objects.joinToString(",") + "]"
             } else {
                 "[]"
             }
 
             finalJson = finalJson.replace(Regex(",\\{[^}]*$"), "]")
             finalJson = finalJson.replace("ddi", "dvdrip")
+            finalJson = finalJson.replace(Regex("\\}\\]$"), "}")
 
             Log.d("HDFull", "JSON final (primeros 800 chars): ${finalJson.take(800)}")
             Log.d("HDFull", "JSON final length: ${finalJson.length}")
