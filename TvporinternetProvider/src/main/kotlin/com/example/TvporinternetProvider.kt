@@ -15,7 +15,9 @@ import kotlin.collections.ArrayList
 import kotlin.text.Charsets.UTF_8
 import kotlinx.coroutines.delay
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
 class TvporinternetProvider : MainAPI() {
     override var mainUrl = "https://www.tvporinternet2.com"
@@ -305,7 +307,9 @@ class TvporinternetProvider : MainAPI() {
                 "Connection" to "keep-alive",
                 "Sec-Fetch-Dest" to "document",
                 "Sec-Fetch-Mode" to "navigate",
-                "Sec-Fetch-Site" to "none"
+                "Sec-Fetch-Site" to "none",
+                "Sec-Fetch-User" to "?1",
+                "Upgrade-Insecure-Requests" to "1"
             )
 
             val mainPageResponse = try {
@@ -314,7 +318,7 @@ class TvporinternetProvider : MainAPI() {
                 Log.e("TvporInternet", "Error al cargar página principal: ${e.message}")
                 return false
             }
-            val cookies = mainPageResponse.cookies
+            val cookies = mainPageResponse.cookies.toMutableMap()
             val mainHtml = mainPageResponse.text
             Log.d("TvporInternet", "HTML principal (length: ${mainHtml.length}): ${mainHtml.take(2000)}")
 
@@ -326,10 +330,10 @@ class TvporinternetProvider : MainAPI() {
 
             val playerIframeSrc = doc.selectFirst("iframe[name=player]")?.attr("src")
             val optionLinks = doc.select(
-                "a[target=player], " +
-                        "a[href*=live/], a[href*=live2/], a[href*=live3/], a[href*=live4/], a[href*=live5/], a[href*=live6/], " +
-                        "a[href*=stream], a[href*=saohgdasregions]"
-            ).mapNotNull { it.attr("href") }.distinct()
+                "a[target=player], a[href*=live/], a[href*=live2/], a[href*=live3/], a[href*=live4/], a[href*=live5/], a[href*=live6/], a[href*=stream], a[href*=saohgdasregions]"
+            ).mapNotNull { it.attr("href") }
+                .filter { !it.contains("favicon.png") && !it.contains("chat.php") }
+                .distinct()
             Log.d("TvporInternet", "Iframe src: $playerIframeSrc, Opciones: $optionLinks")
 
             val playerUrls = mutableListOf<String>()
@@ -339,9 +343,8 @@ class TvporinternetProvider : MainAPI() {
             if (playerUrls.isEmpty()) {
                 Log.e("TvporInternet", "No se encontraron URLs de reproductores")
                 val m3u8Url = extractM3u8FromHtml(mainHtml)
-                if (m3u8Url != null) {
-                    playerUrls.add(m3u8Url)
-                } else {
+                if (m3u8Url != null) playerUrls.add(m3u8Url)
+                else {
                     Log.e("TvporInternet", "No se encontraron URLs m3u8 en el HTML principal")
                     return false
                 }
@@ -350,58 +353,101 @@ class TvporinternetProvider : MainAPI() {
             var success = false
             playerUrls.forEachIndexed { index, rawPlayerUrl ->
                 val playerUrl = fixUrl(rawPlayerUrl)
-                Log.d("TvporInternet", "Procesando Player URL [$index]: $playerUrl")
+                if (playerUrl.contains(".m3u8")) {
+                    Log.d("TvporInternet", "URL directa m3u8 detectada [$index]: $playerUrl")
+                    val m3u8Url = playerUrl
+                    val streamHeaders = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Accept-Language" to "es-ES,es;q=0.9",
+                        "Accept-Encoding" to "identity",
+                        "Referer" to "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                        "Origin" to "https://live.saohgdasregions.fun",
+                        "Connection" to "keep-alive",
+                        "Sec-Fetch-Dest" to "video",
+                        "Sec-Fetch-Mode" to "cors",
+                        "Sec-Fetch-Site" to "same-origin"
+                    )
 
+                    val streamResponse = try {
+                        app.get(m3u8Url, headers = streamHeaders, cookies = cookies, timeout = 15L)
+                    } catch (e: Exception) {
+                        Log.e("TvporInternet", "Error al verificar M3U8 [$index]: ${e.message}")
+                        return@forEachIndexed
+                    }
+                    if (!streamResponse.isSuccessful) {
+                        Log.e("TvporInternet", "Fallo al cargar M3U8 [$index]: Código ${streamResponse.code}")
+                        return@forEachIndexed
+                    }
+
+                    val isWSAorTablet = android.os.Build.MANUFACTURER.contains("Microsoft", ignoreCase = true) ||
+                            android.os.Build.MODEL.contains("Windows", ignoreCase = true) ||
+                            android.os.Build.DEVICE.contains("tablet", ignoreCase = true)
+                    val qualityName = if (isWSAorTablet) "SD" else if (playerUrl.contains("FHD")) "FHD" else "HD"
+
+                    callback.invoke(
+                        newExtractorLink(
+                            "${this.name} - $qualityName (Opción $index)",
+                            m3u8Url,
+                            "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                            ExtractorLinkType.M3U8
+                        )
+                    )
+                    Log.d("TvporInternet", "ExtractorLink añadido: ${this.name} - $qualityName (Opción $index)")
+                    success = true
+                    return@forEachIndexed
+                }
+
+                Log.d("TvporInternet", "Procesando Player URL [$index]: $playerUrl")
                 val playerHeaders = mainHeaders + mapOf(
                     "Referer" to targetUrl,
+                    "Origin" to "https://www.tvporinternet2.com",
                     "Sec-Fetch-Dest" to "iframe",
                     "Sec-Fetch-Mode" to "navigate",
                     "Sec-Fetch-Site" to "same-origin"
                 )
 
-                var m3u8Url = if (playerUrl.contains(".m3u8")) {
-                    playerUrl
-                } else {
-                    val playerResponse = try {
-                        app.get(playerUrl, headers = playerHeaders, cookies = cookies, timeout = 20L)
+                val playerResponse = try {
+                    app.get(playerUrl, headers = playerHeaders, cookies = cookies, timeout = 20L)
+                } catch (e: Exception) {
+                    Log.e("TvporInternet", "Error al cargar Player URL [$index]: ${e.message}")
+                    return@forEachIndexed
+                }
+                cookies.putAll(playerResponse.cookies)
+                val playerHtml = playerResponse.text
+                Log.d("TvporInternet", "HTML del player [$index]: ${playerHtml.take(500)}")
+
+                val embedPattern = Regex("""(https?://[^"']+saohgdasregions\.fun(?:(?!imge|favicon)[^"']+)?)""")
+                val embedMatch = embedPattern.find(playerHtml)
+                var m3u8Url = if (embedMatch != null) {
+                    val embedUrl = embedMatch.value
+                    Log.d("TvporInternet", "Embed URL [$index]: $embedUrl")
+
+                    val embedHeaders = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Accept-Language" to "es-ES,es;q=0.9",
+                        "Accept-Encoding" to "identity",
+                        "Referer" to playerUrl,
+                        "Origin" to "https://live.saohgdasregions.fun",
+                        "Connection" to "keep-alive",
+                        "Sec-Fetch-Dest" to "empty",
+                        "Sec-Fetch-Mode" to "cors",
+                        "Sec-Fetch-Site" to "same-origin"
+                    )
+
+                    val embedResponse = try {
+                        app.get(embedUrl, headers = embedHeaders, cookies = cookies, timeout = 20L)
                     } catch (e: Exception) {
-                        Log.e("TvporInternet", "Error al cargar Player URL [$index]: ${e.message}")
+                        Log.e("TvporInternet", "Error al cargar Embed URL [$index]: ${e.message}")
                         return@forEachIndexed
                     }
-                    val playerHtml = playerResponse.text
-                    Log.d("TvporInternet", "HTML del player [$index]: ${playerHtml.take(500)}")
-
-                    val embedPattern = Regex("""(https?://[^"']+saohgdasregions\.fun[^"']+)""")
-                    val embedMatch = embedPattern.find(playerHtml)
-                    if (embedMatch != null) {
-                        val embedUrl = embedMatch.value
-                        Log.d("TvporInternet", "Embed URL [$index]: $embedUrl")
-
-                        val embedHeaders = mapOf(
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-                            "Accept" to "*/*",
-                            "Accept-Language" to "es-ES,es;q=0.9",
-                            "Accept-Encoding" to "identity",
-                            "Referer" to playerUrl,
-                            "Origin" to "https://live.saohgdasregions.fun",
-                            "Connection" to "keep-alive",
-                            "Sec-Fetch-Dest" to "empty",
-                            "Sec-Fetch-Mode" to "cors",
-                            "Sec-Fetch-Site" to "same-origin"
-                        )
-
-                        val embedResponse = try {
-                            app.get(embedUrl, headers = embedHeaders, cookies = cookies, timeout = 20L)
-                        } catch (e: Exception) {
-                            Log.e("TvporInternet", "Error al cargar Embed URL [$index]: ${e.message}")
-                            return@forEachIndexed
-                        }
-                        val embedHtml = embedResponse.text
-                        Log.d("TvporInternet", "HTML del embed [$index]: ${embedHtml.take(500)}")
-                        extractM3u8FromHtml(embedHtml)
-                    } else {
-                        extractM3u8FromHtml(playerHtml)
-                    }
+                    cookies.putAll(embedResponse.cookies)
+                    val embedHtml = embedResponse.text
+                    Log.d("TvporInternet", "HTML del embed [$index]: ${embedHtml.take(500)}")
+                    extractM3u8FromHtml(embedHtml)
+                } else {
+                    extractM3u8FromHtml(playerHtml)
                 }
 
                 if (m3u8Url == null) {
@@ -420,8 +466,31 @@ class TvporinternetProvider : MainAPI() {
                 }
                 Log.d("TvporInternet", "Stream final URL [$index]: $m3u8Url")
 
+                val expiresMatch = Regex("""expires=(\d+)""").find(m3u8Url)
+                if (expiresMatch != null) {
+                    val expires = expiresMatch.groupValues[1].toLong()
+                    val currentTime = System.currentTimeMillis() / 1000
+                    if (expires < currentTime + 300) { // Token expira en menos de 5 minutos
+                        Log.w("TvporInternet", "Token posiblemente expirado [$index]: expires=$expires, current=$currentTime")
+                        return@forEachIndexed
+                    }
+                }
+
+                val streamHeaders = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                    "Accept" to "*/*",
+                    "Accept-Language" to "es-ES,es;q=0.9",
+                    "Accept-Encoding" to "identity",
+                    "Referer" to "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                    "Origin" to "https://live.saohgdasregions.fun",
+                    "Connection" to "keep-alive",
+                    "Sec-Fetch-Dest" to "video",
+                    "Sec-Fetch-Mode" to "cors",
+                    "Sec-Fetch-Site" to "same-origin"
+                )
+
                 val streamResponse = try {
-                    app.get(m3u8Url, headers = playerHeaders, timeout = 15L)
+                    app.get(m3u8Url, headers = streamHeaders, cookies = cookies, timeout = 15L)
                 } catch (e: Exception) {
                     Log.e("TvporInternet", "Error al verificar M3U8 [$index]: ${e.message}")
                     return@forEachIndexed
@@ -436,13 +505,15 @@ class TvporinternetProvider : MainAPI() {
                         android.os.Build.DEVICE.contains("tablet", ignoreCase = true)
                 val qualityName = if (isWSAorTablet) "SD" else if (playerUrl.contains("FHD")) "FHD" else "HD"
 
-                callback(
+                callback.invoke(
                     newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - $qualityName (Opción $index)",
-                        url = m3u8Url
+                        "${this.name} - $qualityName (Opción $index)",
+                        m3u8Url,
+                        "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                        ExtractorLinkType.M3U8
                     )
                 )
+
                 Log.d("TvporInternet", "ExtractorLink añadido: ${this.name} - $qualityName (Opción $index)")
                 success = true
             }
@@ -485,7 +556,8 @@ class TvporinternetProvider : MainAPI() {
 
         val dataSource = doc.selectFirst("[data-src], [data-url], [data-source], [data-hls]")
         if (dataSource != null) {
-            val url = dataSource.attr("data-src") ?: dataSource.attr("data-url") ?: dataSource.attr("data-source") ?: dataSource.attr("data-hls")
+            val url = dataSource.attr("data-src") ?: dataSource.attr("data-url")
+            ?: dataSource.attr("data-source") ?: dataSource.attr("data-hls")
             if (url.contains(".m3u8")) {
                 Log.d("TvporInternet", "M3U8 encontrado en data-*: $url")
                 return url
