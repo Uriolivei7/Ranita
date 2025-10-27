@@ -308,14 +308,25 @@ class TvporinternetProvider : MainAPI() {
                 "Sec-Fetch-Site" to "none"
             )
 
-            val mainPageResponse = app.get(targetUrl, headers = mainHeaders, timeout = 20L)
+            val mainPageResponse = try {
+                app.get(targetUrl, headers = mainHeaders, timeout = 20L)
+            } catch (e: Exception) {
+                Log.e("TvporInternet", "Error al cargar página principal: ${e.message}")
+                return false
+            }
             val cookies = mainPageResponse.cookies
-            val doc = Jsoup.parse(mainPageResponse.text)
-            Log.d("TvporInternet", "HTML principal: ${mainPageResponse.text.take(1000)}")
+            val mainHtml = mainPageResponse.text
+            Log.d("TvporInternet", "HTML principal (length: ${mainHtml.length}): ${mainHtml.take(1000)}")
 
-            val playerIframeSrc = doc.selectFirst("iframe[name=\"player\"], iframe[src*=\"live/\"], iframe[src*=\"saohgdasregions\"]")?.attr("src")
-                ?: doc.selectFirst("iframe")?.attr("src")
-            val optionLinks = doc.select("a[target=\"player\"], a[href*=\"live/\"], a[href*=\"live2/\"], a[href*=\"live3/\"], a[href*=\"live4/\"], a[href*=\"live5/\"], a[href*=\"live6/\"]")
+            if (mainHtml.isBlank() || mainHtml.contains("�") || mainHtml.length < 100) {
+                Log.e("TvporInternet", "HTML principal corrupto o vacío")
+                return false
+            }
+
+            val doc = Jsoup.parse(mainHtml)
+
+            val playerIframeSrc = doc.selectFirst("iframe[name=\"player\"], iframe[src*=\"live/\"], iframe[src*=\"saohgdasregions\"], iframe")?.attr("src")
+            val optionLinks = doc.select("a[target=\"player\"], a[href*=\"live/\"], a[href*=\"live2/\"], a[href*=\"live3/\"], a[href*=\"live4/\"], a[href*=\"live5/\"], a[href*=\"live6/\"")
                 .mapNotNull { it.attr("href") }
                 .distinct()
             Log.d("TvporInternet", "Iframe src: $playerIframeSrc, Opciones: $optionLinks")
@@ -476,8 +487,8 @@ class TvporinternetProvider : MainAPI() {
 
         val dataSource = doc.selectFirst("[data-src], [data-url], [data-source], [data-hls]")
         if (dataSource != null) {
-            val url = dataSource.attr("data-src") ?: dataSource.attr("data-url")
-            ?: dataSource.attr("data-source") ?: dataSource.attr("data-hls")
+            val url = dataSource.attr("data-src") ?: dataSource.attr("data-url") ?: dataSource.attr("data-source")
+            ?: dataSource.attr("data-hls")
             if (url.contains(".m3u8")) {
                 Log.d("TvporInternet", "M3U8 encontrado en data-*: $url")
                 return url
