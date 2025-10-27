@@ -62,10 +62,10 @@ class AnizoneProvider : MainAPI() {
                 .execute()
             this.initialCookies = initReq.cookies().toMutableMap()
             val doc = initReq.parse()
-            initialWireData["token"] = doc.selectFirst("script[data-csrf]")?.attr("data-csrf") ?: ""
+            initialWireData["token"] = doc.selectFirst("meta[name=\"csrf-token\"]")?.attr("content")
+                ?: doc.selectFirst("script[data-csrf]")?.attr("data-csrf") ?: ""
             initialWireData["wireSnapshot"] = getSnapshot(doc)
             Log.d(name, "init: Livewire inicializado globalmente con token: ${initialWireData["token"]}")
-            // No llamamos a sortAnimeLatest aquí porque requiere una corrutina
         } catch (e: Exception) {
             Log.e(name, "init: Error durante la inicialización global de Livewire: ${e.message}", e)
         }
@@ -106,53 +106,86 @@ class AnizoneProvider : MainAPI() {
         currentWireCreds: MutableMap<String, String>,
         remember: Boolean
     ): JSONObject {
-        try {
-            val currentToken = currentWireCreds["token"] ?: throw IllegalStateException("Livewire token is missing.")
-            val currentSnapshot = currentWireCreds["wireSnapshot"] ?: throw IllegalStateException("Livewire snapshot is missing.")
+        val maxRetries = 2
+        var attempt = 0
+        var lastException: Exception? = null
 
-            val payloadMap: Map<String, Any> = mapOf(
-                "_token" to currentToken,
-                "components" to listOf(
-                    mapOf("snapshot" to currentSnapshot, "updates" to updates, "calls" to calls)
+        while (attempt < maxRetries) {
+            try {
+                val currentToken = currentWireCreds["token"] ?: throw IllegalStateException("Livewire token is missing.")
+                val currentSnapshot = currentWireCreds["wireSnapshot"] ?: throw IllegalStateException("Livewire snapshot is missing.")
+
+                val payloadMap: Map<String, Any> = mapOf(
+                    "_token" to currentToken,
+                    "components" to listOf(
+                        mapOf("snapshot" to currentSnapshot, "updates" to updates, "calls" to calls)
+                    )
                 )
-            )
 
-            val jsonPayloadString: String = payloadMap.toJson()
-            Log.d(name, "liveWireBuilder: Payload JSON enviado: ${jsonPayloadString.take(200)}")
+                val jsonPayloadString: String = payloadMap.toJson()
+                Log.d(name, "liveWireBuilder: Intento $attempt - Payload JSON enviado: ${jsonPayloadString.take(200)}")
 
-            val req = Jsoup.connect("$mainUrl/livewire/update")
-                .method(Connection.Method.POST)
-                .header("Content-Type", "application/json")
-                .header("X-Livewire", "true")
-                .cookies(currentCookies)
-                .ignoreContentType(true)
-                .requestBody(jsonPayloadString)
-                .execute()
+                val req = Jsoup.connect("$mainUrl/livewire/update")
+                    .method(Connection.Method.POST)
+                    .header("Content-Type", "application/json")
+                    .header("X-Livewire", "true")
+                    .header("X-CSRF-TOKEN", currentToken)
+                    .header("Accept", "application/json")
+                    .cookies(currentCookies)
+                    .ignoreContentType(true)
+                    .requestBody(jsonPayloadString)
+                    .execute()
 
-            val responseText = req.body()
-            Log.d(name, "liveWireBuilder: Respuesta de Livewire (parcial): ${responseText.take(500)}")
+                val responseText = req.body()
+                Log.d(name, "liveWireBuilder: Respuesta de Livewire (parcial): ${responseText.take(500)}")
 
-            val jsonResponse = JSONObject(responseText)
-
-            if (remember) {
-                val newSnapshot = try {
-                    getSnapshot(jsonResponse)
-                } catch (e: Exception) {
-                    Log.e(name, "liveWireBuilder: No se pudo obtener el nuevo snapshot: ${e.message}", e)
-                    throw e
+                if (req.statusCode() == 500) {
+                    throw org.jsoup.HttpStatusException("HTTP error fetching URL", 500, "$mainUrl/livewire/update")
                 }
-                currentWireCreds["wireSnapshot"] = newSnapshot
-                currentCookies.putAll(req.cookies())
-                Log.d(name, "liveWireBuilder: Cookies y wireSnapshot actualizados (remember=true).")
-            } else {
-                Log.d(name, "liveWireBuilder: Cookies y wireSnapshot NO actualizados (remember=false).")
-            }
 
-            return jsonResponse
-        } catch (e: Exception) {
-            Log.e(name, "liveWireBuilder: Error al ejecutar Livewire: ${e.message}", e)
-            throw e
+                val jsonResponse = JSONObject(responseText)
+
+                if (remember) {
+                    val newSnapshot = try {
+                        getSnapshot(jsonResponse)
+                    } catch (e: Exception) {
+                        Log.e(name, "liveWireBuilder: No se pudo obtener el nuevo snapshot: ${e.message}", e)
+                        throw e
+                    }
+                    currentWireCreds["wireSnapshot"] = newSnapshot
+                    currentCookies.putAll(req.cookies())
+                    Log.d(name, "liveWireBuilder: Cookies y wireSnapshot actualizados (remember=true).")
+                } else {
+                    Log.d(name, "liveWireBuilder: Cookies y wireSnapshot NO actualizados (remember=false).")
+                }
+
+                return jsonResponse
+            } catch (e: Exception) {
+                Log.w(name, "liveWireBuilder: Error en el intento $attempt: ${e.message}", e)
+                lastException = e
+                attempt++
+
+                if (attempt < maxRetries) {
+                    try {
+                        val refreshReq = Jsoup.connect("$mainUrl/anime")
+                            .method(Connection.Method.GET)
+                            .cookies(currentCookies)
+                            .execute()
+                        currentCookies.putAll(refreshReq.cookies())
+                        val doc = refreshReq.parse()
+                        currentWireCreds["token"] = doc.selectFirst("meta[name=\"csrf-token\"]")?.attr("content")
+                            ?: doc.selectFirst("script[data-csrf]")?.attr("data-csrf") ?: ""
+                        currentWireCreds["wireSnapshot"] = getSnapshot(doc)
+                        Log.d(name, "liveWireBuilder: Token y snapshot refrescados para el intento $attempt: ${currentWireCreds["token"]}")
+                    } catch (refreshEx: Exception) {
+                        Log.e(name, "liveWireBuilder: Error al refrescar token y snapshot: ${refreshEx.message}", refreshEx)
+                    }
+                }
+            }
         }
+
+        Log.e(name, "liveWireBuilder: Falló después de $maxRetries intentos.", lastException)
+        throw lastException ?: IllegalStateException("No se pudo ejecutar liveWireBuilder después de $maxRetries intentos.")
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -173,7 +206,7 @@ class AnizoneProvider : MainAPI() {
                 )
             )
 
-            val home = doc.select("div[wire:key]").toList() // Convertir Elements a List<Element>
+            val home = doc.select("div[wire:key]").toList()
             val paginatedHome = if (page > 1) home.takeLast(12) else home
 
             Log.d(name, "getMainPage: Se encontraron ${paginatedHome.size} resultados para ${request.name}.")
@@ -245,7 +278,8 @@ class AnizoneProvider : MainAPI() {
             val localCookies = r.cookies.toMutableMap()
             val localWireData = mutableMapOf<String, String>()
             localWireData["wireSnapshot"] = getSnapshot(doc=doc)
-            localWireData["token"] = doc.selectFirst("script[data-csrf]")?.attr("data-csrf") ?: ""
+            localWireData["token"] = doc.selectFirst("meta[name=\"csrf-token\"]")?.attr("content")
+                ?: doc.selectFirst("script[data-csrf]")?.attr("data-csrf") ?: ""
             Log.d(name, "load: Cargando URL: $url, wireData local inicial: $localWireData")
 
             val title = doc.selectFirst("h1")?.text()
