@@ -301,7 +301,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 17,
     "name": "TVporInternet",
     "internalName": "TvporinternetProvider",
@@ -314,7 +314,7 @@
     ],
     "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
     "language": "mx",
-    "fileSize": 21000
+    "fileSize": 24000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
@@ -333,24 +333,5 @@
     "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
     "language": "mx",
     "fileSize": 26000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HdfullProvider.cs3",
-    "status": 0,
-    "version": 3,
-    "apiVersion": 19,
-    "name": "HDFull",
-    "internalName": "HdfullProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para hdfull.love",
-    "tvTypes": [
-      "Movie",
-      "TvSeries"
-    ],
-    "iconUrl": "https://hdfullcdn.cc/favicon.ico",
-    "language": "es",
-    "fileSize": 28000
   }
 ]
