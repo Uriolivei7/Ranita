@@ -385,14 +385,25 @@ class TvporinternetProvider : MainAPI() {
                             android.os.Build.DEVICE.contains("tablet", ignoreCase = true)
                     val qualityName = if (isWSAorTablet) "SD" else if (playerUrl.contains("FHD")) "FHD" else "HD"
 
-                    callback.invoke(
-                        newExtractorLink(
-                            "${this.name} - $qualityName (Opción $index)",
-                            m3u8Url,
-                            "https://live.saohgdasregions.fun/stream.php?canal=americatv",
-                            ExtractorLinkType.M3U8
+                    val link = ExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $qualityName (Opción $index)",
+                        url = m3u8Url,
+                        referer = "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                        quality = if (qualityName == "FHD") 1080 else if (qualityName == "SD") 480 else 720,
+                        type = ExtractorLinkType.M3U8,
+                        headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                            "Origin" to "https://live.saohgdasregions.fun",
+                            "Accept" to "*/*",
+                            "Connection" to "keep-alive"
                         )
                     )
+
+                    callback.invoke(link)
+                    Log.d("TvporInternet", "ExtractorLink añadido con headers: ${this.name} - $qualityName (Opción $index)")
+                    success = true
+
                     Log.d("TvporInternet", "ExtractorLink añadido: ${this.name} - $qualityName (Opción $index)")
                     success = true
                     return@forEachIndexed
@@ -505,14 +516,24 @@ class TvporinternetProvider : MainAPI() {
                         android.os.Build.DEVICE.contains("tablet", ignoreCase = true)
                 val qualityName = if (isWSAorTablet) "SD" else if (playerUrl.contains("FHD")) "FHD" else "HD"
 
-                callback.invoke(
-                    newExtractorLink(
-                        "${this.name} - $qualityName (Opción $index)",
-                        m3u8Url,
-                        "https://live.saohgdasregions.fun/stream.php?canal=americatv",
-                        ExtractorLinkType.M3U8
+                val link = ExtractorLink(
+                    source = this.name,
+                    name = "${this.name} - $qualityName (Opción $index)",
+                    url = m3u8Url,
+                    referer = "https://live.saohgdasregions.fun/stream.php?canal=americatv",
+                    quality = if (qualityName == "FHD") 1080 else if (qualityName == "SD") 480 else 720,
+                    type = ExtractorLinkType.M3U8,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                        "Origin" to "https://live.saohgdasregions.fun",
+                        "Accept" to "*/*",
+                        "Connection" to "keep-alive"
                     )
                 )
+
+                callback.invoke(link)
+                Log.d("TvporInternet", "ExtractorLink añadido con headers: ${this.name} - $qualityName (Opción $index)")
+                success = true
 
                 Log.d("TvporInternet", "ExtractorLink añadido: ${this.name} - $qualityName (Opción $index)")
                 success = true
