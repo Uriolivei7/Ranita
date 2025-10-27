@@ -191,7 +191,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 11,
     "name": "AnimeAV1",
     "internalName": "Animeav1Provider",
@@ -205,7 +205,7 @@
     ],
     "iconUrl": "https://animeav1.com/favicon.png",
     "language": "mx",
-    "fileSize": 22000
+    "fileSize": 21000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",

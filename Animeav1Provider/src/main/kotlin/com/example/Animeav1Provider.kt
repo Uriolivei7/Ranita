@@ -17,7 +17,6 @@ import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
@@ -27,7 +26,14 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 import android.util.Log
-import org.jsoup.select.Elements
+import com.lagradost.cloudstream3.DubStatus
+import com.lagradost.cloudstream3.addEpisodes
+import com.lagradost.cloudstream3.newAnimeLoadResponse
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class Animeav1 : MainAPI() {
     override var mainUrl              = "https://animeav1.com"
@@ -36,8 +42,9 @@ class Animeav1 : MainAPI() {
     override var lang                 = "mx"
     override val hasDownloadSupport   = true
     override val hasQuickSearch       = true
-    override val supportedTypes       = setOf(
-        TvType.Anime
+    override val supportedTypes = setOf(
+        TvType.Anime,
+        TvType.AnimeMovie
     )
 
     override val mainPage = mainPageOf(
@@ -81,9 +88,9 @@ class Animeav1 : MainAPI() {
 
     private fun getTvType(text: String): TvType {
         return when {
-            text.contains("TV Anime", ignoreCase = true) -> TvType.TvSeries
+            text.contains("TV Anime", ignoreCase = true) -> TvType.Anime
             text.contains("Película", ignoreCase = true) -> TvType.Movie
-            text.contains("OVA", ignoreCase = true) -> TvType.TvSeries
+            text.contains("OVA", ignoreCase = true) -> TvType.Anime
             else -> TvType.Movie
         }
     }
@@ -93,81 +100,71 @@ class Animeav1 : MainAPI() {
         val title = document.selectFirst("article h1")?.text() ?: "Unknown"
         val poster = document.select("img.aspect-poster.w-full.rounded-lg").attr("src")
         val description = document.selectFirst("div.entry.text-lead p")?.text()
-        val rawtype = document.select("div.flex.flex-wrap.items-center.gap-2.text-sm > span:nth-child(1)")
-            .text()
+        val rawtype = document.select("div.flex.flex-wrap.items-center.gap-2.text-sm > span:nth-child(1)").text()
         val type = getTvType(rawtype)
         val tags = document.select("header > div:nth-child(3) a").map { it.text() }
-        val href = fixUrl(document.select("div.grid > article a").attr("href"))
-
-        val recommendations = try {
-            Log.d("Animeav1", "Buscando contenido relacionado...")
-
-            var relatedArticles = document.select("section:has(h2:contains(Relacionados)) article.bg-mute")
-
-            if (relatedArticles.isEmpty()) {
-                Log.d("Animeav1", "Primer selector no funcionó, probando alternativo...")
-                val relatedSection = document.selectFirst("h2:contains(Relacionados)")?.parent()?.parent()
-                relatedArticles = relatedSection?.select("article") ?: Elements()
+        val recommendations = document.select("section div.gradient-cut > div > div").mapNotNull {
+            val recTitle = it.select("h3").text()
+            val recHref = fixUrl(it.select("a").attr("href"))
+            val recPoster = fixUrlNull(it.select("img").attr("src"))
+            newMovieSearchResponse(recTitle, recHref, TvType.Anime) {
+                this.posterUrl = recPoster
             }
-
-            Log.d("Animeav1", "Encontrados ${relatedArticles.size} elementos relacionados")
-
-            relatedArticles.mapNotNull { article ->
-                try {
-                    val recTitle = article.selectFirst("h3")?.text()
-                    val recPoster = article.selectFirst("img")?.attr("src")
-                    val recUrl = article.selectFirst("a[href]")?.attr("href")
-                    val recType = article.selectFirst("span.text-xs")?.text() ?: ""
-
-                    Log.d("Animeav1", "Procesando relacionado: $recTitle - URL: $recUrl - Tipo: $recType")
-
-                    if (recTitle.isNullOrBlank() || recUrl.isNullOrBlank()) {
-                        Log.w("Animeav1", "Datos incompletos para relacionado: title=$recTitle, url=$recUrl")
-                        return@mapNotNull null
-                    }
-
-                    newMovieSearchResponse(
-                        name = recTitle,
-                        url = fixUrl(recUrl),
-                        type = TvType.Movie
-                    ) {
-                        this.posterUrl = recPoster
-                    }
-                } catch (e: Exception) {
-                    Log.e("Animeav1", "Error procesando elemento relacionado: ${e.message}", e)
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("Animeav1", "Error general extrayendo relacionados: ${e.message}", e)
-            emptyList<SearchResponse>()
         }
 
-        Log.d("Animeav1", "Total de recomendaciones procesadas: ${recommendations.size}")
-
-        return if (type == TvType.TvSeries) {
+        if (type == TvType.Anime) {
             val episodes = mutableListOf<Episode>()
-            document.select("div.grid > article").map {
-                val epposter = it.select("img").attr("src")
-                val epno = it.select("span.text-lead > font > font").text()
-                val ephref = it.select("a").attr("href")
-                episodes.add(
-                    newEpisode(ephref) {
-                        this.name = "Episode $epno"
-                        this.episode = epno.toIntOrNull()
-                        this.posterUrl = epposter
-                    }
-                )
+            val mediaId = Regex("/(\\d+)\\.jpg$").find(poster)?.groupValues?.get(1) ?: "0"
+            val scriptContent = document.select("script").html()
+            val episodeZeroRegex = Regex("number:\\s*0")
+            val regex = Regex("media:\\{.*?episodesCount:(\\d+).*?slug:\"(.*?)\"", RegexOption.DOT_MATCHES_ALL)
+
+            val match = regex.find(scriptContent)
+            if (match != null) {
+                val totalEpisodes = match.groupValues[1].toIntOrNull() ?: 0
+                val slug = match.groupValues[2]
+                val hasEpisodeZero = episodeZeroRegex.containsMatchIn(scriptContent)
+                val startEp = if (hasEpisodeZero) 0 else 1
+
+                Log.d("Animeav1", "Total episodios: $totalEpisodes, Slug: $slug")
+
+                for (i in startEp..totalEpisodes) {
+                    val epUrl = "https://animeav1.com/media/$slug/$i"
+                    val epposter = "https://cdn.animeav1.com/screenshots/$mediaId/$i.jpg"
+                    episodes.add(
+                        newEpisode(epUrl) {
+                            this.name = "Episode $i"
+                            this.episode = i
+                            this.posterUrl = epposter
+                        }
+                    )
+                }
+            } else {
+                Log.e("Animeav1", "No se encontró episodesCount o slug, usando HTML como fallback")
+                document.select("div.grid > article").map {
+                    val epposter = it.select("img").attr("src")
+                    val epno = it.select("span.text-lead > font > font").text()
+                    val ephref = it.select("a").attr("href")
+                    episodes.add(
+                        newEpisode(ephref) {
+                            this.name = "Episode $epno"
+                            this.episode = epno.toIntOrNull()
+                            this.posterUrl = epposter
+                        }
+                    )
+                }
             }
 
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            return newAnimeLoadResponse(title, url, TvType.Anime) {
+                addEpisodes(DubStatus.Subbed, episodes)
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, href) {
+            val href = fixUrl(document.select("div.grid > article a").attr("href"))
+            return newMovieLoadResponse(title, url, TvType.Movie, href) {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
@@ -201,8 +198,6 @@ class Animeav1 : MainAPI() {
             return false
         }
 
-        Log.d("Animeav1", "Script encontrado, longitud: ${scriptHtml.length}")
-
         fun cleanJsToJson(js: String): String {
             var cleaned = js.replaceFirst("""^\s*\w+\s*:\s*""".toRegex(), "")
             cleaned = cleaned.replace("void 0", "null")
@@ -218,119 +213,85 @@ class Animeav1 : MainAPI() {
             return false
         }
 
-        val embedsJson = embedsMatch.let { cleanJsToJson(it) }
-        Log.d("Animeav1", "JSON parseado: $embedsJson")
+        val embedsJson = cleanJsToJson(embedsMatch)
+        Log.d("Animeav1", "JSON parseado, longitud: ${embedsJson.length}")
 
-        if (!embedsJson.isNullOrEmpty()) {
-            try {
-                val embedsObject = JSONObject(embedsJson)
+        return runCatching {
+            val embedsObject = JSONObject(embedsJson)
 
-                val stats = mutableMapOf<String, Int>()
-                val failedServers = mutableListOf<String>()
-
-                fun extractLinks(arrayName: String): List<Pair<String, String>> {
-                    val list = mutableListOf<Pair<String, String>>()
-                    if (embedsObject.has(arrayName)) {
-                        val jsonArray = embedsObject.getJSONArray(arrayName)
-                        Log.d("Animeav1", "Encontrados ${jsonArray.length()} enlaces en $arrayName")
-
-                        for (i in 0 until jsonArray.length()) {
-                            try {
-                                val obj = jsonArray.getJSONObject(i)
-                                val server = obj.getString("server")
-                                val url = obj.getString("url")
-                                list.add(server to url)
-                                Log.d("Animeav1", "$arrayName - Servidor: $server, URL: $url")
-                            } catch (e: Exception) {
-                                Log.e("Animeav1", "Error parseando objeto en posición $i de $arrayName: ${e.message}")
-                            }
+            fun extractLinks(arrayName: String): List<Pair<String, String>> {
+                val list = mutableListOf<Pair<String, String>>()
+                if (embedsObject.has(arrayName)) {
+                    val jsonArray = embedsObject.getJSONArray(arrayName)
+                    for (i in 0 until jsonArray.length()) {
+                        try {
+                            val obj = jsonArray.getJSONObject(i)
+                            val server = obj.getString("server")
+                            val url = obj.getString("url")
+                            list.add(server to url)
+                        } catch (e: Exception) {
+                            Log.e("Animeav1", "Error parseando objeto en $arrayName[$i]: ${e.message}")
                         }
-                    } else {
-                        Log.w("Animeav1", "No se encontró array '$arrayName' en el JSON")
                     }
-                    return list
                 }
+                return list
+            }
 
-                val subEmbeds = extractLinks("SUB")
-                val dubEmbeds = extractLinks("DUB")
+            val subEmbeds = extractLinks("SUB")
+            val dubEmbeds = extractLinks("DUB")
 
-                Log.i("Animeav1", "Total enlaces Subtitulado: ${subEmbeds.size}")
-                Log.i("Animeav1", "Total enlaces Español Latino: ${dubEmbeds.size}")
+            Log.i("Animeav1", "Enlaces encontrados - Subtitulado: ${subEmbeds.size}, Español Latino: ${dubEmbeds.size}")
 
-                var subProcessed = 0
-                var dubProcessed = 0
-
+            val jobs = mutableListOf<Job>()
+            coroutineScope {
                 subEmbeds.forEach { (server, url) ->
-                    Log.d("Animeav1", "Procesando Subtitulado enlace #${++subProcessed}: $server")
-                    val startTime = System.currentTimeMillis()
-
-                    try {
-                        loadCustomExtractor(
-                            "$server: Subtitulado",
-                            url,
-                            "",
-                            subtitleCallback,
-                            callback
-                        )
-
-                        val duration = System.currentTimeMillis() - startTime
-
-                        stats[server] = (stats[server] ?: 0) + 1
-                        Log.d("Animeav1", "Subtitulado:$server procesado exitosamente en ${duration}ms")
-
-                    } catch (e: Exception) {
-                        failedServers.add("Subtitulado:$server")
-                        Log.e("Animeav1", "Error al procesar Subtitulado:$server - ${e.javaClass.simpleName}: ${e.message}")
-                        Log.e("Animeav1", "URL problemática: $url")
-                        e.printStackTrace()
+                    jobs += launch(Dispatchers.IO) {
+                        try {
+                            val linkName = "Subtitulado: $server"
+                            loadCustomExtractor(
+                                name = linkName,
+                                url = url,
+                                referer = "",
+                                subtitleCallback = subtitleCallback,
+                                callback = callback,
+                                quality = null
+                            )
+                            Log.d("Animeav1", "Procesado $linkName")
+                        } catch (e: Exception) {
+                            Log.e("Animeav1", "Error procesando Subtitulado:$server - ${e.message}, URL: $url")
+                        }
                     }
                 }
 
                 dubEmbeds.forEach { (server, url) ->
-                    Log.d("Animeav1", "Procesando Español Latino enlace #${++dubProcessed}: $server")
-                    val startTime = System.currentTimeMillis()
-
-                    try {
-                        loadCustomExtractor(
-                            "$server: Español Latino",
-                            url,
-                            "",
-                            subtitleCallback,
-                            callback
-                        )
-
-                        val duration = System.currentTimeMillis() - startTime
-
-                        stats[server] = (stats[server] ?: 0) + 1
-                        Log.d("Animeav1", "Español Latino:$server procesado exitosamente en ${duration}ms")
-
-                    } catch (e: Exception) {
-                        failedServers.add("Español Latino:$server")
-                        Log.e("Animeav1", "Error al procesar Español Latino:$server - ${e.javaClass.simpleName}: ${e.message}")
-                        Log.e("Animeav1", "URL problemática: $url")
-                        e.printStackTrace()
+                    jobs += launch(Dispatchers.IO) {
+                        try {
+                            val linkName = "Español Latino: $server"
+                            loadCustomExtractor(
+                                name = linkName,
+                                url = url,
+                                referer = "",
+                                subtitleCallback = subtitleCallback,
+                                callback = callback,
+                                quality = null
+                            )
+                            Log.d("Animeav1", "Procesado $linkName")
+                        } catch (e: Exception) {
+                            Log.e("Animeav1", "Error procesando Español Latino:$server - ${e.message}, URL: $url")
+                        }
                     }
                 }
-
-                Log.i("Animeav1", "RESUMEN DE PROCESAMIENTO:")
-                Log.i("Animeav1", "Total procesados - Japonés: $subProcessed, Español Latino: $dubProcessed")
-                Log.i("Animeav1", "Servidores exitosos: ${stats.entries.joinToString { "${it.key}(${it.value})" }}")
-
-                if (failedServers.isNotEmpty()) {
-                    Log.w("Animeav1", "Servidores fallidos: ${failedServers.joinToString()}")
-                }
-
-            } catch (e: Exception) {
-                Log.e("Animeav1", "Error al parsear JSON: ${e.message}")
-                Log.e("Animeav1", "JSON problemático: $embedsJson")
-                return false
             }
-        } else {
-            Log.e("Animeav1", "embedsJson está vacío o nulo")
-            return false
-        }
 
-        return true
+            jobs.joinAll()
+
+            subEmbeds.isNotEmpty() || dubEmbeds.isNotEmpty().also {
+                Log.i("Animeav1", "Procesamiento completado - Subtitulado: ${subEmbeds.size}, Español Latino: ${dubEmbeds.size}, Éxito: $it")
+            }
+        }.getOrElse { e ->
+            Log.e("Animeav1", "Error general en loadLinks: ${e.message}")
+            false
+        }
     }
 
     suspend fun loadCustomExtractor(
@@ -339,26 +300,39 @@ class Animeav1 : MainAPI() {
         referer: String? = null,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
-        quality: Int? = null,
+        quality: Int? = null
     ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    newExtractorLink(
-                        name ?: link.source,
-                        name ?: link.name,
-                        link.url,
-                    ) {
-                        this.quality = when {
-                            else -> quality ?: link.quality
-                        }
-                        this.type = link.type
-                        this.referer = link.referer
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
+        try {
+            withTimeoutOrNull(10000) {
+                val extractedLinks = mutableListOf<ExtractorLink>()
+                loadExtractor(url, referer, subtitleCallback) { link ->
+                    extractedLinks.add(link)
+                }
+
+                extractedLinks.forEach { link ->
+                    try {
+                        callback.invoke(
+                            withContext(Dispatchers.IO) {
+                                newExtractorLink(
+                                    source = name ?: link.source,
+                                    name = name ?: link.name,
+                                    url = link.url
+                                ) {
+                                    this.quality = quality ?: link.quality
+                                    this.type = link.type
+                                    this.referer = link.referer
+                                    this.headers = link.headers
+                                    this.extractorData = link.extractorData
+                                }
+                            }
+                        )
+                    } catch (e: Exception) {
+                        Log.e("Animeav1", "Error en newExtractorLink para $name: ${e.message}, URL: $url")
                     }
-                )
-            }
+                }
+            } ?: Log.e("Animeav1", "Timeout en loadCustomExtractor para $name, URL: $url")
+        } catch (e: Exception) {
+            Log.e("Animeav1", "Error en loadCustomExtractor para $name: ${e.message}, URL: $url")
         }
     }
 }
