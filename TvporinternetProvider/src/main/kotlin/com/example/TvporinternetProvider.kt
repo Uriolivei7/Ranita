@@ -298,17 +298,34 @@ class TvporinternetProvider : MainAPI() {
 
         try {
             val mainHeaders = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language" to "es-ES,es;q=0.9",
                 "Accept-Encoding" to "gzip, deflate, br",
-                "Connection" to "keep-alive"
+                "Connection" to "keep-alive",
+                "DNT" to "1",
+                "Upgrade-Insecure-Requests" to "1"
             )
 
-            val mainPageResponse = app.get(targetUrl, headers = mainHeaders, timeout = 20L)
+            val mainPageResponse = app.get(targetUrl, headers = mainHeaders, timeout = 30L)
             val cookies = mainPageResponse.cookies
-            val doc = Jsoup.parse(mainPageResponse.text)
-            Log.d("TvporInternet", "loadLinks: Código HTTP: ${mainPageResponse.code}, HTML de la página principal: ${mainPageResponse.text.take(1000)}")
+            val responseText = mainPageResponse.text
+            Log.d("TvporInternet", "loadLinks: Código HTTP: ${mainPageResponse.code}, Longitud HTML: ${responseText.length}")
+
+            try {
+                val file = java.io.File.createTempFile("tvporinternet_html_", ".html")
+                file.writeText(responseText)
+                Log.d("TvporInternet", "loadLinks: HTML guardado en: ${file.absolutePath}")
+            } catch (e: Exception) {
+                Log.w("TvporInternet", "loadLinks: No se pudo guardar el HTML: ${e.message}")
+            }
+
+            val doc = try {
+                Jsoup.parse(responseText)
+            } catch (e: Exception) {
+                Log.e("TvporInternet", "loadLinks: Error al parsear HTML: ${e.message}")
+                return false
+            }
 
             val playerIframeSrc = doc.selectFirst("iframe[name=\"player\"]")?.attr("src")
                 ?: doc.selectFirst("iframe")?.attr("src")
@@ -316,6 +333,7 @@ class TvporinternetProvider : MainAPI() {
                 ?: doc.selectFirst("div[id*=\"player\"] iframe")?.attr("src")
                 ?: run {
                     Log.w("TvporInternet", "No se encontró iframe del reproductor, buscando opciones alternativas")
+                    // Buscar enlaces con target="player"
                     val optionLinks = doc.select("a[target=\"player\"]").mapNotNull { it.attr("href") }
                     Log.d("TvporInternet", "loadLinks: Opciones encontradas: $optionLinks")
                     optionLinks.firstOrNull() ?: run {
@@ -328,8 +346,13 @@ class TvporinternetProvider : MainAPI() {
                     }
                 }
 
-            val playerUrls = mutableListOf(playerIframeSrc)
+            val playerUrls = mutableListOf<String>()
+            playerIframeSrc?.let { playerUrls.add(it) }
             playerUrls.addAll(doc.select("a[target=\"player\"]").mapNotNull { it.attr("href") })
+            if (playerUrls.isEmpty()) {
+                val embedLink = doc.selectFirst("a[href*=\"saohgdasregions\"]")?.attr("href")
+                embedLink?.let { playerUrls.add(it) }
+            }
             if (playerUrls.isEmpty()) {
                 Log.e("TvporInternet", "No se encontraron URLs de reproductores")
                 return false
@@ -344,12 +367,11 @@ class TvporinternetProvider : MainAPI() {
                     "Referer" to targetUrl,
                     "Sec-Fetch-Dest" to "iframe",
                     "Sec-Fetch-Mode" to "navigate",
-                    "Sec-Fetch-Site" to "same-origin",
-                    "Upgrade-Insecure-Requests" to "1"
+                    "Sec-Fetch-Site" to "same-origin"
                 )
 
                 val playerResponse = try {
-                    app.get(playerUrl, headers = playerHeaders, cookies = cookies, timeout = 20L)
+                    app.get(playerUrl, headers = playerHeaders, cookies = cookies, timeout = 30L)
                 } catch (e: Exception) {
                     Log.e("TvporInternet", "Error al cargar Player URL [$index]: ${e.message}")
                     return@forEachIndexed
@@ -368,7 +390,7 @@ class TvporinternetProvider : MainAPI() {
                 Log.d("TvporInternet", "loadLinks: Embed URL original [$index]: $originalEmbedUrl")
 
                 val embedHeaders = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
                     "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language" to "es-ES,es;q=0.9",
                     "Accept-Encoding" to "gzip, deflate, br",
@@ -376,12 +398,11 @@ class TvporinternetProvider : MainAPI() {
                     "Sec-Fetch-Dest" to "iframe",
                     "Sec-Fetch-Mode" to "navigate",
                     "Sec-Fetch-Site" to "cross-site",
-                    "Upgrade-Insecure-Requests" to "1",
                     "Origin" to "https://live.saohgdasregions.fun"
                 )
 
                 val embedResponse = try {
-                    app.get(originalEmbedUrl, headers = embedHeaders, cookies = cookies, timeout = 20L)
+                    app.get(originalEmbedUrl, headers = embedHeaders, cookies = cookies, timeout = 30L)
                 } catch (e: Exception) {
                     Log.e("TvporInternet", "Error al cargar Embed URL [$index]: ${e.message}")
                     return@forEachIndexed
@@ -410,17 +431,16 @@ class TvporinternetProvider : MainAPI() {
                     Log.d("TvporInternet", "loadLinks: Stream final URL (limpia) [$index-$m3u8Index]: $finalM3u8Url")
 
                     try {
-                        val m3u8Response = app.get(finalM3u8Url, headers = embedHeaders, timeout = 10L)
+                        val m3u8Response = app.get(finalM3u8Url, headers = embedHeaders, timeout = 15L)
                         if (!m3u8Response.isSuccessful) {
                             Log.e("TvporInternet", "Fallo al cargar M3U8 [$index-$m3u8Index]: Código ${m3u8Response.code}")
                             return@forEachIndexed
                         }
                         Log.d("TvporInternet", "loadLinks: M3U8 [$index-$m3u8Index] cargado exitosamente: $finalM3u8Url")
 
-                        // Detectar si estamos en WSA
                         val qualityOptions = if (android.os.Build.MANUFACTURER.contains("Microsoft", ignoreCase = true) ||
                             android.os.Build.MODEL.contains("Windows", ignoreCase = true)) {
-                            listOf(Pair("SD", Qualities.P480.value)) // Solo SD en WSA
+                            listOf(Pair("SD", Qualities.P480.value))
                         } else {
                             listOf(
                                 Pair("HD", Qualities.P720.value),
@@ -438,7 +458,7 @@ class TvporinternetProvider : MainAPI() {
                                     this.referer = "https://live.saohgdasregions.fun/"
                                     this.quality = qualityValue
                                     this.headers = mapOf(
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
                                         "Accept" to "*/*",
                                         "Accept-Language" to "es-ES,es;q=0.9",
                                         "Accept-Encoding" to "gzip, deflate, br",
