@@ -90,7 +90,6 @@ class AnizoneProvider : MainAPI() {
             .getString("html"))
     }
 
-
     private fun liveWireBuilder (updates : Map<String,String>, calls: List<Map<String, Any>>,
                                  biscuit : MutableMap<String, String>,
                                  wireCreds : MutableMap<String,String>,
@@ -207,17 +206,19 @@ class AnizoneProvider : MainAPI() {
                     ?.substringAfter(":")?.trim()
                 this.season = 0
                 this.posterUrl = elt.selectFirst("img")?.attr("src")
-                this.date = elt.select("span.line-clamp-1").getOrNull(1)?.text()?.let {
-                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        .parse(it)?.time
-                } ?: 0
+
+                this.date = elt.selectFirst("span[title].line-clamp-1")?.text()?.ifEmpty { null }?.let { dateText ->
+                    try {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateText)?.time
+                    } catch (e: Exception) {
+                        null
+                    }
+                } ?: 0L
 
             }
         }
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
-
-
             this.posterUrl = bgImage
             this.plot = synopsis
             this.tags = genres
@@ -228,7 +229,6 @@ class AnizoneProvider : MainAPI() {
         }
 
     }
-
 
     override suspend fun loadLinks(
         data: String,
@@ -258,8 +258,6 @@ class AnizoneProvider : MainAPI() {
                 type = ExtractorLinkType.M3U8
             )
         )
-
         return true
     }
-
 }
