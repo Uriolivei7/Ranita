@@ -207,11 +207,15 @@ class AnizoneProvider : MainAPI() {
                 this.season = 0
                 this.posterUrl = elt.selectFirst("img")?.attr("src")
 
-                this.date = elt.selectFirst("span[title].line-clamp-1")?.text()?.ifEmpty { null }?.let { dateText ->
+                val dateString = elt.selectFirst("span[title].line-clamp-1")?.text()
+
+                this.date = if (dateString.isNullOrEmpty()) {
+                    0L
+                } else {
                     try {
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateText)?.time
+                        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateString)?.time
                     } catch (e: Exception) {
-                        null
+                        0L
                     }
                 }
             }
