@@ -213,8 +213,7 @@ class AnizoneProvider : MainAPI() {
                     } catch (e: Exception) {
                         null
                     }
-                } ?: 0L
-
+                }
             }
         }
 
