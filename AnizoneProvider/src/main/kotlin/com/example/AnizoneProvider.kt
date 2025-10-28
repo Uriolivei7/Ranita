@@ -57,17 +57,18 @@ class AnizoneProvider : MainAPI() {
         "token" to ""
     )
 
+    private suspend fun initializeLiveWire() {
+        val initReq = app.get("$mainUrl/anime")
 
-    init {
-        val initReq = Jsoup.connect("$mainUrl/anime")
-            .method(Connection.Method.GET).execute()
-        this.cookies = initReq.cookies()
-        val doc = initReq.parse()
+        this.cookies = initReq.cookies.toMutableMap()
+
+        val doc = initReq.document
+
         wireData["token"] = doc.select("script[data-csrf]").attr("data-csrf")
         wireData["wireSnapshot"] = getSnapshot(doc)
+
         sortAnimeLatest()
     }
-
 
     private fun sortAnimeLatest() {
         liveWireBuilder(mapOf("sort" to "release-desc"), mutableListOf(), this.cookies, this.wireData, true)
@@ -118,26 +119,32 @@ class AnizoneProvider : MainAPI() {
         return JSONObject(req.body())
     }
 
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest
     ): HomePageResponse {
 
-        val doc = getHtmlFromWire(
-            liveWireBuilder(
-                mapOf("type" to request.data), mutableListOf(
+        initializeLiveWire()
+
+        var responseJson = liveWireBuilder(
+            mapOf("type" to request.data), mutableListOf(), this.cookies, this.wireData, true
+        )
+        var doc = getHtmlFromWire(responseJson)
+
+        for (i in 1 until page) {
+            if (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") == null) break
+
+            responseJson = liveWireBuilder(
+                mutableMapOf(), mutableListOf(
                     mapOf("path" to "", "method" to "loadMore", "params" to listOf<String>())
                 ), this.cookies, this.wireData, true
             )
-        )
+            doc = getHtmlFromWire(responseJson)
+        }
 
-        var home : List<Element> = doc.select("div[wire:key]")
-
-        if (page>1)
-            home = home.takeLast(12)
+        val home: List<Element> = doc.select("div[wire:key]")
 
         return newHomePageResponse(
-            HomePageList(request.name, home.map { toResult(it)}, isHorizontalImages = false),
-            hasNext = (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]")!=null)
+            HomePageList(request.name, home.map { toResult(it) }, isHorizontalImages = false),
+            hasNext = (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null)
         )
     }
 
@@ -156,6 +163,9 @@ class AnizoneProvider : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+
+        initializeLiveWire()
+
         val doc = getHtmlFromWire(liveWireBuilder(mapOf("search" to query),mutableListOf(), this.cookies,
             this.wireData,false))
         return doc.select("div[wire:key]").mapNotNull { toResult(it) }
@@ -180,16 +190,26 @@ class AnizoneProvider : MainAPI() {
         else if (rowLines.getOrNull(1) == "Ongoing") ShowStatus.Ongoing else null
         val genres = doc.select("a[wire:navigate][wire:key]").map { it.text() }
 
-        while (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]")!=null) {
-            doc = getHtmlFromWire(liveWireBuilder(
-                mutableMapOf(), mutableListOf(
-                    mapOf("path" to "", "method" to "loadMore", "params" to listOf<String>())
-                ), cookie, wireData, true
-            )
-            )
+        var currentDoc = doc
+        var attempts = 0
+        val maxAttempts = 100
+
+        while (currentDoc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null && attempts < maxAttempts) {
+            attempts++
+            try {
+                val responseJson = liveWireBuilder(
+                    mutableMapOf(), mutableListOf(
+                        mapOf("path" to "", "method" to "loadMore", "params" to listOf<String>())
+                    ), cookie, wireData, true
+                )
+                currentDoc = getHtmlFromWire(responseJson)
+            } catch (e: Exception) {
+                Log.e("AniZone Load", "Error al cargar más episodios en el intento $attempts: ${e.message}")
+                break
+            }
         }
 
-        val epiElms = doc.select("li[x-data]")
+        val epiElms = currentDoc.select("li[x-data]")
 
         val episodes = epiElms.map{ elt ->
             newEpisode(
