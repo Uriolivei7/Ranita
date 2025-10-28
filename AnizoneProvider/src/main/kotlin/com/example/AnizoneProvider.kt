@@ -28,6 +28,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Locale
+import android.util.Log
 
 
 class AnizoneProvider : MainAPI() {
@@ -40,11 +41,9 @@ class AnizoneProvider : MainAPI() {
     )
 
     override var lang = "en"
-
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
-
     override val mainPage = mainPageOf(
         "2" to "Latest TV Series",
         "4" to "Latest Movies",
@@ -208,9 +207,17 @@ class AnizoneProvider : MainAPI() {
                 this.posterUrl = elt.selectFirst("img")?.attr("src")
 
                 this.date = elt.selectFirst("span[title].line-clamp-1")?.text()?.ifEmpty { null }?.let { dateText ->
+
+                    Log.e("AniZone", "Fecha encontrada para ${this.name}: $dateText")
+
                     try {
-                        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
+                        val parsedTime = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
+
+                        Log.e("AniZone", "Parseo exitoso para ${this.name}: $parsedTime")
+
+                        parsedTime
                     } catch (e: Exception) {
+                        Log.e("AniZone", "FALLO de parseo para ${this.name} con texto '$dateText': ${e.message}")
                         null
                     }
                 } ?: 0L
