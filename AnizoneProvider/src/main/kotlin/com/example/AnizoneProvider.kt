@@ -162,29 +162,22 @@ class AnizoneProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-
         val r = Jsoup.connect(url)
             .method(Connection.Method.GET).execute()
-
         var doc = Jsoup.parse(r.body())
-
         val cookie = r.cookies()
         val wireData = mutableMapOf(
             "wireSnapshot" to getSnapshot(doc=r.parse()),
             "token" to doc.select("script[data-csrf]").attr("data-csrf")
         )
-
         val title = doc.selectFirst("h1")?.text()
             ?: throw NotImplementedError("Unable to find title")
-
         val bgImage = doc.selectFirst("main img")?.attr("src")
         val synopsis = doc.selectFirst(".sr-only + div")?.text() ?: ""
-
         val rowLines = doc.select("span.inline-block").map { it.text() }
         val releasedYear = rowLines.getOrNull(3)
         val status = if (rowLines.getOrNull(1) == "Completed") ShowStatus.Completed
         else if (rowLines.getOrNull(1) == "Ongoing") ShowStatus.Ongoing else null
-
         val genres = doc.select("a[wire:navigate][wire:key]").map { it.text() }
 
         while (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]")!=null) {
@@ -206,21 +199,24 @@ class AnizoneProvider : MainAPI() {
                 this.season = 0
                 this.posterUrl = elt.selectFirst("img")?.attr("src")
 
-                this.date = elt.selectFirst("span[title].line-clamp-1")?.text()?.ifEmpty { null }?.let { dateText ->
+                this.date = elt.selectFirst("span[title]")
+                    ?.selectFirst("span.line-clamp-1")
+                    ?.text()
+                    ?.trim()
+                    ?.replace(Regex("\\s+"), "")
+                    ?.ifEmpty { null }
+                    ?.let { dateText ->
+                        Log.e("AniZone", "Fecha encontrada para ${this.name}: $dateText")
 
-                    Log.e("AniZone", "Fecha encontrada para ${this.name}: $dateText")
-
-                    try {
-                        val parsedTime = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
-
-                        Log.e("AniZone", "Parseo exitoso para ${this.name}: $parsedTime")
-
-                        parsedTime
-                    } catch (e: Exception) {
-                        Log.e("AniZone", "FALLO de parseo para ${this.name} con texto '$dateText': ${e.message}")
-                        null
-                    }
-                } ?: 0L
+                        try {
+                            val parsedTime = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
+                            Log.e("AniZone", "Parseo exitoso para ${this.name}: $parsedTime")
+                            parsedTime
+                        } catch (e: Exception) {
+                            Log.e("AniZone", "FALLO de parseo para ${this.name} con texto '$dateText': ${e.message}")
+                            null
+                        }
+                    } ?: 0L
             }
         }
 
@@ -231,9 +227,7 @@ class AnizoneProvider : MainAPI() {
             this.year = releasedYear?.toIntOrNull()
             this.showStatus = status
             addEpisodes(DubStatus.None, episodes)
-
         }
-
     }
 
     override suspend fun loadLinks(
