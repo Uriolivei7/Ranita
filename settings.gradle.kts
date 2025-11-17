@@ -1,7 +1,25 @@
-rootProject.name = "CloudstreamPlugins"
+// settings.gradle.kts
+@file:Suppress("UnstableApiUsage")
 
-// This file sets what projects are included.
-// All new projects should get automatically included unless specified in the "disabled" variable.
+pluginManagement {
+    repositories {
+        google() // Asegúrate de que esté aquí (ya lo tienes, ¡bien!)
+        mavenCentral()
+        gradlePluginPortal()
+        maven("https://jitpack.io")
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+rootProject.name = "Ranita"
+
 
 val disabled = listOf<String>()
 
@@ -14,6 +32,3 @@ File(rootDir, ".").eachDir { dir ->
 fun File.eachDir(block: (File) -> Unit) {
     listFiles()?.filter { it.isDirectory }?.forEach { block(it) }
 }
-
-// To only include a single project, comment out the previous lines (except the first one), and include your plugin like so:
-// include("PluginName")
