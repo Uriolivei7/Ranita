@@ -61,7 +61,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnizoneProvider.cs3",
     "status": 1,
-    "version": 7,
+    "version": 8,
     "apiVersion": 4,
     "name": "AniZone",
     "internalName": "AnizoneProvider",
@@ -74,7 +74,7 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=200&id=fztMk7eF9g8D&format=png",
     "language": "en",
-    "fileSize": 14000
+    "fileSize": 18000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
