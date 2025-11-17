@@ -1,0 +1,373 @@
+[
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
+    "status": 1,
+    "version": 7,
+    "apiVersion": 1,
+    "name": "SoloLatino",
+    "internalName": "SoloLatinoProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para sololatino.net",
+    "tvTypes": [
+      "Movie",
+      "TvSeries",
+      "Cartoon",
+      "Anime"
+    ],
+    "iconUrl": "https://sololatino.net/wp-content/uploads/2022/11/logo-final.png",
+    "language": "mx",
+    "fileSize": 31000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",
+    "status": 1,
+    "version": 8,
+    "apiVersion": 2,
+    "name": "PlusHD",
+    "internalName": "PlushdProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para ww3.pelisplus.to",
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Cartoon"
+    ],
+    "iconUrl": "https://ww3.pelisplus.to/images/faviconhd.png",
+    "language": "mx",
+    "fileSize": 22000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LatanimeProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 3,
+    "name": "LatAnime",
+    "internalName": "LatanimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para latanime.org",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://latanime.org/public/favicon.ico",
+    "language": "mx",
+    "fileSize": 19000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnizoneProvider.cs3",
+    "status": 1,
+    "version": 7,
+    "apiVersion": 4,
+    "name": "AniZone",
+    "internalName": "AnizoneProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para animes Subtitulados y con Doblajes",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://img.icons8.com/?size=200&id=fztMk7eF9g8D&format=png",
+    "language": "en",
+    "fileSize": 14000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 6,
+    "name": "AnimeFLV",
+    "internalName": "AnimeflvnetProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www3.animeflv.net",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://www3.animeflv.net/favicon.ico",
+    "language": "mx",
+    "fileSize": 22000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VerseriesonlineProvider.cs3",
+    "status": 1,
+    "version": 4,
+    "apiVersion": 6,
+    "name": "Veronline",
+    "internalName": "VeronlineProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.veronline.tax",
+    "tvTypes": [
+      "TvSeries",
+      "Cartoon"
+    ],
+    "iconUrl": "https://www.veronline.tax/icon/favicon.ico",
+    "language": "mx",
+    "fileSize": 22000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LacartoonsProvider.cs3",
+    "status": 1,
+    "version": 3,
+    "apiVersion": 7,
+    "name": "LACartoons",
+    "internalName": "LacartoonsProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.lacartoons.com",
+    "tvTypes": [
+      "Cartoons"
+    ],
+    "iconUrl": "https://img.icons8.com/?size=200&id=tlzsVoeHOw9V&format=png",
+    "language": "mx",
+    "fileSize": 13000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelispediaProvider.cs3",
+    "status": 1,
+    "version": 3,
+    "apiVersion": 8,
+    "name": "Pelispedia",
+    "internalName": "PelispediaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para pelispedia.is",
+    "tvTypes": [
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://pelispedia.is/wp-content/uploads/2022/01/cropped-pelispediafavicon-e1642201982676-32x32.png",
+    "language": "mx",
+    "fileSize": 20000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
+    "status": 1,
+    "version": 4,
+    "apiVersion": 9,
+    "name": "TioAnime",
+    "internalName": "TioanimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para tioanime.com",
+    "tvTypes": [
+      "Anime",
+      "Ova"
+    ],
+    "iconUrl": "https://tioanime.com/assets/img/icon-32x32.png",
+    "language": "mx",
+    "fileSize": 21000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
+    "status": 1,
+    "version": 5,
+    "apiVersion": 10,
+    "name": "AnimeIO",
+    "internalName": "AnimeioProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para animeio.com",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://animeio.com/favicon.ico",
+    "language": "mx",
+    "fileSize": 24000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
+    "status": 1,
+    "version": 4,
+    "apiVersion": 11,
+    "name": "AnimeAV1",
+    "internalName": "Animeav1Provider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para anime Subtitulado y con Doblaje Latino",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://animeav1.com/favicon.png",
+    "language": "mx",
+    "fileSize": 21000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplushdProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 12,
+    "name": "PelisPlusHD",
+    "internalName": "PelisplushdProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin en Latino y con subtitulos",
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
+    "language": "mx",
+    "fileSize": 23000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 13,
+    "name": "DoramasFlix",
+    "internalName": "DoramasflixProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para doramasflix.co",
+    "tvTypes": [
+      "AsianDrama"
+    ],
+    "iconUrl": "https://doramasflix.co/favicon.ico",
+    "language": "mx",
+    "fileSize": 34000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MundodonghuaProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 14,
+    "name": "MundoDonghua",
+    "internalName": "MundodonghuaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.mundodonghua.com",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://www.mundodonghua.com/images/favicon.png",
+    "language": "mx",
+    "fileSize": 21000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReydonghuaProvider.cs3",
+    "status": 1,
+    "version": 3,
+    "apiVersion": 15,
+    "name": "ReyDonghua",
+    "internalName": "ReydonghuaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para reydonghua.org",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://reydonghua.org/public/favicon.ico?v=4.75",
+    "language": "mx",
+    "fileSize": 17000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 16,
+    "name": "JKAnime",
+    "internalName": "JkanimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para jkanime.net",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://cdn.jkdesu.com/assets3/css/img/favicon.ico?v=2.0.140",
+    "language": "mx",
+    "fileSize": 33000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
+    "status": 1,
+    "version": 4,
+    "apiVersion": 17,
+    "name": "TVporInternet",
+    "internalName": "TvporinternetProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para www.tvporinternet2.com",
+    "tvTypes": [
+      "Live"
+    ],
+    "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
+    "language": "mx",
+    "fileSize": 24000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
+    "status": 1,
+    "version": 3,
+    "apiVersion": 18,
+    "name": "DoramasYT",
+    "internalName": "DoramasytProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para doramasyt.com",
+    "tvTypes": [
+      "AsianDrama"
+    ],
+    "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
+    "language": "mx",
+    "fileSize": 26000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TwitchProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 19,
+    "name": "Twitch",
+    "internalName": "TwitchProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Twitch",
+    "tvTypes": [
+      "Live"
+    ],
+    "iconUrl": "https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png",
+    "language": "es",
+    "fileSize": 16000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Youtube.cs3",
+    "status": 1,
+    "version": 3,
+    "apiVersion": 20,
+    "name": "YouTube",
+    "internalName": "Youtube",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para YouTube",
+    "tvTypes": [
+      "Others"
+    ],
+    "iconUrl": "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144_v2.png",
+    "language": "mx",
+    "fileSize": 48000
+  }
+]
