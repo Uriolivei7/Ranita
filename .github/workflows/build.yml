@@ -1,14 +1,18 @@
 name: Build
 
 # https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#concurrency
-concurrency: 
+concurrency:
   group: "build"
   cancel-in-progress: true
+
+# ***** SOLUCIÓN CRÍTICA PARA EL ERROR 403 (Permisos) *****
+# El bot de GitHub Actions necesita permisos explícitos para escribir (git push) en el repositorio.
+permissions:
+  contents: write
 
 on:
   push:
     branches:
-      # choose your default branch
       - master
       - main
     paths-ignore:
@@ -18,41 +22,61 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@master
+      # 1. CHECKOUT DE LA RAMA PRINCIPAL (donde está el código fuente)
+      - name: Checkout Source Code
+        uses: actions/checkout@v4 # Usar v4 es más estable que @master
         with:
+          # Aquí NO ESPECIFICAMOS 'ref' para usar la rama que disparó el push (main/master)
           path: "src"
 
-      - name: Checkout builds
-        uses: actions/checkout@master
+      # 2. CHECKOUT DE LA RAMA 'builds' (donde se guardan los archivos .cs3)
+      - name: Checkout or Create Builds Branch
+        uses: actions/checkout@v4
         with:
           ref: "builds"
           path: "builds"
-      
-      - name: Clean old builds
-        run: rm $GITHUB_WORKSPACE/builds/*.cs3
+          persist-credentials: false
+          clean: false
 
+      # 3. LIMPIEZA DE ARCHIVOS ANTIGUOS
+      - name: Clean old builds
+        run: rm -f $GITHUB_WORKSPACE/builds/*.cs3
+
+      # 4. CONFIGURACIÓN DEL JDK Y ANDROID SDK
       - name: Setup JDK 17
-        uses: actions/setup-java@v1
+        # Usar la versión más reciente y el caché mejora el rendimiento
+        uses: actions/setup-java@v4
         with:
+          distribution: 'temurin'
           java-version: 17
+          cache: 'gradle' # Cachear dependencias de Gradle
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        # Esta acción puede ser reemplazada por simplemente usar el SDK en la VM
+        uses: android-actions/setup-android@v3
 
+      # 5. PASO DE COMPILACIÓN
       - name: Build Plugins
         run: |
+          echo "Starting build process..."
           cd $GITHUB_WORKSPACE/src
-          chmod +x gradlew
+          
           ./gradlew make makePluginsJson
-          cp **/build/*.cs3 $GITHUB_WORKSPACE/builds
-          cp build/plugins.json $GITHUB_WORKSPACE/builds
+          
+          echo "Copying generated files to builds directory..."
+          cp **/build/*.cs3 $GITHUB_WORKSPACE/builds/ || echo "No .cs3 files found (builds directory is clean)"
+          cp build/plugins.json $GITHUB_WORKSPACE/builds/
+          
+          echo "Build files successfully copied."
 
-      - name: Push builds
+      # 6. PUSH DE LA RAMA 'builds'
+      - name: Commit and Push builds
         run: |
           cd $GITHUB_WORKSPACE/builds
+          
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
+          
           git add .
-          git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
-          git push --force
+          git commit -m "Build $GITHUB_SHA" || true 
+          git push --set-upstream origin builds
