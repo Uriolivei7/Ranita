@@ -9,7 +9,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para sololatino.net",
+    "description": "Plugin para Latino, Español y Subtitulado",
     "tvTypes": [
       "Movie",
       "TvSeries",
@@ -30,7 +30,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ww3.pelisplus.to",
+    "description": "Plugin para Latino",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -50,7 +50,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para latanime.org",
+    "description": "Plugin para Animes con Dobalje Latino y Español",
     "tvTypes": [
       "Anime"
     ],
@@ -68,7 +68,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para animes Subtitulados y con Doblajes",
+    "description": "Plugin para Animes Subtitulados y con Doblajes",
     "tvTypes": [
       "Anime"
     ],
@@ -86,7 +86,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para www3.animeflv.net",
+    "description": "Plugin para Animes Subtitulados",
     "tvTypes": [
       "Anime"
     ],
@@ -104,7 +104,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para www.veronline.tax",
+    "description": "Plugin para Series en General",
     "tvTypes": [
       "TvSeries",
       "Cartoon"
@@ -123,7 +123,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para www.lacartoons.com",
+    "description": "Plugin para Series animadas",
     "tvTypes": [
       "Cartoons"
     ],
@@ -141,7 +141,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para pelispedia.is",
+    "description": "Plugin para Latino, Español y Subtitulado",
     "tvTypes": [
       "TvSeries",
       "Movie"
@@ -160,7 +160,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para tioanime.com",
+    "description": "Plugin para Animes Subtitulados",
     "tvTypes": [
       "Anime",
       "Ova"
@@ -179,7 +179,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para animeio.com",
+    "description": "Plugin para Animes Subtitulados",
     "tvTypes": [
       "Anime",
       "OVA"
@@ -217,7 +217,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin en Latino",
+    "description": "Plugin en Latino, Español Y Subtitulado",
     "tvTypes": [
       "Movie",
       "TvSeries",
