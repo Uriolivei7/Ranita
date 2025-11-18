@@ -208,23 +208,25 @@
     "fileSize": 21000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplushdProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
     "status": 1,
     "version": 1,
     "apiVersion": 12,
     "name": "PelisPlusHD",
-    "internalName": "PelisplushdProvider",
+    "internalName": "PelisplusProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin en Latino y con subtitulos",
+    "description": "Plugin en Latino",
     "tvTypes": [
       "Movie",
-      "TvSeries"
+      "TvSeries",
+      "Anime",
+      "Cartoon"
     ],
     "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
     "language": "mx",
-    "fileSize": 23000
+    "fileSize": 28000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
@@ -236,7 +238,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para doramasflix.co",
+    "description": "Plugin para K-Dramas, C-Dramas y J-Dramas",
     "tvTypes": [
       "AsianDrama"
     ],
@@ -254,7 +256,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para www.mundodonghua.com",
+    "description": "Plugin para Donghuas",
     "tvTypes": [
       "Anime"
     ],
@@ -272,7 +274,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para reydonghua.org",
+    "description": "Plugin para Donghuas",
     "tvTypes": [
       "Anime"
     ],
@@ -290,7 +292,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para jkanime.net",
+    "description": "Plugin para Animes Subtitulados",
     "tvTypes": [
       "Anime"
     ],
@@ -308,7 +310,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para www.tvporinternet2.com",
+    "description": "Plugin para TV en Vivo",
     "tvTypes": [
       "Live"
     ],
@@ -326,7 +328,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para doramasyt.com",
+    "description": "Plugin para Doramas",
     "tvTypes": [
       "AsianDrama"
     ],
