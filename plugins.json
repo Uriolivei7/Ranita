@@ -237,21 +237,25 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 22553,
+        "fileSize": 28468,
         "status": 1,
-        "language": "mx",
+        "language": "es",
         "authors": [
-            "Ranita"
+            "Ranita",
+            "Yeji",
+            "Mina"
         ],
         "tvTypes": [
             "Movie",
-            "TvSeries"
+            "TvSeries",
+            "Cartoon",
+            "Anime"
         ],
-        "version": 1,
-        "internalName": "PelisplushdProvider",
-        "description": "Ranita Repositorio",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelisplushdProvider.cs3",
-        "name": "PelisplushdProvider"
+        "version": 21,
+        "internalName": "PelisplusProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelisplusProvider.cs3",
+        "name": "PelisplusProvider"
     },
     {
         "apiVersion": 1,
