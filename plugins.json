@@ -305,7 +305,7 @@
     "status": 1,
     "version": 5,
     "apiVersion": 1,
-    "name": "TVporInternet",
+    "name": "TvporInternet",
     "internalName": "TvporinternetProvider",
     "authors": [
       "Ranita"
@@ -392,5 +392,24 @@
     "iconUrl": "https://net51.cc/img/nf2/icon_x192.png",
     "language": "en",
     "fileSize": 49000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/beta/master/plugins/PelisplusicuProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "PelisPlusIcu",
+    "internalName": "PelisplusicuProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Series y Películas en Latino",
+    "tvTypes": [
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://v4.pelis-plus.icu/favicon.ico",
+    "language": "mx",
+    "fileSize": 26000
   }
 ]
