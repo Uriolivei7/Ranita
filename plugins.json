@@ -216,6 +216,26 @@
         "name": "MundodonghuaProvider"
     },
     {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 49579,
+        "status": 1,
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama",
+            "Anime"
+        ],
+        "version": 35,
+        "internalName": "NetflixmirrorProvider",
+        "description": "Netflix y PrimeVideo Contenido en M\u00faltiples Lenguajes",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/NetflixmirrorProvider.cs3",
+        "name": "NetflixmirrorProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=%size%",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -237,7 +257,7 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 28468,
+        "fileSize": 28455,
         "status": 1,
         "language": "es",
         "authors": [
