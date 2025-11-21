@@ -23,7 +23,7 @@ import kotlinx.serialization.Serializable
 
 class PelisplusProvider : MainAPI() {
     override var mainUrl = "https://pelisplushd.bz"
-    override var name = "PelisPlusHD"
+    override var name = "PelisPlus"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,

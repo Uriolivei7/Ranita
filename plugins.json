@@ -212,7 +212,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 12,
-    "name": "PelisPlusHD",
+    "name": "PelisPlus",
     "internalName": "PelisplusProvider",
     "authors": [
       "Ranita"
@@ -371,5 +371,26 @@
     "iconUrl": "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144_v2.png",
     "language": "mx",
     "fileSize": 48000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/beta/master/plugins/NetflixmirrorProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "Netmirror",
+    "internalName": "NetflixmirrorProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Netflix y PrimeVideo con Subtitulos y Doblajes",
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Anime",
+      "AsianDrama"
+    ],
+    "iconUrl": "https://net51.cc/img/nf2/icon_x192.png",
+    "language": "en",
+    "fileSize": 49000
   }
 ]
