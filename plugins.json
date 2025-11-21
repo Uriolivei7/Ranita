@@ -24,7 +24,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",
     "status": 1,
     "version": 8,
-    "apiVersion": 2,
+    "apiVersion": 1,
     "name": "PlusHD",
     "internalName": "PlushdProvider",
     "authors": [
@@ -44,7 +44,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LatanimeProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 3,
+    "apiVersion": 1,
     "name": "LatAnime",
     "internalName": "LatanimeProvider",
     "authors": [
@@ -62,7 +62,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnizoneProvider.cs3",
     "status": 1,
     "version": 8,
-    "apiVersion": 4,
+    "apiVersion": 1,
     "name": "AniZone",
     "internalName": "AnizoneProvider",
     "authors": [
@@ -80,7 +80,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 6,
+    "apiVersion": 1,
     "name": "AnimeFLV",
     "internalName": "AnimeflvnetProvider",
     "authors": [
@@ -98,7 +98,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VerseriesonlineProvider.cs3",
     "status": 1,
     "version": 4,
-    "apiVersion": 6,
+    "apiVersion": 1,
     "name": "Veronline",
     "internalName": "VeronlineProvider",
     "authors": [
@@ -117,7 +117,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LacartoonsProvider.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 7,
+    "apiVersion": 1,
     "name": "LACartoons",
     "internalName": "LacartoonsProvider",
     "authors": [
@@ -135,7 +135,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelispediaProvider.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 8,
+    "apiVersion": 1,
     "name": "Pelispedia",
     "internalName": "PelispediaProvider",
     "authors": [
@@ -154,7 +154,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
     "status": 1,
     "version": 4,
-    "apiVersion": 9,
+    "apiVersion": 1,
     "name": "TioAnime",
     "internalName": "TioanimeProvider",
     "authors": [
@@ -173,7 +173,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
     "status": 1,
     "version": 5,
-    "apiVersion": 10,
+    "apiVersion": 1,
     "name": "AnimeIO",
     "internalName": "AnimeioProvider",
     "authors": [
@@ -192,7 +192,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
     "status": 1,
     "version": 4,
-    "apiVersion": 11,
+    "apiVersion": 1,
     "name": "AnimeAV1",
     "internalName": "Animeav1Provider",
     "authors": [
@@ -211,7 +211,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 12,
+    "apiVersion": 1,
     "name": "PelisPlus",
     "internalName": "PelisplusProvider",
     "authors": [
@@ -232,7 +232,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 13,
+    "apiVersion": 1,
     "name": "DoramasFlix",
     "internalName": "DoramasflixProvider",
     "authors": [
@@ -250,7 +250,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MundodonghuaProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 14,
+    "apiVersion": 1,
     "name": "MundoDonghua",
     "internalName": "MundodonghuaProvider",
     "authors": [
@@ -268,7 +268,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReydonghuaProvider.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 15,
+    "apiVersion": 1,
     "name": "ReyDonghua",
     "internalName": "ReydonghuaProvider",
     "authors": [
@@ -286,7 +286,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",
     "status": 1,
     "version": 2,
-    "apiVersion": 16,
+    "apiVersion": 1,
     "name": "JKAnime",
     "internalName": "JkanimeProvider",
     "authors": [
@@ -303,8 +303,8 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
     "status": 1,
-    "version": 4,
-    "apiVersion": 17,
+    "version": 5,
+    "apiVersion": 1,
     "name": "TVporInternet",
     "internalName": "TvporinternetProvider",
     "authors": [
@@ -316,13 +316,13 @@
     ],
     "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
     "language": "mx",
-    "fileSize": 24000
+    "fileSize": 22000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 18,
+    "apiVersion": 1,
     "name": "DoramasYT",
     "internalName": "DoramasytProvider",
     "authors": [
@@ -340,7 +340,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TwitchProvider.cs3",
     "status": 1,
     "version": 1,
-    "apiVersion": 19,
+    "apiVersion": 1,
     "name": "Twitch",
     "internalName": "TwitchProvider",
     "authors": [
@@ -358,7 +358,7 @@
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Youtube.cs3",
     "status": 1,
     "version": 3,
-    "apiVersion": 20,
+    "apiVersion": 1,
     "name": "YouTube",
     "internalName": "Youtube",
     "authors": [

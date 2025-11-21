@@ -1,12 +1,13 @@
 // use an integer for version numbers
-version = 21
+version = 5
+
 
 cloudstream {
-    language = "es"
+    language = "mx"
     // All of these properties are optional, you can safely remove them
 
-    description = "Contenido en Latino"
-    authors = listOf("Ranita", "Yeji", "Mina")
+    //description = "Lorem Ipsum"
+    authors = listOf("misajimenezmx")
 
     /**
      * Status int as the following:
@@ -17,11 +18,8 @@ cloudstream {
      * */
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
-        "Movie",
-        "TvSeries",
-        "Cartoon",
-        "Anime"
+        "Live",
     )
 
-    //iconUrl = "https://github.com/SaurabhKaperwan/CSX/raw/refs/heads/master/NetflixMirrorProvider/icon.png"
+    iconUrl = "https://www.cablevisionhd.com/imge/cablevisionhd.png"
 }
