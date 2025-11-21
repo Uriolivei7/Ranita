@@ -377,7 +377,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
-    "name": "Netmirror",
+    "name": "NetMirror",
     "internalName": "NetflixmirrorProvider",
     "authors": [
       "Ranita"
