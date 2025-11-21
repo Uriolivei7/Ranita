@@ -361,25 +361,20 @@
         "name": "TioanimeProvider"
     },
     {
+        "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24119,
+        "fileSize": 21730,
         "status": 1,
-        "language": "es",
+        "language": "mx",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "misajimenezmx"
         ],
         "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "Cartoon",
-            "Anime"
+            "Live"
         ],
-        "version": 21,
+        "version": 5,
         "internalName": "TvporinternetProvider",
-        "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TvporinternetProvider.cs3",
         "name": "TvporinternetProvider"
     },
