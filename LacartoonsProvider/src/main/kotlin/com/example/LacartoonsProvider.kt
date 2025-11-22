@@ -2,25 +2,11 @@ package com.example
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.AppUtils
-import com.fasterxml.jackson.annotation.JsonProperty
-import java.net.URLEncoder
-import java.net.URI
 import org.jsoup.nodes.Document
-import android.util.Base64 // Importar Base64 de Android
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import kotlinx.coroutines.delay
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
-import kotlin.math.min
+import org.jsoup.nodes.Element
+import android.util.Log
 
 class LacartoonsProvider : MainAPI() {
     override var mainUrl = "https://www.lacartoons.com"
@@ -30,93 +16,100 @@ class LacartoonsProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
-        TvType.Cartoon
+        TvType.Cartoon,
+        TvType.TvSeries
     )
 
-    private fun encode(text: String): String = URLEncoder.encode(text, "UTF-8")
-
-    private fun logLongString(tag: String, message: String) {
-        val chunkSize = 4000
-        var i = 0
-        while (i < message.length) {
-            val endIndex = min(i + chunkSize, message.length)
-            println("$tag: ${message.substring(i, endIndex)}")
-            i += chunkSize
-        }
-    }
-    private fun Document.toSearchResult(): List<SearchResponse> {
-        return this.select(".categorias .conjuntos-series a").map {
-            val title = it.selectFirst("p.nombre-serie")?.text()
-            val href = fixUrl(it.attr("href"))
-            val img = fixUrl(it.selectFirst("img")!!.attr("src"))
-            newTvSeriesSearchResponse(title!!, href) {
-                this.posterUrl = img
-            }
-        }
-    }
+    override val mainPage = mainPageOf(
+        "/?Categoria_id=7" to "Marvel",
+        "/?Categoria_id=5" to "Disney",
+        "/?Categoria_id=1" to "Nickelodeon",
+        "/?Categoria_id=2" to "Cartoon Network",
+        "/?Categoria_id=3" to "Fox Kids",
+        "/?Categoria_id=4" to "Hanna Barbera",
+        "/?Categoria_id=6" to "Warner Channel",
+        "/?Categoria_id=8" to "Otros",
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val items = ArrayList<HomePageList>()
-        val soup = app.get(mainUrl).document
-        val home = soup.toSearchResult()
-        items.add(HomePageList("Series", home))
-        return newHomePageResponse(items)
+        val url = if (request.data.contains("?")) {
+            "$mainUrl/${request.data}&page=$page"
+        } else {
+            "$mainUrl/${request.data}?page=$page"
+        }
+
+        val document = app.get(url).document
+        val home = document.select(".categorias .conjuntos-series a")
+            .mapNotNull { it.toSearchResult() }
+
+        return newHomePageResponse(
+            list = HomePageList(
+                name = request.name,
+                list = home,
+                isHorizontalImages = false
+            ),
+            hasNext = true
+        )
+    }
+
+    private fun Element.toSearchResult(): SearchResponse? {
+        val title = this.selectFirst("p.nombre-serie")?.text() ?: return null
+        val href = fixUrl(this.attr("href"))
+        val posterUrl = this.selectFirst("img")?.attr("src")?.let { fixUrl(it) } ?: return null
+
+        return newTvSeriesSearchResponse(title, href, TvType.Cartoon) {
+            this.posterUrl = posterUrl
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/?utf8=✓&Titulo=$query").document
-        return doc.toSearchResult()
+        val document = app.get("$mainUrl/?Titulo=$query").document
+        val results = document.select(".categorias .conjuntos-series a").mapNotNull { it.toSearchResult() }
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        val title = doc.selectFirst("h2.text-center")?.text()
-        val description =
-            doc.selectFirst(".informacion-serie-seccion p:contains(Reseña)")?.text()
-                ?.substringAfter("Reseña:")?.trim()
+        val regexep = Regex("Capitulo\\s*(\\d+)")
+
+        val titleElement = doc.selectFirst("h2.text-center") ?: return null
+        val title = titleElement.ownText().trim()
+
+        val tags = titleElement.selectFirst("span")?.text()?.let { listOf(it) } ?: emptyList()
+
+        val description = doc.selectFirst(".informacion-serie-seccion p:contains(Reseña)")?.text()
+            ?.substringAfter("Reseña:")?.trim()
+
         val poster = doc.selectFirst(".imagen-serie img")?.attr("src")
         val backposter = doc.selectFirst("img.fondo-serie-seccion")?.attr("src")
-        val episodes = doc.select("ul.listas-de-episodion li").map {
-            val regexep = Regex("Capitulo.(\\d+)|Capitulo.(\\d+)\\-")
-            val href = it.selectFirst("a")?.attr("href")
-            val name = it.selectFirst("a")?.text()?.replace(regexep, "")?.replace("-", "")
-            val seasonnum = href?.substringAfter("t=")
-            val epnum = regexep.find(name.toString())?.destructured?.component1()
 
-            val actualEpnum = epnum?.toIntOrNull()
+        val episodes = doc.select("ul.listas-de-episodion li").mapNotNull { element ->
+            val href = element.selectFirst("a")?.attr("href")?.let { fixUrl(it) } ?: return@mapNotNull null
+            val rawTitle = element.selectFirst("a")?.text() ?: return@mapNotNull null
 
-            newEpisode(fixUrl(href!!)) {
+            val seasonNum = href.substringAfter("t=").toIntOrNull()
+
+            val epMatch = regexep.find(rawTitle)
+            val epNum = epMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+            val name = rawTitle.substringAfter("- ").trim()
+
+            newEpisode(href) {
                 this.name = name
-                this.season = seasonnum?.toIntOrNull()
-                this.episode = actualEpnum
-                this.runTime = null
+                this.season = seasonNum
+                this.episode = epNum
             }
         }
 
-        val recommendations = doc.select("div.series-recomendadas a").mapNotNull { element ->
-            val recTitle = element.selectFirst("p.nombre-serie")?.text()
-            val recLink = element.attr("href")
-            val recImg = element.selectFirst("img")?.attr("src")
+        val recommendations = doc.select(".series-recomendadas a").mapNotNull { it.toSearchResult() }
 
-            if (recTitle != null && recLink != null && recImg != null) {
-                newTvSeriesSearchResponse(
-                    recTitle,
-                    fixUrl(recLink)
-                ) {
-                    this.posterUrl = fixUrl(recImg)
-                    this.type = TvType.Cartoon
-                }
-            } else {
-                null
-            }
-        }
-
-        return newTvSeriesLoadResponse(title!!, url, TvType.Cartoon, episodes) {
-            this.posterUrl = fixUrl(poster!!)
-            this.backgroundPosterUrl = fixUrl(backposter!!)
+        return newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
+            this.posterUrl = poster?.let { fixUrl(it) }
+            this.backgroundPosterUrl = backposter?.let { fixUrl(it) }
             this.plot = description
             this.recommendations = recommendations
+            this.tags = tags
         }
     }
 
@@ -126,55 +119,44 @@ class LacartoonsProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data).document
-        val iframeSrc = doc.selectFirst(".serie-video-informacion iframe")?.attr("src")
+        Log.d("LACartoonsProvider", "Attempting to load links from: $data")
+        var linksFound = false
+        val res = app.get(data).document
 
-        if (iframeSrc == null) {
-            println("${name}: No se encontró iframe para el episodio: $data")
-            return false
-        }
-
-        if (iframeSrc.contains("sendvid.com/embed/")) {
-            println("${name}: Detectado iframe de sendvid.com. Intentando extracción manual.")
-            val sendvidEmbedUrl = iframeSrc
-
-            val embedDoc = try {
-                app.get(sendvidEmbedUrl).document
-            } catch (e: Exception) {
-                println("${name}: SENDVID_ERROR - No se pudo obtener el documento del embed de Sendvid: $sendvidEmbedUrl. ${e.message}")
-                return false
+        res.select(".serie-video-informacion iframe").forEach { element ->
+            val rawLink = element.attr("src")
+            if (rawLink.isNullOrBlank()) {
+                Log.w("LACartoonsProvider", "Empty iframe source found.")
+                return@forEach
             }
 
-            val videoUrl = embedDoc.selectFirst("video#video-js-video source#video_source")?.attr("src")
-                ?: embedDoc.selectFirst("meta[property=og:video]")?.attr("content")
-                ?: embedDoc.selectFirst("meta[property=og:video:secure_url]")?.attr("content")
+            val link = rawLink.replaceFirst("https://short.ink/", "https://abysscdn.com/?v=")
 
-            if (!videoUrl.isNullOrBlank()) {
-                println("${name}: SENDVID_SUCCESS - URL de video encontrada para Sendvid: $videoUrl")
-                callback.invoke(
-                    ExtractorLink(
-                        source = "Sendvid",
-                        name = "Sendvid",
-                        url = videoUrl,
-                        referer = sendvidEmbedUrl,
-                        quality = Qualities.Unknown.value,
-                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
-                        headers = mapOf("User-Agent" to "Mozilla/50 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
-                    )
-                )
-                return true
-            } else {
-                println("${name}: SENDVID_WARN - No se encontró la URL del video en la página de Sendvid: $sendvidEmbedUrl")
-                return false
+            Log.d("LACartoonsProvider", "Extracted link after redirect fix: $link")
+
+            val finalLink = fixHostsLinks(link)
+            val success = loadExtractor(finalLink, data, subtitleCallback, callback)
+            if (success) {
+                linksFound = true
             }
         }
 
-        else if (iframeSrc.contains("dhtpre.com")) {
-            println("${name}: Detectado iframe de dhtpre.com, usando loadExtractor.")
-            return loadExtractor(iframeSrc, data, subtitleCallback, callback)
-        } else {
-            println("${name}: Tipo de iframe desconocido: $iframeSrc. Intentando con loadExtractor por defecto.")
-            return loadExtractor(iframeSrc, data, subtitleCallback, callback)
-        }
+        return linksFound
     }
+}
+
+fun fixHostsLinks(url: String): String {
+    return url
+        .replaceFirst("https://hglink.to", "https://streamwish.to")
+        .replaceFirst("https://swdyu.com", "https://streamwish.to")
+        .replaceFirst("https://cybervynx.com", "https://streamwish.to")
+        .replaceFirst("https://dumbalag.com", "https://streamwish.to")
+        .replaceFirst("https://mivalyo.com", "https://vidhidepro.com")
+        .replaceFirst("https://dinisglows.com", "https://vidhidepro.com")
+        .replaceFirst("https://dhtpre.com", "https://vidhidepro.com")
+        .replaceFirst("https://filemoon.link", "https://filemoon.sx")
+        .replaceFirst("https://sblona.com", "https://watchsb.com")
+        .replaceFirst("https://lulu.st", "https://lulustream.com")
+        .replaceFirst("https://uqload.io", "https://uqload.com")
+        .replaceFirst("https://do7go.com", "https://dood.la")
 }
