@@ -26,9 +26,8 @@ class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
     override var name = "SoloLatino"
     override val supportedTypes = setOf(
-        TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
+        TvType.Movie,
         TvType.Cartoon,
     )
 

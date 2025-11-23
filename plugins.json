@@ -11,10 +11,9 @@
     ],
     "description": "Plugin para Latino, Español y Subtitulado",
     "tvTypes": [
-      "Movie",
       "TvSeries",
-      "Cartoon",
-      "Anime"
+      "Movie",
+      "Cartoon"
     ],
     "iconUrl": "https://sololatino.net/wp-content/uploads/2022/11/logo-final.png",
     "language": "mx",
@@ -209,27 +208,6 @@
     "fileSize": 21000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
-    "status": 0,
-    "version": 1,
-    "apiVersion": 1,
-    "name": "PelisPlus",
-    "internalName": "PelisplusProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin en Latino, Español Y Subtitulado",
-    "tvTypes": [
-      "Movie",
-      "TvSeries",
-      "Anime",
-      "Cartoon"
-    ],
-    "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
-    "language": "mx",
-    "fileSize": 28000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
     "status": 1,
     "version": 2,
@@ -407,7 +385,8 @@
     "description": "Plugin para Series y Películas en Latino",
     "tvTypes": [
       "TvSeries",
-      "Movie"
+      "Movie",
+      "Cartoon"
     ],
     "iconUrl": "https://v4.pelis-plus.icu/favicon.ico",
     "language": "mx",

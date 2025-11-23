@@ -1,4 +1,4 @@
-package com.stormunblessed
+package com.example
 
 import android.util.Log
 import com.lagradost.cloudstream3.*
@@ -24,6 +24,7 @@ class PelisplusicuProvider : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.Movie,
+        TvType.Cartoon,
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {

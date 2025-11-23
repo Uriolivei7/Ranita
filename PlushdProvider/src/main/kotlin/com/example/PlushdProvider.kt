@@ -19,9 +19,8 @@ class PlushdProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
         TvType.TvSeries,
-        TvType.Anime,
         TvType.Movie,
-        TvType.AsianDrama,
+        TvType.Cartoon,
     )
 
     override val mainPage = mainPageOf(
