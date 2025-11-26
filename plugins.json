@@ -276,29 +276,6 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 28455,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "Cartoon",
-            "Anime"
-        ],
-        "version": 21,
-        "internalName": "PelisplusProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelisplusProvider.cs3",
-        "name": "PelisplusProvider"
-    },
-    {
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 19144,
         "status": 1,
         "language": "es",
@@ -399,10 +376,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=twitch.tv&sz=%size%",
-        "jarFileSize": 59200,
+        "jarFileSize": 59470,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 15930,
+        "fileSize": 16050,
         "status": 1,
         "authors": [
             "CranberrySoup"
