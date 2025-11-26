@@ -34,7 +34,10 @@ class TwitchProvider : MainAPI() {
     private val TAG = "TwitchProvider"
 
     override val mainPage = mainPageOf(
-        "$mainUrl/channels/live" to "Canales en vivo",
+        "$mainUrl/channels/live" to "Streams",
+        "$mainUrl/channels/live/spanish" to "Streams en Español",
+        "$mainUrl/channels/live/english" to "Streams en Inglés",
+        "$mainUrl/channels/live/portuguese" to "Streams en Portugués",
         "$mainUrl/games" to gamesName
     )
     private val isHorizontal = true
