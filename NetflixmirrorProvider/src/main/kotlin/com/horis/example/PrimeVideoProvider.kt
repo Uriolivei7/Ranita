@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.httpsify
+//import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -18,8 +18,8 @@ import android.util.Log
 
 class PrimeVideoProvider : MainAPI() {
     override val supportedTypes = setOf(
-        TvType.Movie,
         TvType.TvSeries,
+        TvType.Movie,
         TvType.Anime,
         TvType.AsianDrama
     )
@@ -249,6 +249,7 @@ class PrimeVideoProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        cookie_value = bypass(mainUrl)
         Log.i(TAG, "Starting loadLinks for data: $data")
         val (title, id) = parseJson<LoadData>(data)
         Log.i(TAG, "Loading links for Episode/Movie ID: $id, Title: $title")
@@ -271,6 +272,14 @@ class PrimeVideoProvider : MainAPI() {
         var linkCount = 0
         var subtitleCount = 0
 
+        val fullCookie = "t_hash_t=$cookie_value; ott=pv; hd=on"
+        val refererUrl = "$newUrl/home"
+
+        val encodedReferer = java.net.URLEncoder.encode(refererUrl, "UTF-8")
+        val encodedCookie = java.net.URLEncoder.encode(fullCookie, "UTF-8")
+
+        val headersString = "Referer=$encodedReferer&Cookie=$encodedCookie"
+
         playlist.forEach { item ->
             item.sources.forEach {
                 callback.invoke(
@@ -289,21 +298,21 @@ class PrimeVideoProvider : MainAPI() {
             }
 
             item.tracks?.filter { it.kind == "captions" }?.map { track ->
-                val rawSubtitleUrl = track.file.toString()
-                val finalSubtitleUrl = if (rawSubtitleUrl.startsWith("//")) {
-                    "https:$rawSubtitleUrl"
-                } else {
-                    rawSubtitleUrl
-                }
+                val trackLabel = track.label.toString()
+
+                val filename = trackLabel.replace(" ", "") + ".srt"
+
+                val manualSubtitleUrl = "https://pv.subscdn.top/subs/$id/$filename"
+
 
                 subtitleCallback.invoke(
                     SubtitleFile(
-                        track.label.toString(),
-                        finalSubtitleUrl,
+                        trackLabel,
+                        manualSubtitleUrl,
                     )
                 )
                 subtitleCount++
-                Log.i(TAG, "Found Subtitle: ${track.label} at $finalSubtitleUrl (Kind: ${track.kind})")
+                Log.i(TAG, "Found Subtitle: $trackLabel (Manual URL: $manualSubtitleUrl)")
             }
         }
 
@@ -314,9 +323,8 @@ class PrimeVideoProvider : MainAPI() {
 
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        Log.i(TAG, "Interceptor requested for URL: ${extractorLink.url}")
-
-        val refererUrl = "$newUrl/"
+        val fullCookie = "t_hash_t=$cookie_value; ott=pv; hd=on"
+        val refererUrl = "$newUrl/home"
 
         return object : Interceptor {
             override fun intercept(chain: Interceptor.Chain): Response {
@@ -325,14 +333,17 @@ class PrimeVideoProvider : MainAPI() {
                 val newRequest = request.newBuilder()
 
                 if (url.contains(".m3u8")) {
-                    Log.i(TAG, "Applying 'hd=on' cookie to M3U8 request.")
-                    newRequest.header("Cookie", "hd=on")
+                    newRequest.header("Cookie", fullCookie)
                 }
 
-                if (url.contains("subs.nfmirrorcdn.top")) {
-                    Log.i(TAG, "Applying Referer and Cookie 'hd=on' for Subtitle request: $refererUrl")
+                if (url.endsWith(".vtt") || url.endsWith(".srt") ||
+                    url.contains("subs.nfmirrorcdn.top") ||
+                    url.contains("pv.subscdn.top") ||
+                    url.contains("imgcdn.kim")
+                ) {
+                    Log.i(TAG, "Interceptor: Applying Referer and Cookie to Subtitle URL: $url")
                     newRequest.header("Referer", refererUrl)
-                    newRequest.header("Cookie", "hd=on")
+                    newRequest.header("Cookie", fullCookie)
                 }
 
                 return chain.proceed(newRequest.build())
