@@ -376,10 +376,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=twitch.tv&sz=%size%",
-        "jarFileSize": 59470,
+        "jarFileSize": 74309,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 16050,
+        "fileSize": 19017,
         "status": 1,
         "authors": [
             "CranberrySoup"
