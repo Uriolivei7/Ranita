@@ -15,14 +15,14 @@ import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newLiveSearchResponse
 import com.lagradost.cloudstream3.newLiveStreamLoadResponse
-import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.mapper
 import android.util.Log
 import org.jsoup.nodes.Element
 import java.lang.RuntimeException
+
 
 class TwitchProvider : MainAPI() {
     override var mainUrl = "https://twitchtracker.com"
@@ -40,6 +40,7 @@ class TwitchProvider : MainAPI() {
         "$mainUrl/channels/live/portuguese" to "Streams en Portugués",
         "$mainUrl/games" to gamesName
     )
+
     private val isHorizontal = true
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -178,68 +179,5 @@ class TwitchProvider : MainAPI() {
         TwitchExtractor().getUrl(data, null, subtitleCallback, callback)
 
         return true
-    }
-
-    class TwitchExtractor : ExtractorApi() {
-        private val EXTRACTOR_TAG = "TwitchExtractor"
-
-        override val mainUrl = "https://twitch.tv/"
-        override val name = "Twitch"
-        override val requiresReferer = false
-
-        data class ApiResponse(
-            val success: Boolean,
-            val urls: Map<String, String>?
-        )
-
-        override suspend fun getUrl(
-            url: String,
-            referer: String?,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
-        ) {
-            Log.e(EXTRACTOR_TAG, "getUrl - URL de Stream recibida: $url")
-            val apiUrl = "https://pwn.sh/tools/streamapi.py?url=$url"
-            Log.e(EXTRACTOR_TAG, "getUrl - API URL final: $apiUrl")
-
-            val response =
-                app.get(apiUrl).parsed<ApiResponse>()
-
-            Log.e(EXTRACTOR_TAG, "getUrl - API Response Success: ${response.success}")
-
-            if (response.success != true) {
-                Log.e(EXTRACTOR_TAG, "getUrl - FALLO CRÍTICO: StreamAPI devolvió éxito=false.")
-                throw RuntimeException("StreamAPI failed to get links for $url")
-            }
-
-            response.urls?.forEach { (name, linkUrl) ->
-                if (name.contains("audio_only", ignoreCase = true)) {
-                    Log.e(EXTRACTOR_TAG, "getUrl - Omitiendo enlace de solo audio.")
-                    return@forEach
-                }
-
-                val quality = getQualityFromName(name.substringBefore("p"))
-
-                Log.e(EXTRACTOR_TAG, "getUrl - Encontrado enlace. Nombre: $name, Calidad: $quality")
-
-                if (quality == 0 && !name.contains("p")) {
-                    Log.e(EXTRACTOR_TAG, "getUrl - Omitiendo enlace con calidad 0 sin 'p'.")
-                    return@forEach
-                }
-
-                callback.invoke(
-                    newExtractorLink(
-                        this.name,
-                        "${this.name} ${name.replace("${quality}p", "").trim()}",
-                        linkUrl
-                    ) {
-                        this.type = ExtractorLinkType.M3U8
-                        this.quality = quality
-                        this.referer = ""
-                    }
-                )
-            }
-            Log.e(EXTRACTOR_TAG, "getUrl - Finalizado el procesamiento de enlaces.")
-        }
     }
 }
