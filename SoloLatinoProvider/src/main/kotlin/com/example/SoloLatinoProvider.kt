@@ -26,8 +26,9 @@ class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
     override var name = "SoloLatino"
     override val supportedTypes = setOf(
-        TvType.TvSeries,
         TvType.Movie,
+        TvType.TvSeries,
+        TvType.Anime,
         TvType.Cartoon,
     )
 
@@ -333,7 +334,8 @@ class SoloLatinoProvider : MainAPI() {
 
         val doc = app.get(targetUrl).document
 
-        doc.selectFirst("iframe")?.attr("src")?.let { initialIframeSrc ->
+        val selector = "#dooplay_player_response_1 iframe[src^=http]"
+        doc.selectFirst(selector)?.attr("src")?.let { initialIframeSrc ->
 
             val fixedInitialIframeSrc = fixUrl(initialIframeSrc)
             Log.d("SoloLatino", "loadLinks - 2. Iframe principal encontrado: $fixedInitialIframeSrc")
