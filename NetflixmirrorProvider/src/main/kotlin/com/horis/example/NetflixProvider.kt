@@ -30,55 +30,66 @@ class NetflixProvider : MainAPI() {
     override val hasMainPage = true
     private var cookie_value = ""
     private val headers = mapOf(
-        "X-Requested-With" to "XMLHttpRequest"
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language" to "en-IN,en-US;q=0.9,en;q=0.8",
+        "Connection" to "keep-alive",
+        "Host" to "net51.cc",
+        "sec-ch-ua" to "\"Not;A=Brand\";v=\"99\", \"Android WebView\";v=\"139\", \"Chromium\";v=\"139\"",
+        "sec-ch-ua-mobile" to "?0",
+        "sec-ch-ua-platform" to "\"Android\"",
+        "Sec-Fetch-Dest" to "document",
+        "Sec-Fetch-Mode" to "navigate",
+        "Sec-Fetch-Site" to "none",
+        "Sec-Fetch-User" to "?1",
+        "Upgrade-Insecure-Requests" to "1",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/139.0.7258.158 Safari/537.36 /OS.Gatu v3.0",
+        "X-Requested-With" to ""
     )
 
     private val TAG = "NetflixProvider"
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        Log.i(TAG, "Starting getMainPage (Page: $page)")
         cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        Log.i(TAG, "Cookie value after bypass: $cookie_value")
-
         val cookies = mapOf(
             "t_hash_t" to cookie_value,
-            "user_token" to "233123f803cf02184bf6c67e149cdd50",
             "ott" to "nf",
             "hd" to "on"
         )
         val document = app.get(
-            "$mainUrl/home",
+            "https://net51.cc/mobile/home?app=1",
+            headers = headers,
             cookies = cookies,
-            referer = "$mainUrl/",
+            referer = "https://net51.cc/",
         ).document
-
-        Log.i(TAG, "Main page document loaded. Selecting items.")
-
-        val items = document.select(".lolomoRow").map {
+        val items = document.select(".tray-container, #top10").map {
             it.toHomePageList()
         }
-
-        Log.i(TAG, "Found ${items.size} homepage lists.")
-
         return newHomePageResponse(items, false)
     }
 
     private fun Element.toHomePageList(): HomePageList {
-        val name = select("h2 > span > div").text()
-        val items = select("img.lazy").mapNotNull {
+        val name = select("h2, span").text()
+        val items = select("article, .top10-post").mapNotNull {
             it.toSearchResult()
         }
-        Log.i(TAG, "List '$name' extracted ${items.size} results.")
         return HomePageList(name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val id = attr("data-src").substringAfterLast("/").substringBefore(".")
-        val posterUrl = "https://imgcdn.kim/poster/v/$id.jpg"
+        val id = attr("data-post").takeIf { it.isNotEmpty() }
+            ?: run {
+                val imgSrc = selectFirst("img")?.attr("data-src") ?: selectFirst("img")?.attr("src") ?: ""
+                imgSrc.substringAfterLast("/").substringBefore(".")
+            }
 
-        return newAnimeSearchResponse("", Id(id).toJson()) {
+        if (id.isEmpty()) return null
+
+        val posterUrl = "https://imgcdn.kim/poster/v/${id}.jpg"
+        val title = selectFirst("img")?.attr("alt") ?: ""
+
+        return newAnimeSearchResponse(title, Id(id).toJson()) {
             this.posterUrl = posterUrl
-            posterHeaders = mapOf("Referer" to "$mainUrl/home")
+            posterHeaders = mapOf("Referer" to "$mainUrl/tv/home")
         }
     }
 
@@ -120,13 +131,13 @@ class NetflixProvider : MainAPI() {
             "ott" to "nf",
             "hd" to "on"
         )
-        val postUrl = "$mainUrl/post.php?id=$id&t=${APIHolder.unixTime}"
+        val postUrl = "$newUrl/post.php?id=$id&t=${APIHolder.unixTime}"
         Log.i(TAG, "Fetching post data from: $postUrl")
 
         val data = app.get(
             postUrl,
             headers,
-            referer = "$mainUrl/tv/home",
+            referer = "https://net51.cc",
             cookies = cookies
         ).parsed<PostData>()
 
@@ -144,6 +155,7 @@ class NetflixProvider : MainAPI() {
         val genre = data.genre?.split(",")
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
+
         val rating = data.match?.replace("IMDb ", "")
         val runTime = convertRuntimeToMinutes(data.runtime.toString())
         val suggest = data.suggest?.map {
@@ -189,7 +201,7 @@ class NetflixProvider : MainAPI() {
         return newTvSeriesLoadResponse(title, url, type, episodes) {
             posterUrl = "https://imgcdn.kim/poster/v/$id.jpg"
             backgroundPosterUrl ="https://imgcdn.kim/poster/h/$id.jpg"
-            posterHeaders = mapOf("Referer" to "$mainUrl/home")
+            posterHeaders = mapOf("Referer" to "$mainUrl/tv/home")
             plot = data.desc
             year = data.year.toIntOrNull()
             tags = genre
@@ -212,13 +224,13 @@ class NetflixProvider : MainAPI() {
         )
         var pg = page
         while (true) {
-            val epUrl = "$mainUrl/episodes.php?s=$sid&series=$eid&t=${APIHolder.unixTime}&page=$pg"
+            val epUrl = "$newUrl/episodes.php?s=$sid&series=$eid&t=${APIHolder.unixTime}&page=$pg"
             Log.i(TAG, "Fetching episodes page $pg for SID: $sid")
 
             val data = app.get(
                 epUrl,
                 headers,
-                referer = "$mainUrl/tv/home",
+                referer = "$newUrl/tv/home",
                 cookies = cookies
             ).parsed<EpisodesData>()
 
@@ -262,7 +274,7 @@ class NetflixProvider : MainAPI() {
         val playlist = app.get(
             playlistUrl,
             headers,
-            referer = "$mainUrl/home",
+            referer = "$mainUrl/tv/home",
             cookies = cookies
         ).parsed<PlayList>()
 
