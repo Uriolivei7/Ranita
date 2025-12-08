@@ -27,6 +27,7 @@ import org.json.JSONObject
 import org.jsoup.nodes.Element
 import android.util.Log
 import com.lagradost.cloudstream3.DubStatus
+import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import kotlinx.coroutines.Job
@@ -95,14 +96,45 @@ class Animeav1 : MainAPI() {
         }
     }
 
+    private fun getStatus(text: String): ShowStatus? {
+        return when (text.lowercase()) {
+            "en emisión", "en emision" -> ShowStatus.Ongoing
+            "finalizado" -> ShowStatus.Completed
+            else -> null
+        }
+    }
+
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-        val title = document.selectFirst("article h1")?.text() ?: "Unknown"
-        val poster = document.select("img.aspect-poster.w-full.rounded-lg").attr("src")
-        val description = document.selectFirst("div.entry.text-lead p")?.text()
-        val rawtype = document.select("div.flex.flex-wrap.items-center.gap-2.text-sm > span:nth-child(1)").text()
+
+        val title = document.selectFirst("h1")?.text() ?: "Unknown"
+        Log.d("Animeav1", "LOAD INICIO: Título extraído: $title")
+
+        val poster = document.selectFirst("img[alt*='Poster']")?.attr("src")
+            ?: document.selectFirst("img.aspect-poster.w-full.rounded-lg")?.attr("src") ?: ""
+        Log.d("Animeav1", "LOAD INICIO: Póster extraído: $poster")
+
+        val description = document.selectFirst("div.entry.line-clamp-4 p")?.text()
+
+        val infoContainer = document.selectFirst("header div.flex.flex-wrap.items-center.gap-2.text-sm")
+
+        Log.d("Animeav1", "LOAD METADATA: Contenedor HTML (V4): ${infoContainer?.outerHtml()}")
+
+        val yearText = infoContainer?.select("span:nth-child(3)")?.text()
+        val year = yearText?.toIntOrNull()
+        Log.d("Animeav1", "LOAD METADATA: Año extraído (toInt): $year")
+
+        val statusText = infoContainer?.select("span:nth-child(7)")?.text()
+        Log.d("Animeav1", "LOAD METADATA: Estado extraído (Corregido): $statusText")
+
+        val showStatus = statusText?.let { getStatus(it) }
+
+        val tags = document.select("header > div.flex.flex-wrap.items-center.gap-2 a").map { it.text() }
+        Log.d("Animeav1", "LOAD METADATA: Tags extraídos: $tags")
+
+        val rawtype = infoContainer?.select("span:nth-child(1)")?.text() ?: ""
         val type = getTvType(rawtype)
-        val tags = document.select("header > div:nth-child(3) a").map { it.text() }
+
         val recommendations = document.select("section div.gradient-cut > div > div").mapNotNull {
             val recTitle = it.select("h3").text()
             val recHref = fixUrl(it.select("a").attr("href"))
@@ -159,6 +191,8 @@ class Animeav1 : MainAPI() {
                 addEpisodes(DubStatus.Subbed, episodes)
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
+                this.showStatus = showStatus
                 this.tags = tags
                 this.recommendations = recommendations
             }
@@ -168,6 +202,7 @@ class Animeav1 : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
+                this.year = year
                 this.recommendations = recommendations
             }
         }
