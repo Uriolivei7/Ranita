@@ -20,6 +20,9 @@ import kotlin.text.RegexOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 //yeji
 class SoloLatinoProvider : MainAPI() {
@@ -237,6 +240,18 @@ class SoloLatinoProvider : MainAPI() {
         val description = doc.selectFirst("div.wp-content")?.text() ?: ""
         val tags = doc.select("div.sgeneros a").map { it.text() }
 
+        val dateText = doc.selectFirst("div.data span.date")?.text()
+
+        val year = dateText?.let {
+            Regex("""\d{4}""").find(it)?.value?.toIntOrNull()
+        }
+
+        if (year != null) {
+            Log.d("SoloLatino", "load - Año de lanzamiento extraído: $year")
+        } else {
+            Log.d("SoloLatino", "load - Aviso: No se pudo extraer el año de lanzamiento.")
+        }
+
         val posterElement = doc.selectFirst("div.poster img")
         var poster = ""
 
@@ -275,6 +290,8 @@ class SoloLatinoProvider : MainAPI() {
         }
 
         val episodes = if (tvType == TvType.TvSeries) {
+            val dateFormatter = SimpleDateFormat("MMM. dd, yyyy", Locale.ENGLISH)
+
             doc.select("div#seasons div.se-c").flatMap { seasonElement ->
                 seasonElement.select("ul.episodios li").mapNotNull { element ->
                     val epurl = fixUrl(element.selectFirst("a")?.attr("href") ?: "")
@@ -283,6 +300,8 @@ class SoloLatinoProvider : MainAPI() {
                     val numerandoText = element.selectFirst("div.episodiotitle div.numerando")?.text()
                     val seasonNumber = numerandoText?.split("-")?.getOrNull(0)?.trim()?.toIntOrNull()
                     val episodeNumber = numerandoText?.split("-")?.getOrNull(1)?.trim()?.toIntOrNull()
+
+                    val dateText = element.selectFirst("div.episodiotitle span.date")?.text()
 
                     val imgElement = element.selectFirst("div.imagen img")
                     val epPoster = imgElement?.attr("data-src")
@@ -296,6 +315,16 @@ class SoloLatinoProvider : MainAPI() {
                             this.season = seasonNumber
                             this.episode = episodeNumber
                             this.posterUrl = epPoster
+
+                            dateText?.let { dateStr ->
+                                try {
+                                    val dateObj = dateFormatter.parse(dateStr)
+                                    addDate(dateObj)
+
+                                } catch (e: Exception) {
+                                    Log.e("SoloLatino", "Error al parsear fecha del episodio '$dateStr': ${e.message}")
+                                }
+                            }
                         }
                     } else null
                 }
@@ -338,6 +367,7 @@ class SoloLatinoProvider : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.recommendations = recommendations
+                    this.year = year
                 }
             }
 
@@ -353,9 +383,9 @@ class SoloLatinoProvider : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.recommendations = recommendations
+                    this.year = year
                 }
             }
-
             else -> null
         }
     }
