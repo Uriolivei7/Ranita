@@ -352,7 +352,7 @@
     "fileSize": 48000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/beta/master/plugins/NetflixmirrorProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NetflixmirrorProvider.cs3",
     "status": 1,
     "version": 3,
     "apiVersion": 1,
@@ -373,7 +373,7 @@
     "fileSize": 51000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/beta/master/plugins/PelisplusicuProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusicuProvider.cs3",
     "status": 0,
     "version": 2,
     "apiVersion": 1,
@@ -391,5 +391,24 @@
     "iconUrl": "https://v4.pelis-plus.icu/favicon.ico",
     "language": "mx",
     "fileSize": 26000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/IptvProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "IPTVm3u",
+    "internalName": "IptvProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para ingresar tu lista IPTV",
+    "tvTypes": [
+      "Live",
+      "Other"
+    ],
+    "iconUrl": "https://img.icons8.com/?size=96&id=ZoYpHWHHeiQa&format=png",
+    "language": "mx",
+    "fileSize": 37000
   }
 ]
