@@ -136,6 +136,24 @@
         "name": "ExampleProvider"
     },
     {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 21683,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 5,
+        "internalName": "HomecineProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/HomecineProvider.cs3",
+        "name": "HomecineProvider"
+    },
+    {
         "iconUrl": "https://www.shutterstock.com/image-vector/iptv-vector-line-icon-ip-260nw-1841427610.jpg",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -257,7 +275,7 @@
         "iconUrl": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=%size%",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 20451,
+        "fileSize": 24539,
         "status": 1,
         "language": "es",
         "authors": [
