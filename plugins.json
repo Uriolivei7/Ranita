@@ -157,7 +157,7 @@
         "iconUrl": "https://www.shutterstock.com/image-vector/iptv-vector-line-icon-ip-260nw-1841427610.jpg",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37454,
+        "fileSize": 36988,
         "status": 1,
         "authors": [
             "anhdaden"
@@ -451,6 +451,24 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VerseriesonlineProvider.cs3",
         "name": "VerseriesonlineProvider"
+    },
+    {
+        "iconUrl": "https://play-lh.googleusercontent.com/gMB8Eq9g9Uq6CXiOHcqatXpx-6HTexAzcQibTgpqAE756Fnt1Jyyp0j7S3UDKPztkA=w480-h960-rw",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 32929,
+        "status": 1,
+        "authors": [
+            "anhdaden"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "XtreamProvider",
+        "description": "C\u1ea7n nh\u1eadp link Xtream IPTV, t\u00e0i kho\u1ea3n v\u00e0 m\u1eadt kh\u1ea9u \u0111\u1ec3 xem",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/XtreamProvider.cs3",
+        "name": "XtreamProvider"
     },
     {
         "apiVersion": 1,
