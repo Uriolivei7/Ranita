@@ -16,7 +16,7 @@ import com.lagradost.cloudstream3.AcraApplication.Companion.getKey
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.*
 
-class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFragment() {
+class XtreamSettingsFragment(private val plugin: XtreamPlugin) : BottomSheetDialogFragment() {
     private fun <T : View> View.findView(name: String): T {
         val id = plugin.resources!!.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
         return this.findViewById(id)
@@ -48,8 +48,8 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
         savedInstanceState: Bundle?
     ): View? {
         val settings = getLayout("settings", inflater, container)
-        settings.findView<TextView>("add_link_text").text = "Agregar Link"
-        settings.findView<TextView>("list_link_text").text = "Lista de Links"
+        settings.findView<TextView>("add_link_text").text = "Agregar Cuenta"
+        settings.findView<TextView>("list_link_text").text = "Lista de Cuentas"
         settings.findView<TextView>("group_text").text = "Hecho por: Uriolivei"
 
         val addLinkButton = settings.findView<ImageView>("button_add_link")
@@ -61,6 +61,8 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                 val credsView = getLayout("add_link", inflater, container)
                 val nameInput = credsView.findView<EditText>("nombre")
                 val linkInput = credsView.findView<EditText>("link")
+                val usernameInput = credsView.findView<EditText>("usuario")
+                val passwordInput = credsView.findView<EditText>("clave")
 
                 val clipboardManager = context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 val clipboardText = clipboardManager?.primaryClip?.getItemAt(0)?.text
@@ -69,7 +71,7 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                 }
 
                 AlertDialog.Builder(context ?: throw Exception("Unable to build alert dialog"))
-                    .setTitle("Agregar Link")
+                    .setTitle("Add link")
                     .setView(credsView)
                     .setPositiveButton("Guardar", object : DialogInterface.OnClickListener {
                         override fun onClick(p0: DialogInterface, p1: Int) {
@@ -77,24 +79,21 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                             var link = linkInput.text.trim().toString().replace(Regex("^(HTTPS|HTTP)", RegexOption.IGNORE_CASE)) {
                                 it.value.lowercase()
                             }
-                            if (name.isNullOrEmpty() || !link.startsWith("http")) {
+                            var username = usernameInput.text.trim().toString()
+                            var password = passwordInput.text.trim().toString()
+                            if (name.isNullOrEmpty() || !link.startsWith("http") || username.isNullOrEmpty() || password.isNullOrEmpty()) {
                                 showToast("Por favor, llene todos los campos")
                             } else {
-                                try {
-                                    val existingLinks = getKey<Array<Link>>("iptv_links") ?: emptyArray()
-                                    if (existingLinks.any { it.name == name }) {
-                                        showToast("El nombre ya existe")
-                                    } else {
-                                        val updatedLinks = existingLinks.toMutableList().apply {
-                                            add(Link(name, link))
-                                        }
-                                        setKey("iptv_links", updatedLinks)
-                                        showToast("Guardado con éxito")
-                                        plugin.reload()
+                                val existingLinks = getKey<Array<Link>>("xtream_iptv_links") ?: emptyArray()
+                                if (existingLinks.any { it.name == name }) {
+                                    showToast("El Nombre ya existe")
+                                } else {
+                                    val updatedLinks = existingLinks.toMutableList().apply {
+                                        add(Link(name, link, username, password))
                                     }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                    showToast("Error al agregar Link")
+                                    setKey("xtream_iptv_links", updatedLinks)
+                                    plugin.reload()
+                                    showToast("Guardado con Éxito")
                                 }
                             }
                         }
@@ -111,7 +110,7 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
             override fun onClick(v: View?) {
                 val credsView = getLayout("manager", inflater, container)
                 val linkListLayout = credsView.findView<LinearLayout>("list_link")
-                val savedLinks = getKey<Array<Link>>("iptv_links") ?: emptyArray()
+                val savedLinks = getKey<Array<Link>>("xtream_iptv_links") ?: emptyArray()
                 if (savedLinks.isEmpty()) {
                     val noLinksTextView = TextView(context).apply {
                         text = "Aún no hay enlaces"
@@ -131,22 +130,17 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                     savedLinks.forEach { link ->
                         val linkItemView = getLayout("list_link", inflater, container)
                         linkItemView.findView<TextView>("nombre").text = link.name
-                        linkItemView.findView<TextView>("link").text = link.link
+                        linkItemView.findView<TextView>("link").text = link.mainUrl
                         val deleteButton = linkItemView.findView<ImageView>("delete_button")
                         deleteButton.setImageDrawable(getDrawable("delete_icon"))
                         deleteButton.setOnClickListener(object : View.OnClickListener {
                             override fun onClick(v: View?) {
-                                try {
-                                    val savedLinks = getKey<Array<Link>>("iptv_links") ?: emptyArray()
-                                    val updatedLinks = savedLinks.filter { it.name != link.name }.toTypedArray()
-                                    setKey("iptv_links", updatedLinks)
-                                    showToast("${link.name} eliminado con éxito")
-                                    linkListLayout.removeView(linkItemView)
-                                    plugin.reload()
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                    showToast("Error al eliminar Link")
-                                }
+                                val savedLinks = getKey<Array<Link>>("xtream_iptv_links") ?: emptyArray()
+                                val updatedLinks = savedLinks.filter { it.name != link.name }.toTypedArray()
+                                setKey("xtream_iptv_links", updatedLinks)
+                                plugin.reload()
+                                showToast("${link.name} eliminado con éxito")
+                                linkListLayout.removeView(linkItemView)
                             }
                         })
                         linkListLayout.addView(linkItemView)
@@ -154,7 +148,7 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                 }
 
                 AlertDialog.Builder(context ?: throw Exception("Unable to build alert dialog"))
-                    .setTitle("Lista de Links IPTV")
+                    .setTitle("Lista de Cuentas IPTV")
                     .setView(credsView)
                     .show()
             }
@@ -172,8 +166,7 @@ class IPTVSettingsFragment(private val plugin: IPTVPlugin) : BottomSheetDialogFr
                 startActivity(intent)
             }
         })
-         */
-
+        */
         return settings
     }
 

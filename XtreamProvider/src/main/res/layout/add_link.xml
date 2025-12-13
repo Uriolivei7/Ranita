@@ -29,7 +29,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Link"
+            android:text="Servidor"
             android:textSize="18sp" />
 
         <EditText
@@ -39,6 +39,34 @@
             android:padding="5dp"
             android:layout_marginBottom="10dp"
             android:inputType="text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Usuario"
+            android:textSize="18sp" />
+
+        <EditText
+            android:id="@+id/usuario"
+            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:padding="5dp"
+            android:layout_marginBottom="10dp"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Contraseña"
+            android:textSize="18sp" />
+
+        <EditText
+            android:id="@+id/clave"
+            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:padding="5dp"
+            android:layout_marginBottom="10dp"
+            android:inputType="textPassword" />
 
     </LinearLayout>
 

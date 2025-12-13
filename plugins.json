@@ -376,14 +376,14 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/IptvProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "IPTVm3u",
     "internalName": "IptvProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ingresar tu lista IPTV",
+    "description": "Plugin para listas IPTV",
     "tvTypes": [
       "Live",
       "Other"

@@ -24,9 +24,7 @@ class IPTVProvider(mainUrl: String, name: String) : MainAPI() {
     val headers = mapOf("User-Agent" to "Player (Linux; Android 14)")
 
     companion object {
-        private const val LOG_TAG = "IPTV"
-
-        val DEFAULT_POSTER_URL = "https://i.pinimg.com/1200x/1b/de/c6/1bdec6ecad93b562d13d6d9d10e7466a.jpg"
+        private const val LOG_TAG = "IPTV_POSTER"
     }
 
     private fun getSafePosterUrl(url: String?): String {
@@ -35,8 +33,8 @@ class IPTVProvider(mainUrl: String, name: String) : MainAPI() {
                 !url.startsWith("http", ignoreCase = true)
 
         val finalUrl = if (isInvalid) {
-            Log.d(LOG_TAG, "Original URL '$url' es INVÁLIDA o no HTTP. Usando DEFAULT.")
-            DEFAULT_POSTER_URL
+            Log.d(LOG_TAG, "Original URL '$url' es INVÁLIDA o no HTTP. Usando URL VACÍA.")
+            ""
         } else {
             Log.d(LOG_TAG, "Original URL '$url' es VÁLIDA. Usando URL original.")
             url
