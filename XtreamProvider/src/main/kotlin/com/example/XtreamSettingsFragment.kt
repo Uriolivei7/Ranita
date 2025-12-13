@@ -71,7 +71,7 @@ class XtreamSettingsFragment(private val plugin: XtreamPlugin) : BottomSheetDial
                 }
 
                 AlertDialog.Builder(context ?: throw Exception("Unable to build alert dialog"))
-                    .setTitle("Add link")
+                    .setTitle("Agregar Cuenta")
                     .setView(credsView)
                     .setPositiveButton("Guardar", object : DialogInterface.OnClickListener {
                         override fun onClick(p0: DialogInterface, p1: Int) {
