@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
-import kotlin.text.Charsets.UTF_8
 import kotlinx.coroutines.delay
 import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -281,15 +280,16 @@ class TvporinternetProvider : MainAPI() {
                         )
 
                         callback(
-                            ExtractorLink(
+                            newExtractorLink(
                                 source = this.name,
                                 name = "${this.name} - $qualityName (Opción ${index + 1})",
                                 url = m3u8UrlFinal,
-                                referer = "https://live.saohgdasregions.fun/",
-                                quality = qualityValue,
-                                type = ExtractorLinkType.M3U8,
-                                headers = streamingHeaders
-                            )
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://live.saohgdasregions.fun/"
+                                this.quality = qualityValue
+                                this.headers = streamingHeaders
+                            }
                         )
                         success = true
                     }
