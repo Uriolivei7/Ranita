@@ -11,7 +11,7 @@ import kotlinx.coroutines.delay
 import java.net.URL
 
 class PlushdProvider : MainAPI() {
-    override var mainUrl = "https://ww3.pelisplus.to"
+    override var mainUrl = "https://ww3.tioplus.net"
     override var name = "PlusHD"
     override var lang = "mx"
     override val hasMainPage = true
@@ -19,8 +19,9 @@ class PlushdProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
         TvType.TvSeries,
+        TvType.Anime,
         TvType.Movie,
-        TvType.Cartoon,
+        TvType.AsianDrama,
     )
 
     override val mainPage = mainPageOf(
@@ -202,6 +203,11 @@ class PlushdProvider : MainAPI() {
 
         val doc = app.get(data, headers = headers).document
 
+        val loggingSubtitleCallback: (SubtitleFile) -> Unit = { file ->
+            Log.d("PlushdProvider_Subs", "Subtítulo encontrado. URL: ${file.url}")
+            subtitleCallback.invoke(file)
+        }
+
         doc.select("div ul.subselect li").toList().forEach { serverLi ->
             try {
                 val serverData = serverLi.attr("data-server")
@@ -223,7 +229,20 @@ class PlushdProvider : MainAPI() {
                 if (!link.isNullOrBlank()) {
                     val fixedLink = fixPelisplusHostsLinks(link)
 
-                    loadExtractor(fixedLink, playerUrl, subtitleCallback, callback)
+                    val extractorReferer = try {
+                        val urlObject = URL(fixedLink)
+                        urlObject.protocol + "://" + urlObject.host + "/"
+                    } catch (e: Exception) {
+                        Log.e("PlushdProvider", "Error al parsear URL para Referer: ${e.message}. Usando playerUrl como fallback.")
+                        playerUrl
+                    }
+
+                    loadExtractor(
+                        url = fixedLink,
+                        referer = extractorReferer,
+                        subtitleCallback = loggingSubtitleCallback,
+                        callback = callback
+                    )
                     linksFound = true
                 }
             } catch (e: Exception) {
