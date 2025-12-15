@@ -291,28 +291,9 @@
         "name": "PelispediaProvider"
     },
     {
-        "iconUrl": "https://pelis-plus.icu/assets/img/ic/favicon-96x96.png",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 26505,
-        "status": 1,
-        "language": "mx",
-        "authors": [
-            "redblacker8"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries"
-        ],
-        "version": 5,
-        "internalName": "PelisplusicuProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelisplusicuProvider.cs3",
-        "name": "PelisplusicuProvider"
-    },
-    {
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 19144,
+        "fileSize": 19646,
         "status": 1,
         "language": "es",
         "authors": [
@@ -396,7 +377,7 @@
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21730,
+        "fileSize": 22651,
         "status": 1,
         "language": "mx",
         "authors": [
