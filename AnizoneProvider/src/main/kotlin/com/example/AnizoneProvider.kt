@@ -29,6 +29,7 @@ import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.util.Log
+import com.lagradost.cloudstream3.newSubtitleFile
 
 
 class AnizoneProvider : MainAPI() {
@@ -174,7 +175,7 @@ class AnizoneProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val r = Jsoup.connect(url)
             .method(Connection.Method.GET).execute()
-        var doc = Jsoup.parse(r.body())
+        val doc = Jsoup.parse(r.body())
         val cookie = r.cookies()
         val wireData = mutableMapOf(
             "wireSnapshot" to getSnapshot(doc=r.parse()),
@@ -263,7 +264,7 @@ class AnizoneProvider : MainAPI() {
 
         mediaPlayer?.select("track")?.forEach {
             subtitleCallback.invoke(
-                SubtitleFile (
+                newSubtitleFile (
                     it.attr("label"),
                     it.attr("src")
                 )

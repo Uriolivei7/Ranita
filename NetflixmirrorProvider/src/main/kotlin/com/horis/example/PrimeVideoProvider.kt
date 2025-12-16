@@ -306,7 +306,7 @@ class PrimeVideoProvider : MainAPI() {
 
 
                 subtitleCallback.invoke(
-                    SubtitleFile(
+                    newSubtitleFile(
                         trackLabel,
                         manualSubtitleUrl,
                     )

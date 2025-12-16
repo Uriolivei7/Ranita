@@ -74,7 +74,7 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=200&id=fztMk7eF9g8D&format=png",
     "language": "en",
-    "fileSize": 18000
+    "fileSize": 15000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
@@ -170,25 +170,6 @@
     "iconUrl": "https://tioanime.com/assets/img/icon-32x32.png",
     "language": "mx",
     "fileSize": 21000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeioProvider.cs3",
-    "status": 1,
-    "version": 5,
-    "apiVersion": 1,
-    "name": "AnimeIO",
-    "internalName": "AnimeioProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Animes Subtitulados",
-    "tvTypes": [
-      "Anime",
-      "OVA"
-    ],
-    "iconUrl": "https://animeio.com/favicon.ico",
-    "language": "mx",
-    "fileSize": 24000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
@@ -300,24 +281,6 @@
     "fileSize": 22000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
-    "status": 1,
-    "version": 3,
-    "apiVersion": 1,
-    "name": "DoramasYT",
-    "internalName": "DoramasytProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Doramas",
-    "tvTypes": [
-      "AsianDrama"
-    ],
-    "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
-    "language": "mx",
-    "fileSize": 26000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TwitchProvider.cs3",
     "status": 1,
     "version": 3,
@@ -372,7 +335,7 @@
     ],
     "iconUrl": "https://net51.cc/img/nf2/icon_x192.png",
     "language": "en",
-    "fileSize": 51000
+    "fileSize": 53000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/IptvProvider.cs3",
