@@ -376,5 +376,25 @@
     "iconUrl": "https://img.icons8.com/?size=96&id=oQQIRt5dU74V&format=png",
     "language": "mx",
     "fileSize": 33000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MonoschinosProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "MonosChinos3",
+    "internalName": "MonoschinosProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Animes Subtitulados y con Doblajes",
+    "tvTypes": [
+      "Anime",
+      "AnimeMovie",
+      "OVA"
+    ],
+    "iconUrl": "https://ww3.monoschinos3.com/img/favicon.ico",
+    "language": "mx",
+    "fileSize": 16000
   }
 ]
