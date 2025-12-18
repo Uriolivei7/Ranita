@@ -165,10 +165,9 @@ class MonoschinosProvider : MainAPI() {
 
             document.select("div#home-tab-pane li article a").map {
                 val epHref = fixUrl(it.attr("href") ?: return@map)
-
                 val titleElement = it.selectFirst("h2")?.text() ?: ""
 
-                val epNumber = Regex("Capitulo\\s*(\\d+)").find(titleElement)?.groupValues?.get(1)?.toIntOrNull()
+                val epNumber = Regex("""(\d+)""").find(titleElement)?.groupValues?.get(1)?.toIntOrNull()
                     ?: epHref.substringAfterLast("-").toIntOrNull()
 
                 episodes.add(
@@ -180,10 +179,10 @@ class MonoschinosProvider : MainAPI() {
                 )
             }
 
-            val reversedEpisodes = episodes.reversed()
+            val sortedEpisodes = episodes.sortedBy { it.episode }
 
             return newAnimeLoadResponse(title, url, type) {
-                addEpisodes(DubStatus.Subbed, reversedEpisodes)
+                addEpisodes(DubStatus.Subbed, sortedEpisodes)
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year

@@ -379,7 +379,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MonoschinosProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "MonosChinos3",
     "internalName": "MonoschinosProvider",
@@ -394,6 +394,6 @@
     ],
     "iconUrl": "https://ww3.monoschinos3.com/img/favicon.ico",
     "language": "mx",
-    "fileSize": 16000
+    "fileSize": 17000
   }
 ]
