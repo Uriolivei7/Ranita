@@ -12,8 +12,10 @@
     "description": "Plugin para Latino, Español y Subtitulado",
     "tvTypes": [
       "TvSeries",
+      "Anime",
       "Movie",
-      "Cartoon"
+      "Cartoon",
+      "AsianDrama"
     ],
     "iconUrl": "https://sololatino.net/wp-content/uploads/2022/11/logo-final.png",
     "language": "mx",
@@ -33,6 +35,7 @@
     "tvTypes": [
       "TvSeries",
       "Anime",
+      "Cartoon",
       "Movie",
       "AsianDrama"
     ],

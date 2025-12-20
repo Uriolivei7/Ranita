@@ -20,6 +20,7 @@ class PlushdProvider : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.Anime,
+        TvType.Cartoon,
         TvType.Movie,
         TvType.AsianDrama,
     )
