@@ -64,6 +64,26 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 22101,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 1,
+        "internalName": "AnimeonsenProvider",
+        "description": "Animes Subtitulos en varios idiomas",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeonsenProvider.cs3",
+        "name": "AnimeonsenProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 14452,
         "status": 1,
         "language": "en",
@@ -291,6 +311,28 @@
         "description": "Netflix y PrimeVideo Contenido en M\u00faltiples Lenguajes",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/NetflixmirrorProvider.cs3",
         "name": "NetflixmirrorProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=onetouchtv.xyz/&sz=%size%",
+        "jarFileSize": 166477,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 35639,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "OnetouchtvProvider",
+        "jarUrl": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OnetouchtvProvider.jar",
+        "description": "Asian Dramas",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OnetouchtvProvider.cs3",
+        "name": "OnetouchtvProvider"
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=%size%",
