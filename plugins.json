@@ -398,5 +398,43 @@
     "iconUrl": "https://ww3.monoschinos3.com/img/favicon.ico",
     "language": "mx",
     "fileSize": 17000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeonsenProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "AnimeOnsen",
+    "internalName": "AnimeonsenProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Animes Subtitulados en varios idiomas",
+    "tvTypes": [
+      "Anime",
+      "OVA"
+    ],
+    "iconUrl": "https://www.animeonsen.xyz/favicon.ico",
+    "language": "en",
+    "fileSize": 22000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/beta/master/plugins/OnetouchtvProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "OneTouchTV",
+    "internalName": "OnetouchtvProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para K-Dramas y C-Dramas con subtítulos en español de España",
+    "tvTypes": [
+      "Anime",
+      "Anime"
+    ],
+    "iconUrl": "https://img.icons8.com/?size=96&id=M9xNyIu2wL3e&format=png",
+    "language": "en",
+    "fileSize": 35000
   }
 ]
