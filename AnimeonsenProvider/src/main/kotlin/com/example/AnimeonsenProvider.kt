@@ -1,11 +1,9 @@
 package com.example
 
 import android.util.Log
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.serialization.*
-import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
@@ -21,6 +19,26 @@ class AnimeonsenProvider : MainAPI() {
     private var accessToken: String? = null
     private val userAgent = "Aniyomi/App (mobile)"
     private val TAG = "AnimeOnsen"
+
+    private val homeGenres = listOf(
+        "Acción" to "action",
+        "Reparto Adulto" to "adult-cast",
+        "Aventura" to "adventure",
+        "Comedia" to "comedy",
+        "Drama" to "drama",
+        "Fantasía" to "fantasy",
+        "Gore" to "gore",
+        "Isekai" to "isekai",
+        "Misterio" to "mystery",
+        "Escolar" to "school",
+        "Ciencia Ficción" to "sci-fi",
+        "Shounen" to "shounen",
+        "Recuentos de la vida" to "slice-of-life",
+        "Super Poderes" to "super-power",
+        "Supernatural" to "supernatural",
+        "Romance" to "romance",
+        "Suspenso" to "suspense",
+    )
 
     private suspend fun getAuthToken(): String? {
         if (accessToken != null) return accessToken
@@ -42,17 +60,46 @@ class AnimeonsenProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val token = getAuthToken()
-        val res = app.get(
-            "$apiUrl/content/index?start=${(page - 1) * 20}&limit=20",
-            headers = mapOf("Authorization" to "Bearer $token")
-        ).parsed<AnimeListResponse>()
+        val pages = mutableListOf<HomePageList>()
 
-        val animeList = res.content.map {
-            newAnimeSearchResponse(it.content_title ?: it.content_title_en ?: "Anime", it.content_id) {
-                this.posterUrl = "$apiUrl/image/210x300/${it.content_id}"
+        try {
+            val response = app.get(
+                "$apiUrl/content/index?start=${(page - 1) * 20}&limit=20",
+                headers = mapOf("Authorization" to "Bearer $token")
+            ).text
+
+            val latestRes = AppUtils.parseJson<AnimeListResponse>(response)
+            val items = latestRes.content ?: latestRes.result
+
+            if (!items.isNullOrEmpty()) {
+                pages.add(HomePageList("Todos los Animes", items.map { it.toSearchResponse() }))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error en Latest: ${e.message}")
+        }
+
+        if (page == 1) {
+            homeGenres.forEach { (name, slug) ->
+                try {
+                    val genreUrl = "$apiUrl/content/index/genre/$slug?start=0&limit=20"
+                    val genreResponse = app.get(
+                        genreUrl,
+                        headers = mapOf("Authorization" to "Bearer $token")
+                    ).text
+
+                    val genreRes = AppUtils.parseJson<AnimeListResponse>(genreResponse)
+                    val items = genreRes.result ?: genreRes.content
+
+                    if (!items.isNullOrEmpty()) {
+                        pages.add(HomePageList(name, items.map { it.toSearchResponse() }))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error cargando género $name: ${e.message}")
+                }
             }
         }
-        return newHomePageResponse(listOf(HomePageList("Latest Anime", animeList)), true)
+
+        return newHomePageResponse(pages, pages.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -62,19 +109,20 @@ class AnimeonsenProvider : MainAPI() {
             val response = app.get("$apiUrl/search/$encodedQuery", headers = mapOf("Authorization" to "Bearer $token"))
             if (response.code == 404) return emptyList()
             val res = AppUtils.parseJson<SearchResponseDto>(response.text)
-            res.result?.map {
-                newAnimeSearchResponse(it.content_title ?: it.content_title_en ?: "Unknown", it.content_id) {
-                    this.posterUrl = "$apiUrl/image/210x300/${it.content_id}"
-                }
-            } ?: emptyList()
+            res.result?.map { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
+    }
+
+    private fun AnimeListItem.toSearchResponse(): SearchResponse {
+        val title = this.content_title_en ?: this.content_title ?: "Unknown"
+        return newAnimeSearchResponse(title, this.content_id) {
+            this.posterUrl = "https://api.animeonsen.xyz/v4/image/210x300/${this@toSearchResponse.content_id}"
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val token = getAuthToken()
         val contentId = if (url.startsWith("http")) url.split("/").last() else url
-
-        Log.d(TAG, "Cargando metadatos para: $contentId")
 
         val details = app.get(
             "$apiUrl/content/$contentId/extensive",
@@ -95,13 +143,8 @@ class AnimeonsenProvider : MainAPI() {
         val recommendedAnimes = try {
             val recJson = app.get("$apiUrl/content/$contentId/related", headers = mapOf("Authorization" to "Bearer $token")).text
             val recData = AppUtils.parseJson<List<AnimeListItem>>(recJson)
-            recData.map {
-                newAnimeSearchResponse(it.content_title ?: it.content_title_en ?: "", it.content_id) {
-                    this.posterUrl = "$apiUrl/image/210x300/${it.content_id}"
-                }
-            }
+            recData.map { it.toSearchResponse() }
         } catch (e: Exception) {
-            Log.w(TAG, "No se encontraron recomendaciones para este título")
             emptyList<SearchResponse>()
         }
 
@@ -143,21 +186,24 @@ class AnimeonsenProvider : MainAPI() {
                 true
             } else false
         } catch (e: Exception) {
-            Log.e(TAG, "Error cargando links: ${e.message}")
             false
         }
     }
-
-    @Serializable data class AnimeListResponse(val content: List<AnimeListItem>)
     @Serializable data class SearchResponseDto(val result: List<AnimeListItem>? = null)
-    @Serializable data class AnimeListItem(
+
+    @Serializable
+    data class AnimeListResponse(
+        val content: List<AnimeListItem>? = null,
+        val result: List<AnimeListItem>? = null
+    )
+
+    @Serializable
+    data class AnimeListItem(
         val content_id: String,
         val content_title: String? = null,
         val content_title_en: String? = null
     )
     @Serializable data class EpisodeDto(
-        @JsonProperty("contentTitle_episode_en")
-        @SerialName("contentTitle_episode_en")
         val name: String? = null
     )
     @Serializable data class VideoDataDto(val metadata: MetaDataDto, val uri: StreamDataDto)
