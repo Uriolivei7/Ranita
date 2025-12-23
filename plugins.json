@@ -457,5 +457,23 @@
     "iconUrl": "https://gnula.life/favicon.ico",
     "language": "mx",
     "fileSize": 28000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasytProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 1,
+    "name": "DoramasYT",
+    "internalName": "DoramasytProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Doramas",
+    "tvTypes": [
+      "AsianDrama"
+    ],
+    "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
+    "language": "mx",
+    "fileSize": 20000
   }
 ]

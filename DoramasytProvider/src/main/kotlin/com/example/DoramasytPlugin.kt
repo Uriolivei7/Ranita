@@ -3,7 +3,6 @@ package com.example
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
-import com.lagradost.cloudstream3.animeproviders.DoramasytProvider
 
 @CloudstreamPlugin
 class DoramasytPlugin: Plugin() {
