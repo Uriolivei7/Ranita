@@ -15,10 +15,11 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.amap
 import android.util.Log
 import com.lagradost.cloudstream3.MovieSearchResponse
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import org.schabi.newpipe.extractor.stream.StreamInfo
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.StreamInfo
 
 class YoutubeProvider(
     language: String = "en",
@@ -36,6 +37,37 @@ class YoutubeProvider(
     companion object {
         const val MAIN_URL = "https://www.youtube.com"
         const val TAG = "Youtube"
+        const val PC_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    }
+
+    private var youtubeCookie: String?
+        get() = sharedPrefs?.getString("youtube_cookie", null)
+        set(value) {
+            sharedPrefs?.edit()?.putString("youtube_cookie", value)?.apply()
+        }
+
+    init {
+        try {
+            val downloader = NewPipe.getDownloader()
+
+            val fields = downloader.javaClass.declaredFields
+            val uaField = fields.find { it.name == "userAgent" }
+            uaField?.isAccessible = true
+            uaField?.set(downloader, PC_USER_AGENT)
+
+            youtubeCookie?.let { cookie ->
+                val cookieField = fields.find { it.name == "cookie" || it.name == "cookies" }
+                if (cookieField != null) {
+                    cookieField.isAccessible = true
+                    cookieField.set(downloader, cookie)
+                    Log.d(TAG, "Cookie aplicada exitosamente.")
+                } else {
+                    Log.w(TAG, "No se encontró campo de cookie, usando modo alternativo.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error en inicialización: ${e.message}")
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -43,87 +75,60 @@ class YoutubeProvider(
 
         val isTrendingEnabled = sharedPrefs?.getBoolean("trending", true) ?: true
         val sections = mutableListOf<HomePageList>()
-        if (isTrendingEnabled) {
-            Log.d(TAG, "Obteniendo tendencias...")
-            val videos = ytParser.getTrendingVideoUrls(page)
-            if (videos == null) {
-            Log.d(TAG, "Error: No se obtuvieron videos de tendencias en la página $page.")
-        } else {
-            Log.d(TAG, "Tendencias obtenidas. Total: ${videos.list.size} videos.")
 
-        }
-            videos?.let { sections.add(it) }
+        if (isTrendingEnabled) {
+            try {
+                val videos = ytParser.getTrendingVideoUrls(page)
+                videos?.let { sections.add(it) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error en tendencias: ${e.message}")
+            }
         }
 
         val playlistsData = sharedPrefs?.getStringSet("playlists", emptySet()) ?: emptySet()
         if (playlistsData.isNotEmpty()) {
-            Log.d(TAG, "Cargando playlists y canales personalizados. Total de entradas: ${playlistsData.size}")
             val triples = playlistsData.map { parseJson<Triple<String, String, Long>>(it) }
             val list = triples.amap { data ->
-            val playlistUrl = data.first
-            Log.d(TAG, "Procesando URL: $playlistUrl")
-            val urlPath = playlistUrl.substringAfter("youtu").substringAfter("/")
-            val isPlaylist = urlPath.startsWith("playlist?list=")
-            val isChannel = urlPath.startsWith("@") || urlPath.startsWith("channel")
-            val customSections = if (isPlaylist && !isChannel) {
-            Log.d(TAG, "Llamando a playlistToSearchResponseList para $playlistUrl")
-            ytParser.playlistToSearchResponseList(playlistUrl, page)
+                val playlistUrl = data.first
+                try {
+                    val urlPath = playlistUrl.substringAfter("youtu").substringAfter("/")
+                    val isPlaylist = urlPath.startsWith("playlist?list=")
+                    val isChannel = urlPath.startsWith("@") || urlPath.startsWith("channel")
 
-        } else if (!isPlaylist && isChannel) {
-            Log.d(TAG, "Llamando a channelToSearchResponseList para $playlistUrl")
-            ytParser.channelToSearchResponseList(playlistUrl, page)
+                    val customSections = if (isPlaylist && !isChannel) {
+                        ytParser.playlistToSearchResponseList(playlistUrl, page)
+                    } else if (!isPlaylist && isChannel) {
+                        ytParser.channelToSearchResponseList(playlistUrl, page)
+                    } else null
 
-        } else {
-            Log.d(TAG, "URL no reconocida (ni playlist ni canal): $playlistUrl")
-            null
-
-        }
-            customSections to data.third
-
-        }
+                    customSections to data.third
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error cargando sección personalizada: ${e.message}")
+                    null to data.third
+                }
+            }
             list.sortedBy { it.second }.forEach {
-            val homepageSection = it.first
-            if (homepageSection != null) {
-            sections.add(homepageSection)
-
+                it.first?.let { section -> sections.add(section) }
+            }
         }
 
-        }
-
-
-        }
         if (sections.isEmpty()) {
-            Log.d(TAG, "No hay secciones activas. Se muestra mensaje de error en la UI.")
-            sections.add(
-            HomePageList(
-            "All sections are disabled. Go to the settings to enable them",
-            emptyList()
-            )
-            )
-
+            sections.add(HomePageList("No content available. Check settings.", emptyList()))
         }
-        Log.d(TAG, "Finalizando getMainPage. Secciones totales: ${sections.size}")
-        return newHomePageResponse(
-        sections, true
-        )
 
+        return newHomePageResponse(sections, true)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        Log.d(TAG, "Iniciando búsqueda para: $query")
-
-        val allResults = ytParser.parseSearch(query)
-
-        Log.d(TAG, "Búsqueda terminada. Resultados encontrados: ${allResults?.size ?: 0}")
-
-        return allResults?.filterIsInstance<MovieSearchResponse>() ?: emptyList()
+        return try {
+            ytParser.parseSearch(query).filterIsInstance<MovieSearchResponse>()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        Log.d(TAG, "Iniciando carga de LoadResponse para URL: $url")
-        val video = ytParser.videoToLoadResponse(url)
-        Log.d(TAG, "Carga de LoadResponse completada.")
-        return video
+        return ytParser.videoToLoadResponse(url)
     }
 
     override suspend fun loadLinks(
@@ -132,20 +137,17 @@ class YoutubeProvider(
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
+        return try {
+            val linkHandler = org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeStreamLinkHandlerFactory.getInstance().fromUrl(data)
+            val extractor = ServiceList.YouTube.getStreamExtractor(linkHandler)
 
-        val info = StreamInfo.getInfo(data)
-        val refererUrl = info.url
+            extractor.fetchPage()
 
-        info.videoStreams
-            .sortedByDescending { it.resolution?.removeSuffix("p")?.toIntOrNull() ?: 0 }
-            .forEach { stream ->
+            val refererUrl = extractor.url
 
+            extractor.videoStreams?.filterNotNull()?.forEach { stream ->
                 val streamUrl = stream.url ?: return@forEach
                 val resolutionName = stream.resolution ?: return@forEach
-
-                if (resolutionName.removeSuffix("p").toIntOrNull() == null) {
-                    return@forEach
-                }
 
                 callback.invoke(
                     newExtractorLink(
@@ -158,19 +160,16 @@ class YoutubeProvider(
                 )
             }
 
-        info.subtitles.forEach { sub ->
-            val subUrl = sub.url ?: return@forEach
-            val subName = sub.languageTag ?: return@forEach
-
-            subtitleCallback.invoke(
-                SubtitleFile(
-                    subName,
-                    subUrl
+            extractor.subtitlesDefault?.filterNotNull()?.forEach { sub ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(sub.languageTag ?: "Unknown", sub.url ?: return@forEach)
                 )
-            )
+            }
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Fallo en loadLinks (Samsung A06): ${e.message}")
+            false
         }
-
-        return true
     }
-
 }

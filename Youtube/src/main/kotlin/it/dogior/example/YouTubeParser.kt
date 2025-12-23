@@ -213,27 +213,29 @@ class YouTubeParser(override var name: String) : MainAPI() {
         val CURRENT_TAG = "YT_REC"
         Log.e(CURRENT_TAG, "--- INICIO Carga LoadResponse para URL: $videoUrl ---")
 
-        val videoInfo = StreamInfo.getInfo(videoUrl)
+        val videoInfo = try {
+            StreamInfo.getInfo(videoUrl)
+        } catch (e: Exception) {
+            Log.e(CURRENT_TAG, "ERROR CRÍTICO en StreamInfo.getInfo: ${e.message}")
+            throw e
+        }
+
         val views = "Views: ${videoInfo.viewCount}"
         val likes = "Likes: ${videoInfo.likeCount}"
         val length = videoInfo.duration / 60
 
-        val rawRecommendations = videoInfo.relatedStreams
-        Log.e(CURRENT_TAG, "RECOMENDACIONES RAW encontradas por NewPipe: ${rawRecommendations.size} elementos.")
+        val rawRecommendations = try {
+            videoInfo.relatedStreams
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        Log.e(CURRENT_TAG, "RECOMENDACIONES RAW encontradas: ${rawRecommendations.size}")
 
         val recommendations = rawRecommendations.mapNotNull { item ->
+            val video = item as? StreamInfoItem ?: return@mapNotNull null
 
-            val video = item as? StreamInfoItem
-
-            if (video == null) {
-                Log.e(CURRENT_TAG, "SALTADO: El ítem no es un video. Tipo: ${item::class.simpleName}")
-                return@mapNotNull null
-            }
-
-            if (video.name.isNullOrBlank() || video.url.isNullOrBlank()) {
-                Log.e(CURRENT_TAG, "ERROR Recomendación: Nombre o URL del video en blanco para URL: ${video.url}")
-                return@mapNotNull null
-            }
+            if (video.name.isNullOrBlank() || video.url.isNullOrBlank()) return@mapNotNull null
 
             this.newMovieSearchResponse(
                 name = video.name,
@@ -241,19 +243,7 @@ class YouTubeParser(override var name: String) : MainAPI() {
                 type = TvType.Others
             ).apply {
                 this.posterUrl = video.thumbnails.lastOrNull()?.url
-
-                if (this.posterUrl.isNullOrBlank()) {
-                    Log.e(CURRENT_TAG, "ADVERTENCIA: Póster vacío para la recomendación: ${video.name}")
-                } else {
-                    Log.e(CURRENT_TAG, "RECOMENDACIÓN OK: '${video.name}' | Póster asignado.")
-                }
             } as SearchResponse
-        }
-
-        if (recommendations.isEmpty()) {
-            Log.e(CURRENT_TAG, "RESULTADO: La lista final de recomendaciones está VACÍA.")
-        } else {
-            Log.e(CURRENT_TAG, "RESULTADO: Recomendaciones finales cargadas. Total: ${recommendations.size}")
         }
 
         return this.newMovieLoadResponse(
@@ -262,9 +252,9 @@ class YouTubeParser(override var name: String) : MainAPI() {
             dataUrl = videoUrl,
             type = TvType.Others
         ).apply {
-            this.posterUrl = videoInfo.thumbnails.last().url
-            this.plot = videoInfo.description.content
-            this.tags = listOf(videoInfo.getUploaderName(), views, likes)
+            this.posterUrl = videoInfo.thumbnails.lastOrNull()?.url
+            this.plot = videoInfo.description?.content ?: ""
+            this.tags = listOf(videoInfo.getUploaderName() ?: "Unknown", views, likes)
             this.duration = length.toInt()
             this.recommendations = recommendations
         }

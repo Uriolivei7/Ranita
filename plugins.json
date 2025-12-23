@@ -304,7 +304,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Youtube.cs3",
     "status": 1,
-    "version": 4,
+    "version": 5,
     "apiVersion": 1,
     "name": "YouTube",
     "internalName": "Youtube",
@@ -317,7 +317,7 @@
     ],
     "iconUrl": "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144_v2.png",
     "language": "mx",
-    "fileSize": 48000
+    "fileSize": 50000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NetflixmirrorProvider.cs3",
