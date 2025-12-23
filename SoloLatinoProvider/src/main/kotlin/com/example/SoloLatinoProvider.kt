@@ -113,17 +113,9 @@ class SoloLatinoProvider : MainAPI() {
         Log.d("SoloLatino", "DEBUG: Iniciando getMainPage, página: $page, solicitud: ${request.name}")
         val items = ArrayList<HomePageList>()
         val urls = listOf(
-            Pair("Series Recientes", "$mainUrl/series"),
-            Pair("Series Amazon Prime", "$mainUrl/network/amazon"),
-            Pair("Series AppleTV", "$mainUrl/network/apple-tv"),
-            Pair("Series Disney+", "$mainUrl/network/disney"),
-            Pair("Series HBO", "$mainUrl/network/hbo"),
-            Pair("Series HBO MAX", "$mainUrl/network/hbo-max"),
-            Pair("Series HULU", "$mainUrl/network/hulu"),
-            Pair("Series NETFLIX", "$mainUrl/network/netflix"),
+            Pair("Series", "$mainUrl/series"),
             Pair("Cartoons", "$mainUrl/genre_series/toons"),
             Pair("Animes", "$mainUrl/animes"),
-            Pair("Películas Animes", "$mainUrl/genero/anime"),
             Pair("Doramas", "$mainUrl/genre_series/kdramas"),
             Pair("Películas", "$mainUrl/peliculas"),
         )

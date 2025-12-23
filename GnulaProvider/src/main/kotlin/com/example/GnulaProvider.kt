@@ -102,12 +102,8 @@ class GnulaProvider : MainAPI() {
         val catalogs = listOf(
             Pair("$mainUrl/archives/series/page/$page", "Series"),
             Pair("$mainUrl/archives/series/releases/page/$page", "Series: Estrenos"),
-            Pair("$mainUrl/archives/series/top/week/page/$page", "Series: Top Semana"),
-            Pair("$mainUrl/archives/series/top/day/page/$page", "Series: Top Hoy"),
             Pair("$mainUrl/archives/movies/page/$page", "Películas"),
-            Pair("$mainUrl/archives/movies/releases/page/$page", "Películas: Estrenos"),
-            Pair("$mainUrl/archives/movies/top/week/page/$page", "Películas: Top Semana"),
-            Pair("$mainUrl/archives/movies/top/day/page/$page", "Películas: Top Hoy"),
+            Pair("$mainUrl/archives/movies/releases/page/$page", "Películas: Estrenos")
         )
 
         for ((url, title) in catalogs) {
