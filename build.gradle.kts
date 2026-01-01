@@ -14,7 +14,9 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.13.2")
         // Cloudstream gradle plugin which makes everything work and builds plugins
-        classpath("com.github.recloudstream:gradle:-SNAPSHOT")
+        classpath("com.github.recloudstream:gradle:-SNAPSHOT") {
+            exclude(group = "com.github.vidstige", module = "jadb")
+        }
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
 }

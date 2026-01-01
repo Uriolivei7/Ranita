@@ -475,5 +475,25 @@
     "iconUrl": "https://doramasyt.com/public/favicon.ico?v=4.95",
     "language": "mx",
     "fileSize": 20000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelispediaProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "Pelispedia",
+    "internalName": "PelispediaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Latino, Español y Subtitulado",
+    "tvTypes": [
+      "TvSeries",
+      "Anime",
+      "Movie"
+    ],
+    "iconUrl": "https://pelispedia.is/wp-content/uploads/2022/01/cropped-pelispediafavicon-e1642201982676-32x32.png",
+    "language": "mx",
+    "fileSize": 24000
   }
 ]
