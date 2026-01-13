@@ -24,14 +24,9 @@ class AnimeonsenProvider : MainAPI() {
         "Acción" to "action",
         "Aventura" to "adventure",
         "Comedia" to "comedy",
-        "Drama" to "drama",
-        "Fantasía" to "fantasy",
-        "Isekai" to "isekai",
-        "Escolar" to "school",
         "Shounen" to "shounen",
         "Recuentos de la vida" to "slice-of-life",
         "Super Poderes" to "super-power",
-        "Romance" to "romance",
     )
 
     private suspend fun getAuthToken(): String? {
@@ -127,10 +122,14 @@ class AnimeonsenProvider : MainAPI() {
 
         val epResponse = app.get("$apiUrl/content/$contentId/episodes", headers = mapOf("Authorization" to "Bearer $token"))
         val epRes = AppUtils.parseJson<Map<String, EpisodeDto>>(epResponse.text)
-        val episodesList = epRes.map { (epNum, item) ->
-            newEpisode("$contentId/video/$epNum") {
-                this.name = item.name ?: "Episode $epNum"
-                this.episode = epNum.toIntOrNull()
+
+        val episodesList = epRes.map { (epKey, item) ->
+            val episodeName = item.contentTitle_episode_en ?: item.contentTitle_episode_jp
+            val epNum = epKey.toIntOrNull()
+
+            newEpisode("$contentId/video/$epKey") {
+                this.name = episodeName ?: "Episode $epKey"
+                this.episode = epNum
             }
         }.sortedBy { it.episode }
 
@@ -161,19 +160,36 @@ class AnimeonsenProvider : MainAPI() {
     ): Boolean {
         val cleanPath = if (data.contains("animeonsen.xyz/")) data.substringAfter("animeonsen.xyz/") else data
         val token = getAuthToken() ?: return false
+
         return try {
             val response = app.get(
                 "$apiUrl/content/$cleanPath",
-                headers = mapOf("Authorization" to "Bearer $token", "Referer" to mainUrl, "User-Agent" to userAgent)
+                headers = mapOf(
+                    "Authorization" to "Bearer $token",
+                    "Referer" to mainUrl,
+                    "User-Agent" to userAgent
+                )
             )
             val res = AppUtils.parseJson<VideoDataDto>(response.text)
             val videoUrl = res.uri.stream
+
             if (videoUrl.isNotEmpty()) {
                 res.uri.subtitles.forEach { (langPrefix, subUrl) ->
-                    val langName = res.metadata.subtitles[langPrefix] ?: langPrefix
-                    subtitleCallback(newSubtitleFile(langName, subUrl))
+                    val langName = res.metadata.subtitles?.get(langPrefix) ?: langPrefix
+
+                    val finalSubUrl = "$subUrl?format=ass&token=$token#.ass"
+
+                    subtitleCallback(newSubtitleFile(langName, finalSubUrl))
                 }
-                callback(newExtractorLink(this.name, "AnimeOnsen", videoUrl) {
+
+                val isDash = videoUrl.contains(".mpd")
+
+                callback(newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = videoUrl,
+                    type = if (isDash) ExtractorLinkType.DASH else ExtractorLinkType.VIDEO
+                ) {
                     this.referer = mainUrl
                     this.quality = Qualities.P720.value
                 })
@@ -183,7 +199,11 @@ class AnimeonsenProvider : MainAPI() {
             false
         }
     }
-    @Serializable data class SearchResponseDto(val result: List<AnimeListItem>? = null)
+
+    @Serializable
+    data class SearchResponseDto(
+        val result: List<AnimeListItem>? = null
+    )
 
     @Serializable
     data class AnimeListResponse(
@@ -197,12 +217,34 @@ class AnimeonsenProvider : MainAPI() {
         val content_title: String? = null,
         val content_title_en: String? = null
     )
-    @Serializable data class EpisodeDto(
-        val name: String? = null
+    @Serializable
+    data class EpisodeDto(
+        val contentTitle_episode_en: String? = null,
+        val contentTitle_episode_jp: String? = null
     )
-    @Serializable data class VideoDataDto(val metadata: MetaDataDto, val uri: StreamDataDto)
-    @Serializable data class MetaDataDto(val subtitles: Map<String, String>)
-    @Serializable data class StreamDataDto(val stream: String, val subtitles: Map<String, String>)
+
+    @Serializable
+    data class EpisodeMetadata(
+        val title: String? = null
+    )
+
+    @Serializable
+    data class VideoDataDto(
+        val metadata: MetaDataDto,
+        val uri: StreamDataDto
+    )
+
+    @Serializable
+    data class MetaDataDto(
+        val subtitles: Map<String, String>? = null,
+        val episode: List<@Contextual Any>? = null
+    )
+
+    @Serializable
+    data class StreamDataDto(
+        val stream: String,
+        val subtitles: Map<String, String>
+    )
 
     @Serializable data class AnimeDetailsDto(
         val content_id: String,
