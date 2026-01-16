@@ -9,6 +9,9 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import android.util.Log
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.runBlocking
 
 class DoramasflixProvider:MainAPI() {
     companion object  {
@@ -66,10 +69,7 @@ class DoramasflixProvider:MainAPI() {
         @JsonProperty("languages"        ) var languages      : ArrayList<String>? = arrayListOf(),
         @JsonProperty("poster_path"      ) var posterPath     : String?           = null,
         @JsonProperty("backdrop_path"    ) var backdropPath   : String?           = null,
-        @JsonProperty("first_air_date"   ) var firstAirDate   : String?           = null,
-        @JsonProperty("episode_run_time" ) var episodeRunTime : ArrayList<Int>?    = arrayListOf(),
         @JsonProperty("isTVShow"         ) var isTVShow       : Boolean?          = null,
-        @JsonProperty("premiere"         ) var premiere       : Boolean?          = null,
         @JsonProperty("poster"           ) var poster         : String?           = null,
         @JsonProperty("trailer"          ) var trailer        : String?           = null,
         @JsonProperty("videos"           ) var videos         : ArrayList<String>? = arrayListOf(),
@@ -85,6 +85,17 @@ class DoramasflixProvider:MainAPI() {
         @JsonProperty("serie_id"       ) var serieId       : String? = null,
         @JsonProperty("season_poster"  ) var seasonPoster  : String? = null,
         @JsonProperty("serie_poster"   ) var seriePoster   : String? = null,
+        @JsonProperty("views") var views: String? = null,
+        @JsonProperty("quality") var quality: String? = null,
+        @JsonProperty("country") var country: String? = null,
+        @JsonProperty("content_rating") var contentRating: String? = null,
+        @JsonProperty("rating") var rating: Double? = null,
+        @JsonProperty("status") var status: String? = null,
+        @JsonProperty("premiere") var premiere: Boolean? = null,
+        @JsonProperty("first_air_date") var firstAirDate: String? = null,
+        @JsonProperty("release_date") var releaseDate: String? = null,
+        @JsonProperty("runtime") var runtime: Int? = null,
+        @JsonProperty("episode_run_time") var episodeRunTime: ArrayList<Int>? = arrayListOf(),
     )
 
 
@@ -101,7 +112,6 @@ class DoramasflixProvider:MainAPI() {
         @JsonProperty("__typename" ) var _typename : String? = null
     )
 
-
     data class DoramasInfo (
         @JsonProperty("id"   ) var id   : String? = null,
         @JsonProperty("slug" ) var slug : String? = null,
@@ -112,6 +122,13 @@ class DoramasflixProvider:MainAPI() {
     data class PaginationEpisode (
         @JsonProperty("items"      ) var items     : ArrayList<DetailDoramaandDoramaMeta> = arrayListOf(),
         @JsonProperty("__typename" ) var _typename : String?          = null
+    )
+
+    data class DoramasServer(
+        @JsonProperty("server") var server: String? = null,
+        @JsonProperty("lang") var lang: String? = null,
+        @JsonProperty("link") var link: String? = null,
+        @JsonProperty("name") var name: String? = null
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -126,7 +143,7 @@ class DoramasflixProvider:MainAPI() {
                 link
             }
             link.startsWith("/") -> {
-                val url = "https://image.tmdb.org/t/p/w1280$link" // Sin / extra
+                val url = "https://image.tmdb.org/t/p/w1280$link"
                 Log.d("DoramasflixProvider", "getImageUrl: Path con /: $link -> $url")
                 url
             }
@@ -161,7 +178,7 @@ class DoramasflixProvider:MainAPI() {
 
         items.add(HomePageList("Doramas", home1!!))
         items.add(HomePageList("Peliculas", home2!!))
-        items.add(HomePageList("Doramas 2", home3!!))
+        items.add(HomePageList("Más Doramas", home3!!))
         if (items.size <= 0) throw ErrorLoadingException()
         return newHomePageResponse(items)
     }
@@ -201,7 +218,6 @@ class DoramasflixProvider:MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        //There's ton of shit here
         val fixed = url.substringAfter("https://www.comamosramen.com/")
         val parse = parseJson<DoramasInfo>(fixed)
         val type = parse.type
@@ -209,85 +225,85 @@ class DoramasflixProvider:MainAPI() {
         val sluginfo = parse.slug
         val isMovie = tvType == TvType.Movie
         val id = parse.id
-        val detailMovieBody = "{\"operationName\":\"detailMovieExtra\",\"variables\":{\"slug\":\"$sluginfo\"},\"query\":\"query detailMovieExtra(\$slug: String!) {\\n  detailMovie(filter: {slug: \$slug}) {\\n    name\\n    name_es\\n    overview\\n    languages\\n    popularity\\n  poster_path\\n poster\\n  backdrop_path\\n    backdrop\\n    links_online\\n    __typename\\n genres {\\n      name\\n      slug\\n      __typename\\n    }\\n labels {\\n      name\\n      slug\\n      __typename\\n    }\\n  }\\n}\\n\"}"
-        val detailDoramaRequestbody = "{\"operationName\":\"detailDorama\",\"variables\":{\"slug\":\"$sluginfo\"},\"query\":\"query detailDorama(\$slug: String!) {\\n  detailDorama(filter: {slug: \$slug}) {\\n    _id\\n    name\\n    slug\\n    cast\\n    names\\n    name_es\\n    overview\\n    languages\\n    poster_path\\n    backdrop_path\\n    first_air_date\\n    episode_run_time\\n    isTVShow\\n    premiere\\n    poster\\n    trailer\\n    videos\\n    backdrop\\n    genres {\\n      name\\n      slug\\n      __typename\\n    }\\n    labels {\\n      name\\n      slug\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}"
+
+        val detailMovieBody = """{"operationName":"detailMovieExtra","variables":{"slug":"$sluginfo"},"query":"query detailMovieExtra(${"$"}slug: String!) { detailMovie(filter: {slug: ${"$"}slug}) { name name_es overview languages popularity poster_path poster backdrop_path backdrop links_online runtime release_date genres { name } labels { name } } }"}"""
+
+        val detailDoramaRequestbody = """{"operationName":"detailDorama","variables":{"slug":"$sluginfo"},"query":"query detailDorama(${"$"}slug: String!) { detailDorama(filter: {slug: ${"$"}slug}) { _id name slug names name_es overview languages poster_path backdrop_path first_air_date episode_run_time status premiere isTVShow poster trailer backdrop genres { name } labels { name } } }"}"""
 
         val metadataRequestBody = if (!isMovie) detailDoramaRequestbody.toRequestBody(mediaType) else detailMovieBody.toRequestBody(mediaType)
         val metadatarequest = app.post(doraflixapi, requestBody = metadataRequestBody).parsed<MainDoramas>()
         val metaInfo = if (isMovie) metadatarequest.data?.detailMovie else metadatarequest.data?.detailDorama
 
-        val title = metaInfo?.name
+        val title = metaInfo?.name ?: ""
         val plot = metaInfo?.overview
 
-        val posterinfo = metaInfo?.poster?.takeIf { it.isNotEmpty() }
-            ?: metaInfo?.posterPath?.takeIf { it.isNotEmpty() }
-            ?: ""
+        val dateString = metaInfo?.firstAirDate ?: metaInfo?.releaseDate
+        val releaseYear = dateString?.split("-")?.firstOrNull()?.toIntOrNull()
+        val duration = if (isMovie) metaInfo?.runtime else metaInfo?.episodeRunTime?.firstOrNull()
 
-        Log.d("DoramasflixProvider", "Poster info final corregido: $posterinfo")
+        val status = when {
+            metaInfo?.status?.lowercase()?.contains("emisión") == true ||
+                    metaInfo?.status?.lowercase()?.contains("ongoing") == true -> ShowStatus.Ongoing
+            metaInfo?.premiere == true -> ShowStatus.Ongoing
+            metaInfo?.firstAirDate != null -> ShowStatus.Completed
+            else -> null
+        }
 
-        val poster = getImageUrl(posterinfo)
-
-        val backgroundPosterinfo = metaInfo?.backdrop?.takeIf { it.isNotEmpty() }
-            ?: metaInfo?.backdropPath?.takeIf { it.isNotEmpty() }
-            ?: ""
-
-        val bgposter = getImageUrl(backgroundPosterinfo)
         val tags = ArrayList<String>()
-        val tags1 = metaInfo?.genres?.map { tags.add(it.name!!) }
-        val tags2 = metaInfo?.labels?.map { tags.add(it.name!!) }
+        metaInfo?.genres?.forEach { it.name?.let { name -> tags.add(name) } }
+        metaInfo?.labels?.forEach { it.name?.let { name -> tags.add(name) } }
+
+        if (!isMovie) {
+            if (status == ShowStatus.Ongoing) tags.add("En Emisión")
+            else if (status == ShowStatus.Completed) tags.add("Finalizado")
+        }
+
+        val poster = getImageUrl(metaInfo?.poster?.takeIf { it.isNotEmpty() } ?: metaInfo?.posterPath)
+        val bgposter = getImageUrl(metaInfo?.backdrop?.takeIf { it.isNotEmpty() } ?: metaInfo?.backdropPath)
+
         val episodes = ArrayList<Episode>()
         var movieData: String? = ""
         val datatwo = "{\"id\":\"${parse.id}\",\"slug\":\"${parse.slug}\",\"type\":\"${parse.type}\",\"isTV\":${parse.isTV}}"
 
-
         if (!isMovie) {
-            val listSeasonsbody = "{\"operationName\":\"listSeasons\",\"variables\":{\"serie_id\":\"$id\"},\"query\":\"query listSeasons(\$serie_id: MongoID!) {\\n  listSeasons(sort: NUMBER_ASC, filter: {serie_id: \$serie_id}) {\\n    slug\\n    season_number\\n    poster_path\\n    air_date\\n    serie_name\\n    poster\\n    backdrop\\n    __typename\\n  }\\n}\\n\"}"
+            val listSeasonsbody = """{"operationName":"listSeasons","variables":{"serie_id":"$id"},"query":"query listSeasons(${"$"}serie_id: MongoID!) { listSeasons(sort: NUMBER_ASC, filter: {serie_id: ${"$"}serie_id}) { slug season_number poster_path poster backdrop __typename } }"}"""
             val response = app.post(doraflixapi, requestBody = listSeasonsbody.toRequestBody(mediaType)).parsed<MainDoramas>()
-            response.data?.listSeasons?.map {
-                val seasonNum = it.seasonNumber
-                val paginationepisodesBody = "{\"operationName\":\"listEpisodesPagination\",\"variables\":{\"serie_id\":\"$id\",\"season_number\":$seasonNum,\"page\":1},\"query\":\"query listEpisodesPagination(\$page: Int!, \$serie_id: MongoID!, \$season_number: Float!) {\\n  paginationEpisode(\\n    page: \$page\\n    perPage: 1000\\n    sort: NUMBER_ASC\\n    filter: {type_serie: \\\"dorama\\\", serie_id: \$serie_id, season_number: \$season_number}\\n  ) {\\n       items {\\n      _id\\n      name\\n      still_path\\n   overview\\n   episode_number\\n      season_number\\n      air_date\\n      slug\\n      serie_id\\n   season_poster\\n      serie_poster\\n      poster\\n      backdrop\\n      __typename\\n    }\\n    pageInfo {\\n      hasNextPage\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}"
+            response.data?.listSeasons?.map { season ->
+                val paginationepisodesBody = """{"operationName":"listEpisodesPagination","variables":{"serie_id":"$id","season_number":${season.seasonNumber},"page":1},"query":"query listEpisodesPagination(${"$"}page: Int!, ${"$"}serie_id: MongoID!, ${"$"}season_number: Float!) { paginationEpisode(page: ${"$"}page, perPage: 1000, sort: NUMBER_ASC, filter: {type_serie: \"dorama\", serie_id: ${"$"}serie_id, season_number: ${"$"}season_number}) { items { name still_path episode_number season_number slug } } }"}"""
                 val episodesReq = app.post(doraflixapi, requestBody = paginationepisodesBody.toRequestBody(mediaType)).parsed<MainDoramas>()
-                episodesReq.data?.paginationEpisode?.items?.map {
-                    val season = it.seasonNumber
-                    val epnum = it.episodeNumber
-                    val epSlug = it.slug
-                    val epthumb = getImageUrl(it.stillPath)
-                    val name = it.name
-                    episodes.add(
-                        newEpisode(epSlug!!) {
-                            this.name = name
-                            this.season = season
-                            this.episode = epnum
-                            this.posterUrl = epthumb
-                        }
-                    )
+                episodesReq.data?.paginationEpisode?.items?.map { item ->
+                    episodes.add(newEpisode(item.slug!!) {
+                        this.name = item.name
+                        this.season = item.seasonNumber
+                        this.episode = item.episodeNumber
+                        this.posterUrl = getImageUrl(item.stillPath)
+                    })
                 }
             }
-        } else if (isMovie) {
-            val linksJson = metaInfo?.linksOnline?.toJson()
-            movieData = linksJson
-        }
-        return when (tvType) {
-            TvType.AsianDrama -> {
-                newTvSeriesLoadResponse(title!!,
-                    datatwo, tvType, episodes,){
-                    this.posterUrl = poster
-                    this.backgroundPosterUrl = bgposter
-                    this.plot = plot
-                    this.tags = tags.distinct().toList()
-                }
-            }
-            TvType.Movie -> {
-                newMovieLoadResponse(title!!, datatwo, tvType, movieData){
-                    this.posterUrl = poster
-                    this.plot = plot
-                    this.backgroundPosterUrl = bgposter
-                    this.tags = tags.distinct().toList()
-                }
-            }
-            else -> null
+        } else {
+            movieData = metaInfo?.linksOnline?.toJson()
         }
 
+        return if (isMovie) {
+            newMovieLoadResponse(title, datatwo, TvType.Movie, movieData) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgposter
+                this.plot = plot
+                this.tags = tags.distinct()
+                this.year = releaseYear
+                this.duration = duration
+            }
+        } else {
+            newTvSeriesLoadResponse(title, datatwo, TvType.AsianDrama, episodes) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgposter
+                this.plot = plot
+                this.tags = tags.distinct()
+                this.year = releaseYear
+                this.duration = duration
+                this.showStatus = status
+            }
+        }
     }
 
     override suspend fun loadLinks(
@@ -296,82 +312,71 @@ class DoramasflixProvider:MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("DoramasflixProvider", "loadLinks iniciado con data: $data")
-
         return try {
-            if (data.contains("link")) {
-                Log.d("DoramasflixProvider", "Data contiene 'link', parseando como LinksOnline")
-                val parse = parseJson<List<LinksOnline>>(data)
-                Log.d("DoramasflixProvider", "Enlaces encontrados: ${parse.size}")
-
-                parse.forEach { linkInfo ->
-                    val link = linkInfo.link
-                    val server = linkInfo.server
-                    val lang = linkInfo.lang
-                    Log.d("DoramasflixProvider", "Procesando enlace: $link (Server: $server, Lang: $lang)")
-
-                    if (!link.isNullOrEmpty()) {
-                        val success = loadExtractor(link, data, subtitleCallback, callback)
-                        Log.d("DoramasflixProvider", "loadExtractor resultado para $link: $success")
-                    } else {
-                        Log.w("DoramasflixProvider", "Enlace vacío o nulo encontrado")
-                    }
-                }
-                true
+            val links = if (data.contains("link")) {
+                parseJson<List<LinksOnline>>(data)
             } else {
                 val episodeSlug = data.removePrefix("https://doramasflix.co/")
                     .removePrefix("http://doramasflix.co/")
                     .removePrefix(mainUrl + "/")
 
-                Log.d("DoramasflixProvider", "Slug del episodio extraído: $episodeSlug")
+                val episodeslinkRequestbody = """{"operationName":"GetEpisodeLinks","variables":{"episode_slug":"$episodeSlug"},"query":"query GetEpisodeLinks(${"$"}episode_slug: String!) { detailEpisode(filter: {slug: ${"$"}episode_slug, type_serie: \"dorama\"}) { links_online } }"}"""
+                val responseText = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType)).text
+                parseJson<MainDoramas>(responseText).data?.detailEpisode?.linksOnline
+            }
 
-                val episodeslinkRequestbody = "{\"operationName\":\"GetEpisodeLinks\",\"variables\":{\"episode_slug\":\"$episodeSlug\"},\"query\":\"query GetEpisodeLinks(\$episode_slug: String!) {\\n  detailEpisode(filter: {slug: \$episode_slug, type_serie: \\\"dorama\\\"}) {\\n    links_online\\n   }\\n}\\n\"}"
+            if (links.isNullOrEmpty()) return false
 
-                Log.d("DoramasflixProvider", "Request body: ${episodeslinkRequestbody.take(200)}")
+            links.forEach { linkInfo ->
+                var link = linkInfo.link
+                if (link.isNullOrEmpty()) return@forEach
 
-                val request = app.post(doraflixapi, requestBody = episodeslinkRequestbody.toRequestBody(mediaType))
-                val responseText = request.text
-                Log.d("DoramasflixProvider", "Respuesta API: $responseText")
+                link = link.replace("https://swdyu.com", "https://streamwish.to")
+                    .replace("https://uqload.to", "https://uqload.co")
 
-                val parsedResponse = parseJson<MainDoramas>(responseText)
-                val links = parsedResponse.data?.detailEpisode?.linksOnline
-
-                if (links.isNullOrEmpty()) {
-                    Log.e("DoramasflixProvider", "No se encontraron enlaces para el episodio: $episodeSlug")
-                    return false
+                val language = when (linkInfo.lang) {
+                    "13109", "coreano", "sub" -> "Subtitulado"
+                    "38", "latino" -> "Latino"
+                    else -> "Sub"
                 }
 
-                Log.d("DoramasflixProvider", "Enlaces encontrados: ${links.size}")
+                val rawServer = linkInfo.server ?: ""
+                val serverName = when {
+                    link.contains("dood") -> "Doodstream"
+                    link.contains("filemoon") -> "Filemoon"
+                    link.contains("ok.ru") -> "Ok.ru"
+                    link.contains("voe") -> "Voe"
+                    link.contains("uqload") -> "Uqload"
+                    link.contains("streamwish") -> "Streamwish"
+                    link.contains("fplayer") || link.contains("fkplayer") -> "FPlayer"
+                    rawServer.matches(Regex("\\d+")) -> "Server"
+                    else -> rawServer
+                }
 
-                links.forEach { linkInfo ->
-                    var link = linkInfo.link
-                    val server = linkInfo.server
-                    val lang = linkInfo.lang
+                val finalServerName = "$serverName [$language]"
 
-                    Log.d("DoramasflixProvider", "Enlace original: $link (Server: $server, Lang: $lang)")
-
-                    link = link?.replace("https://swdyu.com", "https://streamwish.to")
-                        ?.replace("https://uqload.to", "https://uqload.co")
-
-                    Log.d("DoramasflixProvider", "Enlace modificado: $link")
-
-                    if (!link.isNullOrEmpty()) {
-                        val success = loadExtractor(link, data, subtitleCallback, callback)
-                        Log.d("DoramasflixProvider", "loadExtractor resultado para $link: $success")
-
-                        if (!success) {
-                            Log.w("DoramasflixProvider", "Falló la extracción para: $link")
-                        }
-                    } else {
-                        Log.w("DoramasflixProvider", "Enlace vacío después de modificaciones")
+                val success = loadExtractor(link, data, subtitleCallback) { extractorLink ->
+                    runBlocking {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = finalServerName,
+                                name = finalServerName,
+                                url = extractorLink.url,
+                                type = extractorLink.type
+                            ) {
+                                this.referer = extractorLink.referer
+                                this.quality = extractorLink.quality
+                                this.headers = extractorLink.headers
+                                this.extractorData = extractorLink.extractorData
+                            }
+                        )
                     }
                 }
-                true
             }
+            true
         } catch (e: Exception) {
-            Log.e("DoramasflixProvider", "Error en loadLinks: ${e.message}", e)
-            e.printStackTrace()
             false
         }
     }
+
 }
