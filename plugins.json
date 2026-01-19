@@ -179,6 +179,28 @@
         "name": "GnulaProvider"
     },
     {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hianime.to&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 48603,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Stormunblessed",
+            "KillerDogeEmpire",
+            "RowdyRushya",
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Anime",
+            "OVA"
+        ],
+        "version": 27,
+        "internalName": "HianimeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/HianimeProvider.cs3",
+        "name": "HianimeProvider"
+    },
+    {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 21687,
