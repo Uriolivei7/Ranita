@@ -495,5 +495,23 @@
     "iconUrl": "https://pelispedia.is/wp-content/uploads/2022/01/cropped-pelispediafavicon-e1642201982676-32x32.png",
     "language": "mx",
     "fileSize": 24000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HianimeProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "HiAnime",
+    "internalName": "HianimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Animes subtitulados en varios idiomas y con Doblaje en Inglés",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://hianime.to/favicon.ico",
+    "language": "en",
+    "fileSize": 48000
   }
 ]
