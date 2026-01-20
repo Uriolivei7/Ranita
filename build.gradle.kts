@@ -17,7 +17,7 @@ buildscript {
         classpath("com.github.recloudstream:gradle:-SNAPSHOT") {
             exclude(group = "com.github.vidstige", module = "jadb")
         }
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
 
