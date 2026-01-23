@@ -84,6 +84,24 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 27794,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 1,
+        "internalName": "AnimeparadiseProvider",
+        "description": "Anime Extension",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeparadiseProvider.cs3",
+        "name": "AnimeparadiseProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 15082,
         "status": 1,
         "language": "en",
