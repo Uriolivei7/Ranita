@@ -77,50 +77,53 @@ class AnimeParadiseProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        Log.d(TAG, "Logs: Iniciando load para URL/Slug: $url")
+        val slug = url.substringAfterLast("/")
+        Log.d(TAG, "Logs: Iniciando load para: $slug")
+
         return try {
-            val slug = if (url.contains("/")) url.substringAfterLast("/") else url
+            val detailRes = app.get("$apiUrl/anime/$slug", headers = apiHeaders).text
+            val animeData: AnimeDetailResponse = mapper.readValue(detailRes)
+            val internalId = animeData.data?.id ?: throw Exception("ID no encontrado")
 
-            val apiPath = "$apiUrl/anime/$slug"
-            Log.d(TAG, "Logs: Pidiendo datos a la API: $apiPath")
+            val mediaType = "text/plain;charset=UTF-8".toMediaTypeOrNull()
+            val body = "[\"$internalId\"]".toRequestBody(mediaType)
 
-            val detailResponse = app.get(apiPath, headers = apiHeaders).text
+            val epResponse = app.post(
+                "$mainUrl/anime/$slug",
+                headers = mapOf(
+                    "next-action" to "40e3235ae729909b92989a3d85630db447fc03dbfb",
+                    "content-type" to "text/plain;charset=UTF-8"
+                ),
+                requestBody = body
+            ).text
 
-            val wrapper: AnimeDetailResponse = mapper.readValue(detailResponse)
+            val jsonStartIndex = epResponse.indexOf("{\"data\":")
+            if (jsonStartIndex == -1) throw Exception("Formato de respuesta Next.js inválido")
 
-            val anime = wrapper.data
-                ?: throw Exception("La API respondió pero el campo 'data' está vacío para: $slug")
+            val cleanJson = epResponse.substring(jsonStartIndex).substringBeforeLast("\n")
+            val epData: EpisodeListResponse = mapper.readValue(cleanJson)
 
-            Log.d(TAG, "Logs: Datos obtenidos exitosamente para: ${anime.title}")
-
-            val episodes = anime.ep?.mapIndexed { index, epId ->
-                newEpisode("/watch/$epId?origin=${anime.id ?: slug}") {
-                    this.name = "Episodio ${index + 1}"
-                    this.episode = index + 1
+            val episodes = (epData.data ?: emptyList()).map { ep ->
+                val num = ep.number?.toIntOrNull() ?: 0
+                newEpisode("/watch/${ep.uid}?origin=$internalId") {
+                    this.name = ep.title ?: "Episodio $num"
+                    this.episode = num
+                    this.posterUrl = ep.image
                 }
-            } ?: emptyList()
+            }.sortedBy { it.episode }
 
-            val publicUrl = "$mainUrl/anime/$slug"
+            Log.d(TAG, "Logs: ${episodes.size} episodios cargados correctamente")
 
-            newAnimeLoadResponse(anime.title ?: "Sin título", publicUrl, TvType.Anime) {
-                this.plot = anime.synopsys
-                this.tags = anime.genres
-                this.posterUrl = anime.posterImage?.large ?: anime.posterImage?.original
-                this.year = anime.animeSeason?.year
-
-                this.showStatus = when (anime.status) {
-                    "finished" -> ShowStatus.Completed
-                    "ongoing" -> ShowStatus.Ongoing
-                    else -> null
-                }
-
+            newAnimeLoadResponse(animeData.data.title ?: "Sin título", url, TvType.Anime) {
+                this.plot = animeData.data.synopsys
+                this.tags = animeData.data.genres
+                this.posterUrl = animeData.data.posterImage?.large
+                this.year = animeData.data.animeSeason?.year
+                this.showStatus = if (animeData.data.status == "finished") ShowStatus.Completed else ShowStatus.Ongoing
                 addEpisodes(DubStatus.Subbed, episodes)
-                if (!anime.trailer.isNullOrBlank()) {
-                    addTrailer(anime.trailer)
-                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Logs: Error crítico en load: ${e.message}")
+            Log.e(TAG, "Logs: Error en load: ${e.message}")
             null
         }
     }
@@ -227,7 +230,13 @@ data class NextPageProps(val data: DetailedAnimeData)
 data class DetailedAnimeData(val synopsys: String? = null, val genres: List<String>? = null)
 
 data class EpisodeListResponse(val data: List<EpisodeEntry>)
-data class EpisodeEntry(val uid: String, val origin: String, val number: String? = null, val title: String? = null)
+data class EpisodeEntry(
+    val uid: String,
+    val origin: String,
+    val number: String? = null,
+    val title: String? = null,
+    val image: String? = null
+)
 
 data class NextDataVideo(val props: VideoNextProps)
 data class VideoNextProps(val pageProps: VideoPageData)
