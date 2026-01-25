@@ -62,6 +62,27 @@
         "name": "AnimeioProvider"
     },
     {
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 28041,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 1,
+        "internalName": "AnimekaiProvider",
+        "description": "Espa\u00f1ola (Spanish) Anime Extension",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimekaiProvider.cs3",
+        "name": "AnimekaiProvider"
+    },
+    {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 27039,
