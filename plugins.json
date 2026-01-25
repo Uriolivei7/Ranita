@@ -477,7 +477,7 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HianimeProvider.cs3",
-    "status": 1,
+    "status": 0,
     "version": 1,
     "apiVersion": 1,
     "name": "HiAnime",
@@ -529,6 +529,24 @@
       "Anime"
     ],
     "iconUrl": "https://www.animeparadise.moe/icon/favicon-32x32.png",
+    "language": "en",
+    "fileSize": 29000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimekaiProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "AnimeKAI",
+    "internalName": "AnimekaiProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Animes subtitulados en varios idiomas",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://anikai.to/assets/uploads/37585a3ffa8ec292ee9e2255f3f63b48ceca17e5241280b3dc21.png",
     "language": "en",
     "fileSize": 29000
   }
