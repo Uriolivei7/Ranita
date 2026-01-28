@@ -15,6 +15,7 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import okhttp3.Interceptor
 import okhttp3.Response
 import android.util.Log
+import com.horis.example.NetflixProvider.LoadData
 
 class PrimeVideoProvider : MainAPI() {
     override val supportedTypes = setOf(
@@ -160,14 +161,14 @@ class PrimeVideoProvider : MainAPI() {
             })
             Log.i(TAG, "Added 1 episode for Movie type.")
         } else {
-            data.episodes.filterNotNull().mapTo(episodes) {
-                newEpisode(LoadData(title, it.id)) {
-                    name = it.t
-                    episode = it.ep.replace("E", "").toIntOrNull()
-                    season = it.s.replace("S", "").toIntOrNull()
+            data.episodes?.filterNotNull()?.forEach { it ->
+                episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
+                    this.name = it.t
+                    this.episode = it.ep?.replace("E", "")?.toIntOrNull()
+                    this.season = it.s?.replace("S", "")?.toIntOrNull()
                     this.posterUrl = "https://imgcdn.kim/pvepimg/150/${it.id}.jpg"
-                    this.runTime = it.time.replace("m", "").toIntOrNull()
-                }
+                    this.runTime = it.time?.replace("m", "")?.toIntOrNull()
+                })
             }
             Log.i(TAG, "Added ${data.episodes.filterNotNull().size} episodes from initial post data.")
 
@@ -227,13 +228,15 @@ class PrimeVideoProvider : MainAPI() {
             val newEpsCount = data.episodes?.size ?: 0
             Log.i(TAG, "Fetched $newEpsCount episodes from page $pg.")
 
-            data.episodes?.mapTo(episodes) {
-                newEpisode(LoadData(title, it.id)) {
-                    name = it.t
-                    episode = it.ep.replace("E", "").toIntOrNull()
-                    season = it.s.replace("S", "").toIntOrNull()
-                    this.posterUrl = "https://img.nfmirrorcdn.top/pvepimg/${it.id}.jpg"
-                    this.runTime = it.time.replace("m", "").toIntOrNull()
+            data.episodes?.forEach { it ->
+                if (it != null) {
+                    episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
+                        this.name = it.t
+                        this.episode = it.ep?.replace("E", "")?.toIntOrNull()
+                        this.season = it.s?.replace("S", "")?.toIntOrNull()
+                        this.posterUrl = "https://imgcdn.kim/pvepimg/150/${it.id}.jpg"
+                        this.runTime = it.time?.replace("m", "")?.toIntOrNull()
+                    })
                 }
             }
             if (data.nextPageShow == 0) break
@@ -249,10 +252,9 @@ class PrimeVideoProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        cookie_value = bypass(mainUrl)
+        cookie_value = if (cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
         Log.i(TAG, "Starting loadLinks for data: $data")
         val (title, id) = parseJson<LoadData>(data)
-        Log.i(TAG, "Loading links for Episode/Movie ID: $id, Title: $title")
 
         val cookies = mapOf(
             "t_hash_t" to cookie_value,
@@ -260,50 +262,43 @@ class PrimeVideoProvider : MainAPI() {
             "hd" to "on"
         )
         val playlistUrl = "$newUrl/tv/pv/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}"
-        Log.i(TAG, "Fetching playlist from: $playlistUrl")
 
-        val playlist = app.get(
+        val res = app.get(
             playlistUrl,
             headers,
             referer = "$newUrl/home",
             cookies = cookies
-        ).parsed<PlayList>()
+        )
+
+        val playlist = res.parsed<PlayList>()
 
         var linkCount = 0
         var subtitleCount = 0
 
-        val fullCookie = "t_hash_t=$cookie_value; ott=pv; hd=on"
-        val refererUrl = "$newUrl/home"
-
-        val encodedReferer = java.net.URLEncoder.encode(refererUrl, "UTF-8")
-        val encodedCookie = java.net.URLEncoder.encode(fullCookie, "UTF-8")
-
-        val headersString = "Referer=$encodedReferer&Cookie=$encodedCookie"
-
         playlist.forEach { item ->
             item.sources.forEach {
+                val qualityLabel = it.label ?: "HLS"
+                val linkName = "${this.name} $qualityLabel"
+
                 callback.invoke(
                     newExtractorLink(
-                        name,
-                        it.label,
-                        """$newUrl${it.file.replace("/tv/", "/")}""",
+                        this.name,
+                        linkName,
+                        """$newUrl${it.file?.replace("/tv/", "/") ?: ""}""",
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "$newUrl/"
-                        this.quality = getQualityFromName(it.file.substringAfter("q=", ""))
+                        this.quality = getQualityFromName(it.file?.substringAfter("q=", "")?.substringBefore("&") ?: "")
                     }
                 )
                 linkCount++
-                Log.i(TAG, "Found Link: ${it.label} (${it.file})")
+                Log.i(TAG, "Link Generado: $linkName")
             }
 
-            item.tracks?.filter { it.kind == "captions" }?.map { track ->
+            item.tracks?.filter { it.kind == "captions" }?.forEach { track ->
                 val trackLabel = track.label.toString()
-
                 val filename = trackLabel.replace(" ", "") + ".srt"
-
                 val manualSubtitleUrl = "https://pv.subscdn.top/subs/$id/$filename"
-
 
                 subtitleCallback.invoke(
                     newSubtitleFile(
@@ -312,12 +307,11 @@ class PrimeVideoProvider : MainAPI() {
                     )
                 )
                 subtitleCount++
-                Log.i(TAG, "Found Subtitle: $trackLabel (Manual URL: $manualSubtitleUrl)")
+                Log.i(TAG, "Sub Encontrado: $trackLabel")
             }
         }
 
-        Log.i(TAG, "Finished loadLinks. Total links: $linkCount, Total subtitles: $subtitleCount")
-
+        Log.i(TAG, "Finished loadLinks. Total links: $linkCount")
         return true
     }
 

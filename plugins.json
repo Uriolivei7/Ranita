@@ -329,7 +329,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Netflix y PrimeVideo con Subtitulos y Doblajes",
+    "description": "Plugin para Mirrors de Netflix y PrimeVideo con Subtitulos y Doblajes",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -338,7 +338,7 @@
     ],
     "iconUrl": "https://net51.cc/img/nf2/icon_x192.png",
     "language": "en",
-    "fileSize": 53000
+    "fileSize": 59000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/IptvProvider.cs3",
