@@ -560,7 +560,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Películas y Animes en Latino y Castellano",
+    "description": "Plugin para Series, Películas y Animes en Latino",
     "tvTypes": [
       "TvSeries",
       "Anime",
