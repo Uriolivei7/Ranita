@@ -549,5 +549,26 @@
     "iconUrl": "https://anikai.to/assets/uploads/37585a3ffa8ec292ee9e2255f3f63b48ceca17e5241280b3dc21.png",
     "language": "en",
     "fileSize": 29000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GnulaProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 1,
+    "name": "GNULA",
+    "internalName": "GnulaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Series, Películas y Animes en Latino y Castellano",
+    "tvTypes": [
+      "TvSeries",
+      "Anime",
+      "Movie",
+      "Cartoon"
+    ],
+    "iconUrl": "https://gnula.life/favicon.ico",
+    "language": "mx",
+    "fileSize": 30000
   }
 ]
