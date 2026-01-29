@@ -28,6 +28,7 @@ class HomecineProvider: MainAPI() {
         TvType.TvSeries,
         TvType.Anime,
         TvType.Movie,
+        TvType.Cartoon
     )
 
     private fun getContentTypeFromUrl(url: String): TvType {

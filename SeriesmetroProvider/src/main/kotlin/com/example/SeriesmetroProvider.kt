@@ -19,7 +19,8 @@ class SeriesmetroProvider : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.Anime,
-        TvType.Movie
+        TvType.Movie,
+        TvType.Cartoon
     )
 
     private val TAG = "MetroSeries"
