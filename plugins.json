@@ -281,7 +281,7 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24094,
+        "fileSize": 24123,
         "status": 1,
         "language": "es",
         "authors": [
@@ -353,6 +353,25 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/LacartoonsProvider.cs3",
         "name": "LacartoonsProvider"
+    },
+    {
+        "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 34278,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "redblacker8"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 2,
+        "internalName": "LamovieProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/LamovieProvider.cs3",
+        "name": "LamovieProvider"
     },
     {
         "apiVersion": 1,
@@ -520,7 +539,7 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21997,
+        "fileSize": 22022,
         "status": 1,
         "language": "es",
         "authors": [
