@@ -149,7 +149,8 @@
     "tvTypes": [
       "TvSeries",
       "Anime",
-      "Movie"
+      "Movie",
+      "Cartoon"
     ],
     "iconUrl": "https://www3.homecine.to/wp-content/uploads/2018/05/homedark-1-3.png",
     "language": "mx",
@@ -469,7 +470,8 @@
     "tvTypes": [
       "TvSeries",
       "Anime",
-      "Movie"
+      "Movie",
+      "Cartoon"
     ],
     "iconUrl": "https://www3.seriesmetro.net/wp-content/uploads/2024/04/cropped-Favicon2-32x32.png",
     "language": "mx",
@@ -492,7 +494,7 @@
       "Movie",
       "Cartoon"
     ],
-    "iconUrl": "https://la.movie/wp-content/uploads/2025/05/cropped-La.movie_-32x32.pngo",
+    "iconUrl": "https://la.movie/wp-content/uploads/2025/05/cropped-La.movie_-32x32.png",
     "language": "mx",
     "fileSize": 34000
   },
