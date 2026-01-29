@@ -520,6 +520,24 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 21997,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 5,
+        "internalName": "SeriesmetroProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SeriesmetroProvider.cs3",
+        "name": "SeriesmetroProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 34406,
         "status": 1,
         "language": "es",
