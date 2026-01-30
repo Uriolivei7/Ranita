@@ -480,14 +480,14 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LamovieProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "La.Movie",
     "internalName": "LamovieProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Animes y Peliculas en Latino y Subtitulado",
+    "description": "Plugin para Series, Animes y Películas en Latino y Subtitulado",
     "tvTypes": [
       "Anime",
       "TvSeries",
