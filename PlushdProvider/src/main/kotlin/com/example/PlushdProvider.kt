@@ -11,7 +11,7 @@ import kotlinx.coroutines.delay
 import java.net.URL
 
 class PlushdProvider : MainAPI() {
-    override var mainUrl = "https://ww3.tioplus.net"
+    override var mainUrl = "https://tioplus.app"
     override var name = "PlusHD"
     override var lang = "mx"
     override val hasMainPage = true
@@ -36,23 +36,6 @@ class PlushdProvider : MainAPI() {
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
 
-    private fun fixPelisplusHostsLinks(url: String): String {
-        return url
-            .replaceFirst("https://hglink.to", "https://streamwish.to")
-            .replaceFirst("https://swdyu.com", "https://streamwish.to")
-            .replaceFirst("https://cybervynx.com", "https://streamwish.to")
-            .replaceFirst("https://dumbalag.com", "https://streamwish.to")
-            .replaceFirst("https://mivalyo.com", "https://vidhidepro.com")
-            .replaceFirst("https://dinisglows.com", "https://vidhidepro.com")
-            .replaceFirst("https://dhtpre.com", "https://vidhidepro.com")
-            .replaceFirst("https://filemoon.link", "https://filemoon.sx")
-            .replaceFirst("https://sblona.com", "https://watchsb.com")
-            .replaceFirst("https://lulu.st", "https://lulustream.com")
-            .replaceFirst("https://uqload.io", "https://uqload.com")
-            .replaceFirst("https://do7go.com", "https://dood.la")
-            .replaceFirst("https://doodstream.com", "https://dood.la")
-            .replaceFirst("https://streamtape.com", "https://streamtape.cc")
-    }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get("$mainUrl/${request.data}/$page").document
@@ -69,9 +52,17 @@ class PlushdProvider : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst("a h2")?.text() ?: return null
+        var title = this.selectFirst("a h2")?.text() ?: return null
         val link = this.selectFirst("a.itemA")?.attr("href") ?: return null
         val img = this.selectFirst("picture img")?.attr("data-src")
+
+        val yearRegex = Regex("""\s*\((\d{4})\)$""")
+        val match = yearRegex.find(title)
+        val year = match?.groupValues?.get(1)?.toIntOrNull()
+
+        if (match != null) {
+            title = title.replace(yearRegex, "").trim()
+        }
 
         val searchType = when {
             link.contains("/serie") -> TvType.TvSeries
@@ -82,8 +73,14 @@ class PlushdProvider : MainAPI() {
         }
 
         return when (searchType) {
-            TvType.Movie -> newMovieSearchResponse(title, link, searchType) { this.posterUrl = img }
-            else -> newTvSeriesSearchResponse(title, link, searchType) { this.posterUrl = img }
+            TvType.Movie -> newMovieSearchResponse(title, link, searchType) {
+                this.posterUrl = img
+                this.year = year
+            }
+            else -> newTvSeriesSearchResponse(title, link, searchType) {
+                this.posterUrl = img
+                this.year = year
+            }
         }
     }
 
@@ -92,9 +89,6 @@ class PlushdProvider : MainAPI() {
         val results = document.select("article.item").mapNotNull { it.toSearchResult() }
         return results
     }
-
-
-    data class MainTemporada(val elements: Map<String, List<MainTemporadaElement>>)
 
     data class MainTemporadaElement(
         val title: String? = null,
@@ -114,9 +108,36 @@ class PlushdProvider : MainAPI() {
             else -> TvType.TvSeries
         }
 
-        val title = doc.selectFirst(".slugh1")?.text() ?: ""
-        val backimage = doc.selectFirst("head meta[property=og:image]")?.attr("content") ?: ""
-        val poster = backimage.replace("original", "w500")
+        var title = doc.selectFirst(".slugh1")?.text() ?: ""
+        val yearRegex = Regex("""\s*\((\d{4})\)$""")
+        val match = yearRegex.find(title)
+        val year = match?.groupValues?.get(1)?.toIntOrNull()
+
+        if (match != null) {
+            title = title.replace(yearRegex, "").trim()
+        }
+
+        val backimage = doc.selectFirst(".bg")?.attr("style")?.let {
+            Regex("url\\(\"?(.*?)\"?\\)").find(it)?.groupValues?.get(1)
+        } ?: doc.selectFirst("head meta[property=og:image]")?.attr("content") ?: ""
+
+        var verticalPoster = doc.select(".poster img, .data img").firstNotNullOfOrNull {
+            val src = it.attr("data-src").ifBlank { it.attr("src") }
+
+            if (src.isNotBlank() &&
+                !src.contains("nGfjgUlES2WuYrHXNNF4fbGe2Eq") &&
+                src.contains("tmdb.org") &&
+                !src.contains("/episodes/") &&
+                !src.contains("/seasons/")
+            ) {
+                src
+            } else null
+        }?.replace("original", "w342")
+
+        if (verticalPoster.isNullOrBlank()) {
+            verticalPoster = doc.selectFirst(".poster img")?.attr("src")?.replace("original", "w342") ?: backimage
+        }
+
         val description = doc.selectFirst("div.description")?.text() ?: ""
         val tags = doc.select("div.home__slider .genres:contains(Generos) a").map { it.text() }
         val epi = ArrayList<Episode>()
@@ -125,35 +146,27 @@ class PlushdProvider : MainAPI() {
             val script = doc.select("script").firstOrNull { it.html().contains("seasonsJson = ") }?.html()
             if (!script.isNullOrEmpty()) {
                 val jsonRegex = Regex("seasonsJson\\s*=\\s*(\\{[^;]*\\});")
-                val match = jsonRegex.find(script)
-                val jsonscript: String? = match?.groupValues?.get(1)
+                val matchJson = jsonRegex.find(script)
+                val jsonscript = matchJson?.groupValues?.get(1)
 
                 if (!jsonscript.isNullOrEmpty()) {
                     try {
                         val seasonsMap = parseJson<Map<String, List<MainTemporadaElement>>>(jsonscript)
-                        seasonsMap.values.map { list ->
-                            list.map { info ->
+                        seasonsMap.values.forEach { list ->
+                            list.forEach { info ->
                                 val epTitle = info.title
                                 val seasonNum = info.season
                                 val epNum = info.episode
                                 val img = info.image
-                                val realimg =
-                                    if (img.isNullOrEmpty()) null else "https://image.tmdb.org/t/p/w342${
-                                        img.replace(
-                                            "\\/",
-                                            "/"
-                                        )
-                                    }"
+                                val realimg = if (img.isNullOrEmpty()) null else "https://image.tmdb.org/t/p/w342${img.replace("\\/", "/")}"
                                 val epurl = "$url/season/$seasonNum/episode/$epNum"
                                 if (epTitle != null && seasonNum != null && epNum != null) {
-                                    epi.add(
-                                        newEpisode(epurl) {
-                                            this.name = epTitle
-                                            this.season = seasonNum
-                                            this.episode = epNum
-                                            this.posterUrl = realimg
-                                        }
-                                    )
+                                    epi.add(newEpisode(epurl) {
+                                        this.name = epTitle
+                                        this.season = seasonNum
+                                        this.episode = epNum
+                                        this.posterUrl = realimg
+                                    })
                                 }
                             }
                         }
@@ -166,26 +179,43 @@ class PlushdProvider : MainAPI() {
 
         return when (tvType) {
             TvType.TvSeries, TvType.Anime, TvType.AsianDrama -> {
-                newTvSeriesLoadResponse(
-                    title,
-                    url, tvType, epi,
-                ) {
-                    this.posterUrl = poster
+                newTvSeriesLoadResponse(title, url, tvType, epi) {
+                    this.posterUrl = verticalPoster
                     this.backgroundPosterUrl = backimage
                     this.plot = description
                     this.tags = tags
+                    this.year = year
                 }
             }
             TvType.Movie -> {
                 newMovieLoadResponse(title, url, tvType, url) {
-                    this.posterUrl = poster
+                    this.posterUrl = verticalPoster
                     this.backgroundPosterUrl = backimage
                     this.plot = description
                     this.tags = tags
+                    this.year = year
                 }
             }
             else -> null
         }
+    }
+
+    private fun fixPelisplusHostsLinks(url: String): String {
+        return url
+            .replaceFirst("https://hglink.to", "https://streamwish.to")
+            .replaceFirst("https://swdyu.com", "https://streamwish.to")
+            .replaceFirst("https://cybervynx.com", "https://streamwish.to")
+            .replaceFirst("https://dumbalag.com", "https://streamwish.to")
+            .replaceFirst("https://mivalyo.com", "https://vidhidepro.com")
+            .replaceFirst("https://dinisglows.com", "https://vidhidepro.com")
+            .replaceFirst("https://dhtpre.com", "https://vidhidepro.com")
+            .replaceFirst("https://filemoon.link", "https://filemoon.sx")
+            .replaceFirst("https://sblona.com", "https://watchsb.com")
+            .replaceFirst("https://lulu.st", "https://lulustream.com")
+            .replaceFirst("https://uqload.io", "https://uqload.com")
+            .replaceFirst("https://do7go.com", "https://dood.la")
+            .replaceFirst("https://doodstream.com", "https://dood.la")
+            .replaceFirst("https://streamtape.com", "https://streamtape.cc")
     }
 
     override suspend fun loadLinks(
@@ -205,7 +235,7 @@ class PlushdProvider : MainAPI() {
         val doc = app.get(data, headers = headers).document
 
         val loggingSubtitleCallback: (SubtitleFile) -> Unit = { file ->
-            Log.d("PlushdProvider_Subs", "Subtítulo encontrado. URL: ${file.url}")
+            Log.d("PlushdProvider", "Subtítulo encontrado. URL: ${file.url}")
             subtitleCallback.invoke(file)
         }
 
@@ -255,4 +285,5 @@ class PlushdProvider : MainAPI() {
 
         return linksFound
     }
+
 }
