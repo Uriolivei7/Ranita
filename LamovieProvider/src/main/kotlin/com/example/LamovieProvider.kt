@@ -134,10 +134,23 @@ class LamovieProvider : MainAPI() {
                     val epData = try { parseJson<EpisodeListResponse>(epRes) } catch (e: Exception) { null }
 
                     epData?.data?.posts?.forEach { epItem ->
-                        episodesList.add(newEpisode(epItem.id.toString()) {
-                            this.name = epItem.title ?: "Episodio ${epItem.episode_number}"
+                        val rawId = epItem.id.toString()
+                        val cleanId = Regex("""\d+""").find(rawId)?.value ?: rawId
+                        val epNum = epItem.episode_number
+
+                        episodesList.add(newEpisode(cleanId) {
+                            val apiTitle = epItem.title ?: ""
+
+                            this.name = if (apiTitle.contains(Regex("Temporada|Episodio", RegexOption.IGNORE_CASE))) {
+                                "Episodio $epNum"
+                            } else if (apiTitle.isNullOrBlank()) {
+                                "Episodio $epNum"
+                            } else {
+                                apiTitle
+                            }
+
                             this.season = sNum
-                            this.episode = epItem.episode_number
+                            this.episode = epNum
                             this.posterUrl = fixImg(epItem.still_path) ?: bigImg ?: posterImg
                             this.description = epItem.overview
                             this.runTime = epItem.runtime?.toDoubleOrNull()?.toInt()
@@ -186,18 +199,54 @@ class LamovieProvider : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val playerUrl = "$apiBase/player?postId=$data&demo=0"
-        val res = try { app.get(playerUrl, headers = mapOf("Referer" to "$mainUrl/")).text } catch (e: Exception) { return false }
-        val response = try { parseJson<PlayerResponse>(res) } catch (e: Exception) { null }
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        Log.d(TAG, "Logs: Intentando cargar enlaces para ID: $data")
 
-        response?.data?.embeds?.forEach { embed ->
+        val cleanData = Regex("""\d+""").find(data)?.value ?: data
+        Log.d(TAG, "Logs: ID Original: $data -> ID Limpio: $cleanData")
+
+        val playerUrl = "$apiBase/player?postId=$cleanData&demo=0"
+
+        val res = try {
+            val response = app.get(playerUrl, headers = mapOf("Referer" to "$mainUrl/"))
+            Log.d(TAG, "Logs: HTTP Status: ${response.code} desde $playerUrl")
+            response.text
+        } catch (e: Exception) {
+            Log.e(TAG, "Logs Error: Fallo de conexión: ${e.message}")
+            return false
+        }
+
+        Log.d(TAG, "Logs: Respuesta JSON: $res")
+
+        val response = try { parseJson<PlayerResponse>(res) } catch (e: Exception) {
+            Log.e(TAG, "Logs Error: Error de parseo JSON")
+            null
+        }
+
+        val embeds = response?.data?.embeds ?: emptyList()
+        if (embeds.isEmpty()) {
+            Log.w(TAG, "Logs: No se encontraron embeds. ¿Es el ID $data correcto para un episodio?")
+        }
+
+        embeds.forEach { embed ->
             val embedUrl = embed.url ?: return@forEach
+            Log.d(TAG, "Logs: Procesando URL encontrada: $embedUrl")
+
             if (embedUrl.contains("la.movie/embed.html")) {
                 try {
                     val realUrl = app.get(embedUrl, referer = "$mainUrl/").document.select("iframe").attr("src")
-                    if (realUrl.isNotBlank()) loadExtractor(realUrl, embedUrl, subtitleCallback, callback)
-                } catch (e: Exception) { }
+                    if (realUrl.isNotBlank()) {
+                        Log.d(TAG, "Logs: Iframe interno encontrado: $realUrl")
+                        loadExtractor(realUrl, embedUrl, subtitleCallback, callback)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Logs Error: Fallo en el iframe -> ${e.message}")
+                }
             } else {
                 loadExtractor(embedUrl, "$mainUrl/", subtitleCallback, callback)
             }
