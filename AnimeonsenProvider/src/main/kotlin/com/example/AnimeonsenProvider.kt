@@ -42,7 +42,7 @@ class AnimeonsenProvider : MainAPI() {
             accessToken = json["access_token"]
             accessToken
         } catch (e: Exception) {
-            Log.e(TAG, "Error Token: ${e.message}")
+            Log.e(TAG, "Logs Error Token: ${e.message}")
             null
         }
     }
@@ -64,7 +64,7 @@ class AnimeonsenProvider : MainAPI() {
                 pages.add(HomePageList("Todos los Animes", items.map { it.toSearchResponse() }))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error en Latest: ${e.message}")
+            Log.e(TAG, "Logs Error en MainPage: ${e.message}")
         }
 
         if (page == 1) {
@@ -83,7 +83,7 @@ class AnimeonsenProvider : MainAPI() {
                         pages.add(HomePageList(name, items.map { it.toSearchResponse() }))
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error cargando género $name: ${e.message}")
+                    Log.e(TAG, "Logs Error cargando género $name")
                 }
             }
         }
@@ -99,7 +99,10 @@ class AnimeonsenProvider : MainAPI() {
             if (response.code == 404) return emptyList()
             val res = AppUtils.parseJson<SearchResponseDto>(response.text)
             res.result?.map { it.toSearchResponse() } ?: emptyList()
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Logs Error Search: ${e.message}")
+            emptyList()
+        }
     }
 
     private fun AnimeListItem.toSearchResponse(): SearchResponse {
@@ -113,42 +116,80 @@ class AnimeonsenProvider : MainAPI() {
         val token = getAuthToken()
         val contentId = if (url.startsWith("http")) url.split("/").last() else url
 
-        val details = app.get(
+        Log.d(TAG, "Logs: Iniciando carga de Anime ID: $contentId")
+
+        val detailsRes = app.get(
             "$apiUrl/content/$contentId/extensive",
             headers = mapOf("Authorization" to "Bearer $token")
-        ).parsed<AnimeDetailsDto>()
+        ).text
 
+        val details = AppUtils.parseJson<AnimeDetailsDto>(detailsRes)
         val displayTitle = details.content_title_en ?: details.content_title ?: "Anime"
 
-        val epResponse = app.get("$apiUrl/content/$contentId/episodes", headers = mapOf("Authorization" to "Bearer $token"))
-        val epRes = AppUtils.parseJson<Map<String, EpisodeDto>>(epResponse.text)
+        val posterImg = "$apiUrl/image/210x300/$contentId"
 
-        val episodesList = epRes.map { (epKey, item) ->
-            val episodeName = item.contentTitle_episode_en ?: item.contentTitle_episode_jp
-            val epNum = epKey.toIntOrNull()
+        val episodesList = try {
+            val epResponse = app.get("$apiUrl/content/$contentId/episodes", headers = mapOf("Authorization" to "Bearer $token")).text
+            val epMap = AppUtils.parseJson<Map<String, EpisodeDto>>(epResponse)
 
-            newEpisode("$contentId/video/$epKey") {
-                this.name = episodeName ?: "Episode $epKey"
-                this.episode = epNum
-            }
-        }.sortedBy { it.episode }
+            epMap.map { (epKey, item) ->
+                newEpisode("$contentId/video/$epKey") {
+                    this.name = item.contentTitle_episode_en ?: item.contentTitle_episode_jp ?: "Episode $epKey"
+                    this.episode = epKey.toIntOrNull()
+                    this.posterUrl = posterImg
+                }
+            }.sortedBy { it.episode }
+        } catch (e: Exception) {
+            Log.e(TAG, "Logs Error: Falló carga de episodios: ${e.message}")
+            emptyList()
+        }
 
-        val recommendedAnimes = try {
+        val combinedRecs = mutableListOf<SearchResponse>()
+
+        details.previous_season?.takeIf { it.isNotBlank() && it != "null" }?.let { prevId ->
+            combinedRecs.add(newAnimeSearchResponse("⏪ Temporada Anterior", prevId, TvType.Anime) {
+                this.posterUrl = "$apiUrl/image/210x300/$prevId"
+            })
+        }
+
+        details.next_season?.takeIf { it.isNotBlank() && it != "null" }?.let { nextId ->
+            combinedRecs.add(newAnimeSearchResponse("⏩ Temporada Siguiente", nextId, TvType.Anime) {
+                this.posterUrl = "$apiUrl/image/210x300/$nextId"
+            })
+        }
+
+        try {
             val recJson = app.get("$apiUrl/content/$contentId/related", headers = mapOf("Authorization" to "Bearer $token")).text
             val recData = AppUtils.parseJson<List<AnimeListItem>>(recJson)
-            recData.map { it.toSearchResponse() }
+            recData.forEach { item ->
+                combinedRecs.add(item.toSearchResponse())
+            }
         } catch (e: Exception) {
-            emptyList<SearchResponse>()
+            Log.e(TAG, "Logs: Error en recomendados")
         }
 
         return newAnimeLoadResponse(displayTitle, url, TvType.Anime) {
-            this.posterUrl = "$apiUrl/image/210x300/$contentId"
+            this.posterUrl = posterImg
             this.plot = details.mal_data?.synopsis
-            this.tags = details.content_genres
+            this.score = Score.from10(details.mal_data?.mean_score)
+
+            val tagsList = mutableListOf<String>()
+            details.mal_data?.rating?.let { tagsList.add(it.uppercase()) }
+            details.mal_data?.genres?.forEach { genre -> tagsList.add(genre.name) }
+            this.tags = tagsList
+
             this.year = details.content_year
-            this.showStatus = if (details.mal_data?.status == "finished_airing") ShowStatus.Completed else ShowStatus.Ongoing
-            this.recommendations = recommendedAnimes
+
+            this.showStatus = when (details.mal_data?.status) {
+                "finished_airing" -> ShowStatus.Completed
+                "currently_airing" -> ShowStatus.Ongoing
+                else -> null
+            }
+
+            this.recommendations = combinedRecs
             addEpisodes(DubStatus.Subbed, episodesList)
+
+            Log.d(TAG, "Logs: Load completo para $displayTitle. Score: ${details.mal_data?.mean_score}")
         }
     }
 
@@ -200,51 +241,13 @@ class AnimeonsenProvider : MainAPI() {
         }
     }
 
-    @Serializable
-    data class SearchResponseDto(
-        val result: List<AnimeListItem>? = null
-    )
-
-    @Serializable
-    data class AnimeListResponse(
-        val content: List<AnimeListItem>? = null,
-        val result: List<AnimeListItem>? = null
-    )
-
-    @Serializable
-    data class AnimeListItem(
-        val content_id: String,
-        val content_title: String? = null,
-        val content_title_en: String? = null
-    )
-    @Serializable
-    data class EpisodeDto(
-        val contentTitle_episode_en: String? = null,
-        val contentTitle_episode_jp: String? = null
-    )
-
-    @Serializable
-    data class EpisodeMetadata(
-        val title: String? = null
-    )
-
-    @Serializable
-    data class VideoDataDto(
-        val metadata: MetaDataDto,
-        val uri: StreamDataDto
-    )
-
-    @Serializable
-    data class MetaDataDto(
-        val subtitles: Map<String, String>? = null,
-        val episode: List<@Contextual Any>? = null
-    )
-
-    @Serializable
-    data class StreamDataDto(
-        val stream: String,
-        val subtitles: Map<String, String>
-    )
+    @Serializable data class SearchResponseDto(val result: List<AnimeListItem>? = null)
+    @Serializable data class AnimeListResponse(val content: List<AnimeListItem>? = null, val result: List<AnimeListItem>? = null)
+    @Serializable data class AnimeListItem(val content_id: String, val content_title: String? = null, val content_title_en: String? = null)
+    @Serializable data class EpisodeDto(val contentTitle_episode_en: String? = null, val contentTitle_episode_jp: String? = null)
+    @Serializable data class VideoDataDto(val metadata: MetaDataDto, val uri: StreamDataDto)
+    @Serializable data class MetaDataDto(val subtitles: Map<String, String>? = null, val episode: List<@Contextual Any>? = null)
+    @Serializable data class StreamDataDto(val stream: String, val subtitles: Map<String, String>)
 
     @Serializable data class AnimeDetailsDto(
         val content_id: String,
@@ -252,7 +255,16 @@ class AnimeonsenProvider : MainAPI() {
         val content_title_en: String? = null,
         val content_genres: List<String>? = null,
         val content_year: Int? = null,
+        val previous_season: String? = null,
+        val next_season: String? = null,
         val mal_data: MalDataDto? = null
     )
-    @Serializable data class MalDataDto(val synopsis: String? = null, val status: String? = null)
+    @Serializable data class MalDataDto(
+        val synopsis: String? = null,
+        val status: String? = null,
+        val mean_score: Double? = null,
+        val rating: String? = null,
+        val genres: List<Genre>? = null
+    )
+    @Serializable data class Genre(val name: String)
 }

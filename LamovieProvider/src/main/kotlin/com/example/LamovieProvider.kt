@@ -102,6 +102,8 @@ class LamovieProvider : MainAPI() {
             galleryImgs?.firstOrNull()?.trim() ?: postData.images?.backdrop ?: postData.backdrop
         )
 
+        val movieRuntime = postData.runtime?.toDoubleOrNull()?.toInt()
+
         val cleanTitle = postData.title?.replace(Regex("\\(\\d{4}\\)$"), "")?.trim() ?: ""
         val realYear = postData.release_date?.split("-")?.firstOrNull()?.toIntOrNull()
         val trailerUrl = postData.trailer?.let { "https://www.youtube.com/watch?v=$it" }
@@ -113,6 +115,7 @@ class LamovieProvider : MainAPI() {
                 this.plot = postData.overview
                 this.year = realYear
                 this.score = Score.from10(postData.imdb_rating)
+                this.duration = movieRuntime
                 this.addTrailer(trailerUrl)
                 this.tags = listOfNotNull("Película", postData.certification)
             }
@@ -132,14 +135,18 @@ class LamovieProvider : MainAPI() {
 
                     epData?.data?.posts?.forEach { epItem ->
                         episodesList.add(newEpisode(epItem.id.toString()) {
-                            this.name = "Episodio ${epItem.episode_number}"
+                            this.name = epItem.title ?: "Episodio ${epItem.episode_number}"
                             this.season = sNum
                             this.episode = epItem.episode_number
-                            this.posterUrl = bigImg ?: posterImg
+                            this.posterUrl = fixImg(epItem.still_path) ?: bigImg ?: posterImg
+                            this.description = epItem.overview
+                            this.runTime = epItem.runtime?.toDoubleOrNull()?.toInt()
                         })
                     }
                 }
-            } catch (e: Exception) { Log.e(TAG, "Logs Error: Falló carga de episodios") }
+            } catch (e: Exception) {
+                Log.e(TAG, "Logs Error: Falló carga de episodios: ${e.message}")
+            }
 
             newTvSeriesLoadResponse(cleanTitle, url, if (type == "animes") TvType.Anime else TvType.TvSeries, episodesList) {
                 this.posterUrl = posterImg
@@ -154,18 +161,28 @@ class LamovieProvider : MainAPI() {
 
         return response.apply {
             try {
-                var relatedRes = app.get("$apiBase/single/related?postId=$id&page=1&tab=connections&postsPerPage=12", headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)).text
+                var relatedRes = app.get(
+                    "$apiBase/single/related?postId=$id&page=1&tab=connections&postsPerPage=12",
+                    headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                ).text
                 var relatedData = try { parseJson<ApiResponse>(relatedRes) } catch (e: Exception) { null }
 
                 if (relatedData?.data?.posts.isNullOrEmpty()) {
-                    relatedRes = app.get("$apiBase/single/related?postId=$id&page=1&postsPerPage=12", headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)).text
+                    Log.d(TAG, "Logs: Conexiones vacías, intentando búsqueda general de recomendados")
+                    relatedRes = app.get(
+                        "$apiBase/single/related?postId=$id&page=1&postsPerPage=12",
+                        headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                    ).text
                     relatedData = try { parseJson<ApiResponse>(relatedRes) } catch (e: Exception) { null }
                 }
 
                 val recs = relatedData?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
                 this.recommendations = recs
-                Log.d(TAG, "Logs: Recomendaciones cargadas para $cleanTitle: ${recs.size}")
-            } catch (e: Exception) { Log.e(TAG, "Logs Error Recs: ${e.message}") }
+                Log.d(TAG, "Logs: Recomendaciones finales cargadas: ${recs.size}")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Logs Error Crítico en Recomendados: ${e.message}")
+            }
         }
     }
 
@@ -203,22 +220,40 @@ class LamovieProvider : MainAPI() {
         val slug: String?,
         val type: String?,
         val overview: String?,
-        val images: Images?,
-        val poster: String?,
-        val backdrop: String?,
-        val gallery: String?,
-        val rating: String?,
-        val runtime: String?,
-        val release_date: String?,
-        val certification: String?,
-        val trailer: String?,
-        val imdb_rating: Double?
+        val images: Images? = null,
+        val poster: String? = null,
+        val backdrop: String? = null,
+        val gallery: String? = null,
+        val rating: String? = null,
+        val runtime: String? = null,
+        val release_date: String? = null,
+        val certification: String? = null,
+        val trailer: String? = null,
+        val imdb_rating: Double? = null,
+        val season_number: Int? = null,
+        val episode_number: Int? = null,
+        val still_path: String? = null,
+        val vote_average: String? = null
     )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    data class Images(val poster: String?, val backdrop: String?)
+    data class Images(
+        val poster: String? = null,
+        val backdrop: String? = null,
+        val logo: String? = null
+    )
 
     data class EpisodeListResponse(val data: EpisodeListData?)
     data class EpisodeListData(val posts: List<EpisodePostItem>?, val seasons: List<String>?)
-    data class EpisodePostItem(@JsonProperty("_id") val id: Int?, val episode_number: Int?)
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class EpisodePostItem(
+        @JsonProperty("_id") val id: Int?,
+        val episode_number: Int?,
+        val title: String? = null,
+        val overview: String? = null,
+        val still_path: String? = null,
+        val runtime: String? = null,
+        val season_number: Int? = null
+    )
 }
