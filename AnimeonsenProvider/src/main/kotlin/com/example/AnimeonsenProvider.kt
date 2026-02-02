@@ -147,13 +147,13 @@ class AnimeonsenProvider : MainAPI() {
         val combinedRecs = mutableListOf<SearchResponse>()
 
         details.previous_season?.takeIf { it.isNotBlank() && it != "null" }?.let { prevId ->
-            combinedRecs.add(newAnimeSearchResponse("⏪ Temporada Anterior", prevId, TvType.Anime) {
+            combinedRecs.add(newAnimeSearchResponse("⏪ Previous Season", prevId, TvType.Anime) {
                 this.posterUrl = "$apiUrl/image/210x300/$prevId"
             })
         }
 
         details.next_season?.takeIf { it.isNotBlank() && it != "null" }?.let { nextId ->
-            combinedRecs.add(newAnimeSearchResponse("⏩ Temporada Siguiente", nextId, TvType.Anime) {
+            combinedRecs.add(newAnimeSearchResponse("⏩ Next Season", nextId, TvType.Anime) {
                 this.posterUrl = "$apiUrl/image/210x300/$nextId"
             })
         }
@@ -215,28 +215,46 @@ class AnimeonsenProvider : MainAPI() {
             val videoUrl = res.uri.stream
 
             if (videoUrl.isNotEmpty()) {
+                Log.d(TAG, "Logs: Procesando ${res.uri.subtitles.size} subtítulos")
+
                 res.uri.subtitles.forEach { (langPrefix, subUrl) ->
                     val langName = res.metadata.subtitles?.get(langPrefix) ?: langPrefix
 
-                    val finalSubUrl = "$subUrl?format=ass&token=$token#.ass"
+                    val finalSubUrl = if (subUrl.contains("?")) "$subUrl&format=ass" else "$subUrl?format=ass"
 
-                    subtitleCallback(newSubtitleFile(langName, finalSubUrl))
+                    subtitleCallback.invoke(
+                        newSubtitleFile(langName, finalSubUrl) {
+                            this.headers = mapOf(
+                                "Authorization" to "Bearer $token",
+                                "Referer" to mainUrl,
+                                "User-Agent" to userAgent
+                            )
+                        }
+                    )
                 }
 
                 val isDash = videoUrl.contains(".mpd")
 
-                callback(newExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = videoUrl,
-                    type = if (isDash) ExtractorLinkType.DASH else ExtractorLinkType.VIDEO
-                ) {
-                    this.referer = mainUrl
-                    this.quality = Qualities.P720.value
-                })
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = videoUrl,
+                        type = if (isDash) ExtractorLinkType.DASH else ExtractorLinkType.VIDEO
+                    ) {
+                        this.quality = Qualities.P720.value
+                        this.referer = mainUrl
+                        this.headers = mapOf(
+                            "Authorization" to "Bearer $token",
+                            "User-Agent" to userAgent,
+                            "Referer" to mainUrl
+                        )
+                    }
+                )
                 true
             } else false
         } catch (e: Exception) {
+            Log.e(TAG, "Logs Error Crítico loadLinks: ${e.message}")
             false
         }
     }
@@ -248,7 +266,6 @@ class AnimeonsenProvider : MainAPI() {
     @Serializable data class VideoDataDto(val metadata: MetaDataDto, val uri: StreamDataDto)
     @Serializable data class MetaDataDto(val subtitles: Map<String, String>? = null, val episode: List<@Contextual Any>? = null)
     @Serializable data class StreamDataDto(val stream: String, val subtitles: Map<String, String>)
-
     @Serializable data class AnimeDetailsDto(
         val content_id: String,
         val content_title: String? = null,
