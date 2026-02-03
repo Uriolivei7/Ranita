@@ -8,16 +8,9 @@ import com.horis.example.entities.SearchData
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.httpsify
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import okhttp3.Headers
-import okhttp3.Interceptor
-import okhttp3.Response
 import org.jsoup.nodes.Element
-import com.lagradost.cloudstream3.APIHolder.unixTime
 
 class NetflixProvider : MainAPI() {
     override val supportedTypes = setOf(
@@ -29,13 +22,11 @@ class NetflixProvider : MainAPI() {
     override var lang = "en"
 
     override var mainUrl = "https://net20.cc"
-    private var newUrl = "https://net51.cc"
+    private var newUrl = "https://net52.cc"
     override var name = "Netflix"
 
     override val hasMainPage = true
     private var cookie_value = ""
-
-    private val TAG = "NetflixProvider"
     private val headers = mapOf(
         "X-Requested-With" to "XMLHttpRequest"
     )
@@ -140,14 +131,14 @@ class NetflixProvider : MainAPI() {
                 name = data.title
             })
         } else {
-            data.episodes?.filterNotNull()?.forEach { it ->
-                episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
+            data.episodes.filterNotNull().mapTo(episodes) {
+                newEpisode(LoadData(title, it.id)) {
                     this.name = it.t
-                    this.episode = it.ep?.replace("E", "")?.toIntOrNull()
-                    this.season = it.s?.replace("S", "")?.toIntOrNull()
+                    this.episode = it.ep.replace("E", "").toIntOrNull()
+                    this.season = it.s.replace("S", "").toIntOrNull()
                     this.posterUrl = "https://imgcdn.kim/epimg/150/${it.id}.jpg"
-                    this.runTime = it.time?.replace("m", "")?.toIntOrNull()
-                })
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
+                }
             }
 
             if (data.nextPageShow == 1) {
@@ -193,15 +184,13 @@ class NetflixProvider : MainAPI() {
                 referer = "$mainUrl/tv/home",
                 cookies = cookies
             ).parsed<EpisodesData>()
-            data.episodes?.forEach { it ->
-                if (it != null) {
-                    episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
-                        this.name = it.t
-                        this.episode = it.ep?.replace("E", "")?.toIntOrNull()
-                        this.season = it.s?.replace("S", "")?.toIntOrNull()
-                        this.posterUrl = "https://imgcdn.kim/epimg/150/${it.id}.jpg"
-                        this.runTime = it.time?.replace("m", "")?.toIntOrNull()
-                    })
+            data.episodes?.mapTo(episodes) {
+                newEpisode(LoadData(title, it.id)) {
+                    name = it.t
+                    episode = it.ep.replace("E", "").toIntOrNull()
+                    season = it.s.replace("S", "").toIntOrNull()
+                    this.posterUrl = "https://imgcdn.kim/epimg/150/${it.id}.jpg"
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
                 }
             }
             if (data.nextPageShow == 0) break
@@ -216,60 +205,74 @@ class NetflixProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val (title, id) = parseJson<LoadData>(data)
-        Log.i(TAG, "loadLinks: Buscando enlaces para $title (ID: $id)")
+        Log.d("LoadLinks", "Iniciando carga de enlaces para data: $data")
 
+        val (title, id) = parseJson<LoadData>(data)
         val cookies = mapOf(
             "t_hash_t" to cookie_value,
             "ott" to "nf",
             "hd" to "on"
         )
 
-        val res = app.get(
-            "$newUrl/tv/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}",
-            headers = headers,
-            referer = "$newUrl/home",
-            cookies = cookies
-        )
+        return try {
+            val token = getVideoToken(mainUrl, newUrl, id, cookies)
+            Log.d("LoadLinks", "Token obtenido: $token")
 
-        val playlist = res.parsed<PlayList>()
+            val response = app.get(
+                "$newUrl/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}&h=$token",
+                headers,
+                referer = "$newUrl/",
+                cookies = cookies
+            )
 
-        playlist.forEach { item ->
-            item.sources.forEach {
-                val qualityLabel = it.label ?: "HLS"
-                val linkName = "${this.name} $qualityLabel"
+            val playlist = response.parsed<PlayList>()
 
-                callback.invoke(
-                    newExtractorLink(
-                        this.name,
-                        linkName,
-                        """$newUrl${it.file?.replace("/tv/", "/") ?: ""}""",
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "$newUrl/"
-                        this.headers = mapOf(
-                            "User-Agent" to "Mozilla/5.0 (Android) ExoPlayer",
-                            "Cookie" to "hd=on"
-                        )
-                        this.quality = getQualityFromName(it.file?.substringAfter("q=", "")?.substringBefore("&") ?: "")
-                    }
-                )
-                Log.d(TAG, "Link añadido: $linkName")
+            playlist.forEach { item ->
+                item.sources.forEach { source ->
+                    val finalName = "$name ${source.label}".trim()
+
+                    Log.d("LoadLinks", "Generando enlace: $finalName URL: ${newUrl + source.file}")
+
+                    callback.invoke(
+                        newExtractorLink(
+                            source = finalName,
+                            name = finalName,
+                            url = newUrl + source.file,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "$newUrl/"
+                            this.headers = mapOf(
+                                "User-Agent" to "Mozilla/5.0 (Android) ExoPlayer",
+                                "Accept" to "*/*",
+                                "Accept-Encoding" to "identity",
+                                "Connection" to "keep-alive",
+                                "Cookie" to "hd=on"
+                            )
+                        }
+                    )
+                }
+
+                item.tracks?.filter { it.kind == "captions" }?.forEach { track ->
+                    val subUrl = httpsify(track.file.toString().replace("\\", ""))
+                    Log.d("LoadLinks", "Subtítulo encontrado: ${track.label} URL: $subUrl")
+
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            track.label.toString(),
+                            subUrl
+                        ) {
+                            this.headers = mapOf(
+                                "Referer" to "$newUrl/"
+                            )
+                        }
+                    )
+                }
             }
-
-            item.tracks?.filter { it.kind == "captions" }?.forEach { track ->
-                subtitleCallback.invoke(
-                    newSubtitleFile(
-                        track.label.toString(),
-                        httpsify(track.file.toString()),
-                    ) {
-                        this.headers = mapOf("Referer" to "$newUrl/")
-                    }
-                )
-            }
+            true
+        } catch (e: Exception) {
+            Log.e("LoadLinks", "Error fatal cargando enlaces: ${e.message}", e)
+            false
         }
-
-        return true
     }
 
     data class Id(

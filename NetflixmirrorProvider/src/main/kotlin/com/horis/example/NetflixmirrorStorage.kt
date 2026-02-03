@@ -3,11 +3,13 @@ package com.horis.example
 import android.content.Context
 import android.content.SharedPreferences
 
-object NetflixMirrorStorage {
+object NetflixmirrorStorage {
+    private lateinit var context: Context
     private lateinit var prefs: SharedPreferences
 
     fun init(context: Context) {
-        this.prefs = context.applicationContext.getSharedPreferences("NetflixMirrorPrefs", Context.MODE_PRIVATE)
+        this.context = context.applicationContext
+        this.prefs = context.getSharedPreferences("NetflixMirrorPrefs", Context.MODE_PRIVATE)
     }
 
     fun saveCookie(cookie: String) {

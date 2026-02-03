@@ -1,6 +1,5 @@
 package com.horis.example
 
-import com.horis.example.NetflixProvider.LoadData
 import com.horis.example.entities.EpisodesData
 import com.horis.example.entities.PlayList
 import com.horis.example.entities.PostData
@@ -8,16 +7,12 @@ import com.horis.example.entities.SearchData
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.getQualityFromName
-import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.jsoup.nodes.Element
-import com.lagradost.cloudstream3.APIHolder.unixTime
 
 class JioHotstarProvider : MainAPI() {
     override val supportedTypes = setOf(
@@ -29,7 +24,7 @@ class JioHotstarProvider : MainAPI() {
     override var lang = "en"
 
     override var mainUrl = "https://net20.cc"
-    private var newUrl = "https://net51.cc"
+    private var newUrl = "https://net52.cc"
     override var name = "JioHotstar"
 
     override val hasMainPage = true
@@ -65,7 +60,7 @@ class JioHotstarProvider : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val id = selectFirst("a")?.attr("data-post") ?: attr("data-post") ?: return null
+        val id = selectFirst("a")?.attr("data-post") ?: attr("data-post")
         // val posterUrl =
         //     fixUrlNull(selectFirst(".card-img-container img, .top10-img img")?.attr("data-src"))
 
@@ -136,14 +131,14 @@ class JioHotstarProvider : MainAPI() {
                 name = data.title
             })
         } else {
-            data.episodes?.filterNotNull()?.forEach { it ->
-                episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
+            data.episodes.filterNotNull().mapTo(episodes) {
+                newEpisode(LoadData(title, it.id)) {
                     this.name = it.t
-                    this.episode = it.ep?.replace("E", "")?.toIntOrNull()
-                    this.season = it.s?.replace("S", "")?.toIntOrNull()
-                    this.posterUrl = "https://imgcdn.kim/epimg/150/${it.id}.jpg"
-                    this.runTime = it.time?.replace("m", "")?.toIntOrNull()
-                })
+                    this.episode = it.ep.replace("E", "").toIntOrNull()
+                    this.season = it.s.replace("S", "").toIntOrNull()
+                    this.posterUrl = "https://imgcdn.kim/hsepimg/150/${it.id}.jpg"
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
+                }
             }
 
             if (data.nextPageShow == 1) {
@@ -189,15 +184,13 @@ class JioHotstarProvider : MainAPI() {
                 referer = "$mainUrl/home",
                 cookies = cookies
             ).parsed<EpisodesData>()
-            data.episodes?.forEach { it ->
-                if (it != null) {
-                    episodes.add(newEpisode(LoadData(title ?: "", it.id ?: "")) {
-                        this.name = it.t
-                        this.episode = it.ep?.replace("E", "")?.toIntOrNull()
-                        this.season = it.s?.replace("S", "")?.toIntOrNull()
-                        this.posterUrl = "https://imgcdn.kim/epimg/150/${it.id}.jpg"
-                        this.runTime = it.time?.replace("m", "")?.toIntOrNull()
-                    })
+            data.episodes?.mapTo(episodes) {
+                newEpisode(LoadData(title, it.id)) {
+                    name = it.t
+                    episode = it.ep.replace("E", "").toIntOrNull()
+                    season = it.s.replace("S", "").toIntOrNull()
+                    this.posterUrl = "https://imgcdn.kim/hsepimg/${it.id}.jpg"
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
                 }
             }
             if (data.nextPageShow == 0) break
@@ -220,7 +213,7 @@ class JioHotstarProvider : MainAPI() {
         )
 
         val playlist = app.get(
-            "$mainUrl/mobile/hs/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}",
+            "$newUrl/mobile/hs/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}",
             headers,
             referer = "$mainUrl/",
             cookies = cookies
@@ -245,7 +238,7 @@ class JioHotstarProvider : MainAPI() {
                 subtitleCallback.invoke(
                     newSubtitleFile(
                         track.label.toString(),
-                        httpsify(track.file.toString()),
+                        httpsify(track.file.toString().replace("\\", "")),
                     ) {
                         this.headers = mapOf(
                             "Referer" to "$newUrl/"
