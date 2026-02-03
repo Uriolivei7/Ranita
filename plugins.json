@@ -178,6 +178,25 @@
         "name": "CinehdplusProvider"
     },
     {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 40082,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 2,
+        "internalName": "CinemacityProvider",
+        "description": "(Multi-Lang/Audio)",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/CinemacityProvider.cs3",
+        "name": "CinemacityProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
