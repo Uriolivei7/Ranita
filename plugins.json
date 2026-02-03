@@ -499,27 +499,6 @@
     "fileSize": 40000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/CinehdplusProvider.cs3",
-    "status": 1,
-    "version": 1,
-    "apiVersion": 1,
-    "name": "CineHD+",
-    "internalName": "CinehdplusProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Series, Animes y Películas en Latino y Castellano",
-    "tvTypes": [
-      "TvSeries",
-      "Anime",
-      "Movie",
-      "Cartoon"
-    ],
-    "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
-    "language": "mx",
-    "fileSize": 18000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeparadiseProvider.cs3",
     "status": 1,
     "version": 2,
@@ -609,6 +588,28 @@
       "Anime"
     ],
     "iconUrl": "https://sudatchi.com/favicon.ico",
+    "language": "en",
+    "fileSize": 24000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/CinemacityProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "CinemaCity",
+    "internalName": "CinemacityProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin para Series, Animes, Doramas y  Películas en varios Idiomas y con Subtítulos",
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Anime",
+      "AsianDrama",
+      "Cartoon"
+    ],
+    "iconUrl": "https://img.icons8.com/?size=192&id=fnzD4E0A2n97&format=png",
     "language": "en",
     "fileSize": 24000
   }
