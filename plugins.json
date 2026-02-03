@@ -601,7 +601,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Animes, Doramas y  Películas en varios Idiomas y con Subtítulos",
+    "description": "Plugin para Series, Animes, Doramas y  Películas en varios Idiomas y con varios Subtítulos",
     "tvTypes": [
       "TvSeries",
       "Movie",
