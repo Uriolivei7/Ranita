@@ -48,7 +48,7 @@ class CinemacityProvider : MainAPI() {
     override val hasDownloadSupport = false
     override val hasQuickSearch = false
     override val supportedTypes = setOf(
-        TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama, TvType.Cartoon
+        TvType.Movie, TvType.TvSeries
     )
     companion object
     {
@@ -96,24 +96,9 @@ class CinemacityProvider : MainAPI() {
         val title = this.children().firstOrNull { it.tagName() == "a" }?.ownText()?.substringBefore("(")?.trim().orEmpty()
         val href = fixUrl(this.children().firstOrNull { it.tagName() == "a" }?.attr("href") ?: "")
         val posterUrl = fixUrlNull(this.select("div.dar-short_bg a ").attr("href"))
-        val score = this.selectFirst("span.rating-color")?.ownText()
-        val quality = this
-            .selectFirst("div.dar-short_bg.e-cover > div span:nth-child(2) > a")
-            ?.text()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { if (it.contains("TS", true)) "TS" else "HD" }
-            ?: run {
-                if (
-                    this.selectFirst("div.dar-short_bg.e-cover > div > span")
-                        ?.text()
-                        ?.contains("TS", true) == true
-                ) "TS" else "HD"
-            }
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            this.score = Score.from10(score)
-            this.quality = getQualityFromString(quality)
         }
     }
 
@@ -150,19 +135,17 @@ class CinemacityProvider : MainAPI() {
 
 
         val recommendation = doc.select("div.ta-rel > div.ta-rel_item").map {
-            val title = it.select("a").text().substringBefore("(").trim()
-            val href = fixUrl(it.selectFirst("> div > a")?.attr("href") ?: "")
-            val score = it.select("span.rating-color1").text()
-            val posterUrl=it.selectFirst("div > a")?.attr("href")
+            val recTitle = it.select("a").text().substringBefore("(").trim()
+            val recHref = fixUrl(it.selectFirst("> div > a")?.attr("href") ?: "")
+            val recPosterUrl = it.selectFirst("div > a")?.attr("href")
 
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-                this.score = Score.from10(score)
+            newMovieSearchResponse(recTitle, recHref, TvType.Movie) {
+                this.posterUrl = recPosterUrl
             }
         }
 
         val year = ogTitle.substringAfter("(", "").substringBefore(")").toIntOrNull()
-        var contenttype = doc.select("div.dar-full_meta > span:nth-child(5) > a").text()
+        val contenttype = doc.select("div.dar-full_meta > span:nth-child(5) > a").text()
 
         val tvtype = if (url.contains("/movies/", true)) TvType.Movie else TvType.TvSeries
         val tmdbmetatype = if (tvtype == TvType.TvSeries) "tv" else "movie"
@@ -225,9 +208,6 @@ class CinemacityProvider : MainAPI() {
                 ?.associateBy { "${it.season}:${it.episode}" }
                 ?: emptyMap()
 
-
-        /* ---------------- PlayerJS parsing ---------------- */
-
         val playerScript = doc
             .select("script:containsData(atob)")
             .getOrNull(1)
@@ -243,9 +223,6 @@ class CinemacityProvider : MainAPI() {
                 .substringAfter("new Playerjs(")
                 .substringBeforeLast(");")
         )
-
-
-        /* ---------------- SAFE file parsing ---------------- */
 
         val rawFile = playerJson.opt("file")
             ?: error("PlayerJS: missing file field")
@@ -282,9 +259,9 @@ class CinemacityProvider : MainAPI() {
         val episodeList = mutableListOf<Episode>()
 
         val movieHrefs: String? = fileArray.optJSONObject(0)
-                ?.takeIf { !it.has("folder") }
-                ?.optString("file")
-                ?.takeIf { it.isNotBlank() }
+            ?.takeIf { !it.has("folder") }
+            ?.optString("file")
+            ?.takeIf { it.isNotBlank() }
 
         val movieSubtitleTracks = parseSubtitles(
             when {
@@ -378,7 +355,6 @@ class CinemacityProvider : MainAPI() {
                 }
                 this.recommendations = recommendation
                 this.tags = genre
-                this.actors = castList
                 this.score = Score.from10(responseData?.meta?.imdbRating)
                 this.contentRating = responseData?.meta?.appExtras?.certification
                 addImdbId(imdbId)
@@ -408,7 +384,6 @@ class CinemacityProvider : MainAPI() {
             }
             this.recommendations = recommendation
             this.tags = genre
-            this.actors = castList
             this.contentRating = responseData?.meta?.appExtras?.certification
             this.score = Score.from10(responseData?.meta?.imdbRating)
             addImdbId(imdbId)
