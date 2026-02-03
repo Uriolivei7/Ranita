@@ -594,7 +594,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/CinemacityProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "CinemaCity",
     "internalName": "CinemacityProvider",
