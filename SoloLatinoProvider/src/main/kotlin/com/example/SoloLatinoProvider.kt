@@ -33,11 +33,9 @@ class SoloLatinoProvider : MainAPI() {
         TvType.TvSeries,
         TvType.Anime,
         TvType.Cartoon,
-        TvType.AsianDrama
     )
 
     override var lang = "mx"
-
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
@@ -243,6 +241,15 @@ class SoloLatinoProvider : MainAPI() {
         val description = doc.selectFirst("div.wp-content")?.text() ?: ""
         val tags = doc.select("div.sgeneros a").map { it.text() }
 
+        val ratingText = doc.selectFirst("div.nota span")?.ownText()?.trim()
+        val averageScore = ratingText?.toDoubleOrNull()
+
+        val runtimeText = doc.selectFirst("span.runtime")?.text()
+        val durationMain = runtimeText?.replace(Regex("(?i) min\\.?"), "")?.trim()?.toIntOrNull()
+
+        if (averageScore == null) Log.w("SoloLatino", "load - LOG FAIL: No se pudo extraer Rating de '$ratingText'")
+        if (durationMain == null) Log.w("SoloLatino", "load - LOG FAIL: No se pudo extraer Duración de '$runtimeText'")
+
         val dateText = doc.selectFirst("div.data span.date")?.text()
 
         val year = dateText?.let {
@@ -371,6 +378,8 @@ class SoloLatinoProvider : MainAPI() {
                     this.tags = tags
                     this.recommendations = recommendations
                     this.year = year
+                    this.duration = durationMain
+                    this.score = averageScore?.let { Score.from10(it) }
                 }
             }
 
@@ -387,6 +396,8 @@ class SoloLatinoProvider : MainAPI() {
                     this.tags = tags
                     this.recommendations = recommendations
                     this.year = year
+                    this.duration = durationMain
+                    this.score = averageScore?.let { Score.from10(it) }
                 }
             }
             else -> null
