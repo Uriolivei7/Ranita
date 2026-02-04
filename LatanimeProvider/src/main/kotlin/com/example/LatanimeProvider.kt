@@ -50,15 +50,27 @@ class LatanimeProvider : MainAPI() {
             .trim()
     }
 
+    private fun formatTitleWithLanguage(rawTitle: String): String {
+        val clean = cleanTitle(rawTitle)
+        return when {
+            rawTitle.contains("Latino", true) -> "$clean (Latino)"
+            rawTitle.contains("Castellano", true) -> "$clean (Castellano)"
+            else -> clean
+        }
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = ArrayList<HomePageList>()
         try {
             val mainDoc = app.get(mainUrl).document
+            Log.d("LatanimeProvider", "LOG: Cargando carrusel principal")
+
             val carouselItems = mainDoc.select("div.carousel-item a[href*=/anime/], div.carousel-item a[href*=/pelicula/]").mapNotNull { element ->
                 val itemUrl = element.attr("href")
-                val title = element.selectFirst("span.span-slider")?.text()?.trim() ?: ""
-                if (itemUrl.isNotBlank() && title.isNotBlank()) {
-                    newAnimeSearchResponse(cleanTitle(title), fixUrl(itemUrl)) {
+                val rawTitle = element.selectFirst("span.span-slider")?.text()?.trim() ?: ""
+
+                if (itemUrl.isNotBlank() && rawTitle.isNotBlank()) {
+                    newAnimeSearchResponse(formatTitleWithLanguage(rawTitle), fixUrl(itemUrl)) {
                         val posterElement = element.selectFirst("img.preview-image, img.d-block")
                         this.posterUrl = fixUrl(posterElement?.attr("data-src")?.ifBlank { posterElement.attr("src") } ?: "")
                     }
@@ -78,34 +90,40 @@ class LatanimeProvider : MainAPI() {
                 val doc = app.get(url).document
                 val home = doc.select("div.col-md-4, div.col-lg-3, div.col-xl-2, div.col-6").mapNotNull { article ->
                     val link = article.selectFirst("a") ?: return@mapNotNull null
-                    val title = link.selectFirst("h3")?.text() ?: link.attr("title")
-                    newAnimeSearchResponse(cleanTitle(title), fixUrl(link.attr("href"))) {
+                    val rawTitle = link.selectFirst("h3")?.text() ?: link.attr("title") ?: ""
+
+                    newAnimeSearchResponse(formatTitleWithLanguage(rawTitle), fixUrl(link.attr("href"))) {
                         val img = link.selectFirst("img")
                         this.posterUrl = fixUrl(img?.attr("data-src")?.ifBlank { img.attr("src") } ?: "")
                     }
                 }
-                if (home.isNotEmpty()) items.add(HomePageList(name, home))
+                if (home.isNotEmpty()) {
+                    Log.d("LatanimeProvider", "LOG: Sección $name cargada con ${home.size} items")
+                    items.add(HomePageList(name, home))
+                }
             } catch (e: Exception) { Log.e("LatanimeProvider", "Error $name: ${e.message}") }
         }
         return newHomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        Log.d("LatanimeProvider", "LOG: Buscando -> $query")
         val doc = app.get("$mainUrl/buscar?q=$query").document
-        return doc.select("div.col-md-4, div.col-lg-3, div.col-xl-2, div.col-6").mapNotNull { article ->
+        val results = doc.select("div.col-md-4, div.col-lg-3, div.col-xl-2, div.col-6").mapNotNull { article ->
             val link = article.selectFirst("a") ?: return@mapNotNull null
-            val title = article.selectFirst("h3")?.text() ?: link.attr("title") ?: ""
-            val href = link.attr("href")
+            val rawTitle = article.selectFirst("h3")?.text() ?: link.attr("title") ?: ""
 
-            newAnimeSearchResponse(cleanTitle(title), fixUrl(href)) {
+            newAnimeSearchResponse(formatTitleWithLanguage(rawTitle), fixUrl(link.attr("href"))) {
                 val img = article.selectFirst("img")
                 this.posterUrl = fixUrl(img?.attr("data-src")?.ifBlank { img.attr("src") } ?: "")
             }
         }
+        Log.d("LatanimeProvider", "LOG: Búsqueda finalizada, encontrados: ${results.size}")
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        Log.d("LatanimeProvider", "Cargando: $url")
+        Log.d("LatanimeProvider", "LOG: Entrando a detalles de -> $url")
         val document = app.get(url).document
         val rawTitle = document.selectFirst("div.col-lg-9 h2")?.text()?.trim() ?: ""
         val foundYear = Regex("""\((\d{4})\)""").find(rawTitle)?.groupValues?.get(1)?.toIntOrNull()
@@ -114,18 +132,15 @@ class LatanimeProvider : MainAPI() {
             .filter { !it.contains(Regex("(?i)Latino|Castellano|Subtitulado|Japonés|Japones|Audio")) }
             .toMutableList()
 
-        if (rawTitle.contains("Latino", true)) tags.add(0, "Latino")
-        else if (rawTitle.contains("Castellano", true)) tags.add(0, "Castellano")
-        else if (rawTitle.contains("Japonés", true) || rawTitle.contains("Japones", true)) {
-            tags.add(0, "Subtitulado")
-            tags.add(1, "Japonés")
-        } else tags.add(0, "Subtitulado")
+        when {
+            rawTitle.contains("Latino", true) -> tags.add(0, "Latino")
+            rawTitle.contains("Castellano", true) -> tags.add(0, "Castellano")
+            else -> tags.add(0, "Subtitulado")
+        }
 
         val episodes = document.select("div[style*='max-height: 400px'] a[href*=episodio]").mapNotNull { element ->
             val epUrl = element.attr("href")
-
             val epNum = Regex("""episodio-(\d+)""").find(epUrl)?.groupValues?.get(1)?.toIntOrNull()
-
             val imgElement = element.selectFirst("img")
             val epPoster = fixUrl(imgElement?.attr("data-src")?.ifBlank { imgElement.attr("src") } ?: "")
 
@@ -138,14 +153,12 @@ class LatanimeProvider : MainAPI() {
             } else null
         }.reversed()
 
-        Log.d("LatanimeProvider", "Episodios cargados: ${episodes.size}")
-
-        return newTvSeriesLoadResponse(cleanTitle(rawTitle), url, TvType.Anime, episodes) {
+        return newTvSeriesLoadResponse(formatTitleWithLanguage(rawTitle), url, TvType.Anime, episodes) {
             this.posterUrl = document.selectFirst("meta[property=og:image]")?.attr("content")
             this.plot = document.selectFirst("p.my-2.opacity-75")?.text()?.trim()
             this.tags = tags
             this.year = foundYear
-            this.showStatus = if (document.html().contains("En emisión", true)) ShowStatus.Ongoing else ShowStatus.Completed
+            this.showStatus = if (document.html().contains("En emission", true)) ShowStatus.Ongoing else ShowStatus.Completed
         }
     }
 
