@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
-    "version": 11,
+    "version": 12,
     "apiVersion": 1,
     "name": "SoloLatino",
     "internalName": "SoloLatinoProvider",
@@ -537,7 +537,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GnulaProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 1,
     "name": "GNULA",
     "internalName": "GnulaProvider",
