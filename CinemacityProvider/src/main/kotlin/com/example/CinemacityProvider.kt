@@ -48,7 +48,7 @@ class CinemacityProvider : MainAPI() {
     override val hasDownloadSupport = false
     override val hasQuickSearch = false
     override val supportedTypes = setOf(
-        TvType.Movie, TvType.TvSeries
+        TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.AsianDrama
     )
     companion object
     {
