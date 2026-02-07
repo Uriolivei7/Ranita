@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
+import kotlin.text.Charsets.UTF_8
 import kotlinx.coroutines.delay
 import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -216,132 +217,105 @@ class TvporinternetProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val targetUrl = fixUrl(data)
+        Log.d("TvporInternet", "Logs: Cargando URL base -> $targetUrl")
 
         try {
             val mainHeaders = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-                "Referer" to targetUrl,
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Sec-Fetch-Dest" to "document",
+                "Sec-Fetch-Mode" to "navigate",
+                "Sec-Fetch-Site" to "none",
+                "Upgrade-Insecure-Requests" to "1"
             )
 
-            val mainPageResponse = app.get(targetUrl, headers = mainHeaders, timeout = 20L)
-            val cookies = mainPageResponse.cookies.toMutableMap()
+            val mainPageResponse = app.get(targetUrl, headers = mainHeaders)
             val doc = Jsoup.parse(mainPageResponse.text)
 
-            val playerIframeSrc = doc.selectFirst("iframe[name=player]")?.attr("src")
-
-            val optionLinks = doc.select("a[href*=/live], a[href*=/live/], a[href*=/live2/], a[href*=/live3/], a[href*=/live4/], a[href*=/live5/], a[href*=/live6/]")
-                .mapNotNull { it.attr("href") }
-                .filter { !it.contains("favicon") && !it.contains("chat") && it != "#" }
+            val optionLinks = doc.select("a[href*=/live], iframe[name=player], iframe[src*=/live]")
+                .mapNotNull { if (it.tagName() == "iframe") it.attr("src") else it.attr("href") }
+                .filter { it.isNotBlank() && !it.contains("facebook") }
                 .distinct()
 
-            val playerUrls = mutableListOf<String>()
-            playerIframeSrc?.let { playerUrls.add(fixUrl(it)) }
-            playerUrls.addAll(optionLinks.map { fixUrl(it) })
-
-            if (playerUrls.isEmpty()) return false
-
-            val isWSA = context?.resources?.configuration?.screenLayout?.and(Configuration.SCREENLAYOUT_SIZE_MASK) == Configuration.SCREENLAYOUT_SIZE_LARGE
-            val forceSD = isWSA
+            Log.d("TvporInternet", "Logs: Opciones detectadas: ${optionLinks.size}")
 
             var success = false
 
-            for ((index, rawPlayerUrl) in playerUrls.withIndex()) {
+            for ((index, rawPlayerUrl) in optionLinks.withIndex()) {
                 val playerUrl = fixUrl(rawPlayerUrl)
-
-                if (forceSD && playerUrl.contains("FHD", ignoreCase = true)) continue
-
                 try {
-                    val currentReferer = playerUrl
+                    Log.d("TvporInternet", "Logs: Entrando a Opción ${index + 1} -> $playerUrl")
 
-                    val playerResponse = app.get(playerUrl, headers = mainHeaders + mapOf("Referer" to targetUrl), cookies = cookies, timeout = 20L)
-                    cookies.putAll(playerResponse.cookies)
+                    val playerHeaders = mainHeaders.toMutableMap().apply {
+                        put("Referer", targetUrl)
+                        put("Sec-Fetch-Site", "same-origin")
+                    }
+
+                    val playerResponse = app.get(playerUrl, headers = playerHeaders)
                     val playerHtml = playerResponse.text
 
-                    val embedUrl = Regex("""(https?://[^"']*saohgdasregions\.fun[^"']*)""").find(playerHtml)?.groupValues?.get(1)
-                        ?: Regex("""src=["']([^"']*stream[^"']*)["']""").find(playerHtml)?.groupValues?.get(1)
+                    val internalIframe = Regex("""iframe.*src=["']([^"']*saohgdasregions\.fun[^"']*)["']""").find(playerHtml)?.groupValues?.get(1)
 
-                    val embedHtml = if (embedUrl != null) {
-                        app.get(fixUrl(embedUrl), headers = mainHeaders + mapOf("Referer" to currentReferer), cookies = cookies, timeout = 20L).text
-                    } else playerHtml
+                    val finalHtml = if (internalIframe != null) {
+                        val iframeUrl = fixUrl(internalIframe)
+                        Log.d("TvporInternet", "Logs: Iframe interno hallado: $iframeUrl")
+                        app.get(iframeUrl, headers = playerHeaders.apply { put("Referer", playerUrl) }).text
+                    } else {
+                        playerHtml
+                    }
 
-                    val m3u8Url = extractM3u8FromHtml(embedHtml)?.let { fixUrl(it) }
+                    val m3u8Url = extractM3u8FromHtml(finalHtml)
 
-                    if (!m3u8Url.isNullOrEmpty() && m3u8Url.startsWith("http")) {
-                        val m3u8UrlFinal = if (m3u8Url.contains("?")) "$m3u8Url&buffer=1" else "$m3u8Url?buffer=1"
-
-                        val qualityName = if (forceSD) "SD" else if (playerUrl.contains("FHD")) "FHD" else "HD"
-                        val qualityValue = if (qualityName == "FHD") 1080 else if (qualityName == "SD") 480 else 720
+                    if (!m3u8Url.isNullOrEmpty()) {
+                        Log.d("TvporInternet", "Logs: ¡Éxito! M3U8: $m3u8Url")
 
                         val streamingHeaders = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                            "Origin" to "https://live.saohgdasregions.fun",
-                            "Accept" to "*/*"
+                            "Origin" to "https://regionales.saohgdasregions.fun",
+                            "Referer" to "https://regionales.saohgdasregions.fun/"
                         )
 
                         callback(
                             newExtractorLink(
                                 source = this.name,
-                                name = "${this.name} - $qualityName (Opción ${index + 1})",
-                                url = m3u8UrlFinal,
+                                name = "${this.name} - Opción ${index + 1}",
+                                url = m3u8Url,
                                 type = ExtractorLinkType.M3U8
                             ) {
-                                this.referer = "https://live.saohgdasregions.fun/"
-                                this.quality = qualityValue
                                 this.headers = streamingHeaders
                             }
                         )
                         success = true
+                    } else {
+                        val title = Jsoup.parse(playerHtml).title()
+                        Log.w("TvporInternet", "Logs: Falló Opción ${index + 1}. Título recibido: $title")
                     }
-
                 } catch (e: Exception) {
-                    Log.e("TvporInternet", "Error procesando opción $playerUrl: ${e.message}")
+                    Log.e("TvporInternet", "Logs: Error en opción $index: ${e.message}")
                 }
             }
-
             return success
-
         } catch (e: Exception) {
-            Log.e("TvporInternet", "Error crítico en loadLinks: ${e.message}")
+            Log.e("TvporInternet", "Logs: Error crítico: ${e.message}")
             return false
         }
     }
 
     private fun extractM3u8FromHtml(html: String): String? {
-        val doc = Jsoup.parse(html)
-
         val patterns = listOf(
-            """(https?://[^"'\s]+\.m3u8[^"'\s]*)""",
-            """["'](https?:(?:\\\/\\\/|\/\/)[^"']+\.m3u8[^"']*)["']""",
+            """["'](https?[:\/\/\\]+[^"']+\.m3u8[^"']*)["']""",
             """source\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
-            """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
-            """src\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
-            """url\s*:\s*["']([^"']+\.m3u8[^"']*)["']"""
+            """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']"""
         )
-
-        val source = doc.selectFirst("video > source, source[src]")
-        if (source != null && source.attr("src").contains(".m3u8")) {
-            return source.attr("src")
-        }
 
         for (pattern in patterns) {
             val match = Regex(pattern, RegexOption.IGNORE_CASE).find(html)
             if (match != null) {
-                return match.groupValues.getOrNull(1)?.replace("\\/", "/") ?: match.value.replace("\\/", "/")
-            }
-        }
-
-        val dataSource = doc.selectFirst("[data-src], [data-url], [data-source], [data-hls]")
-        if (dataSource != null) {
-            val url = dataSource.attr("data-src").ifBlank { null }
-                ?: dataSource.attr("data-url").ifBlank { null }
-                ?: dataSource.attr("data-source").ifBlank { null }
-                ?: dataSource.attr("data-hls").ifBlank { null }
-
-            if (!url.isNullOrEmpty() && url.contains(".m3u8")) {
-                return url
+                val found = match.groupValues[1].replace("\\/", "/")
+                return found
             }
         }
         return null
     }
+
 }
