@@ -492,7 +492,8 @@
     ],
     "description": "Plugin para Animes subtitulados en varios idiomas",
     "tvTypes": [
-      "Anime"
+      "Anime",
+      "AnimeMovie"
     ],
     "iconUrl": "https://www.animeparadise.moe/icon/favicon-32x32.png",
     "language": "en",
