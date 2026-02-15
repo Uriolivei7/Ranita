@@ -1,5 +1,7 @@
 package com.horis.example
 
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
 import com.fasterxml.jackson.core.json.JsonReadFeature
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -10,6 +12,9 @@ import com.lagradost.nicehttp.ResponseParser
 import kotlin.reflect.KClass
 import okhttp3.FormBody
 import com.lagradost.nicehttp.NiceResponse
+import kotlinx.coroutines.delay
+import android.content.Context
+import com.lagradost.api.Log
 import org.json.JSONObject
 
 val JSONParser = object : ResponseParser {
@@ -86,9 +91,14 @@ suspend fun bypass(mainUrl: String): String {
     val newCookie = try {
         var verifyCheck: String
         var verifyResponse: NiceResponse
+        var count = 0
         do {
             verifyResponse = app.post("$mainUrl/tv/p.php")
             verifyCheck = verifyResponse.text
+            count++
+            if (count > 5) {
+                throw Exception("Failed to verify cookie")
+            }
         } while (!verifyCheck.contains("\"r\":\"n\""))
         verifyResponse.cookies["t_hash_t"].orEmpty()
     } catch (e: Exception) {

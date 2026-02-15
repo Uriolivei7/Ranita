@@ -9,9 +9,16 @@ import com.horis.example.entities.PostCategory
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.getQualityFromName
+import okhttp3.Headers
+import okhttp3.Interceptor
+import okhttp3.Response
+import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.APIHolder.unixTime
 
 class PrimevideoProvider : MainAPI() {
     override val supportedTypes = setOf(
@@ -21,27 +28,34 @@ class PrimevideoProvider : MainAPI() {
         TvType.AsianDrama
     )
     override var lang = "en"
-
-    override var mainUrl = "https://net22.cc"
+    override var mainUrl = "https://net52.cc"
     private var newUrl = "https://net52.cc"
     override var name = "PrimeVideo"
-
     override val hasMainPage = true
     private var cookie_value = ""
     private val headers = mapOf(
         "X-Requested-With" to "XMLHttpRequest"
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val cookies = mapOf(
+    companion object {
+        private var cookie_value: String = ""
+    }
+
+    private suspend fun getCookie(): Map<String, String> {
+        if (cookie_value.isEmpty()) {
+            cookie_value = bypass(newUrl)
+        }
+        return mapOf (
             "t_hash_t" to cookie_value,
             "ott" to "pv",
             "hd" to "on"
         )
+    }
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val data = app.get(
             "$mainUrl/tv/pv/homepage.php",
-            cookies = cookies,
+            cookies = getCookie(),
             referer = "$mainUrl/home",
         ).parsed<MainPage>()
 
@@ -72,14 +86,8 @@ class PrimevideoProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "ott" to "pv",
-            "hd" to "on"
-        )
         val url = "$mainUrl/pv/search.php?s=$query&t=${APIHolder.unixTime}"
-        val data = app.get(url, referer = "$mainUrl/home", cookies = cookies).parsed<SearchData>()
+        val data = app.get(url, referer = "$mainUrl/home", cookies = getCookie()).parsed<SearchData>()
 
         return data.searchResult.map {
             newAnimeSearchResponse(it.t, Id(it.id).toJson()) {
@@ -91,17 +99,11 @@ class PrimevideoProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val id = parseJson<Id>(url).id
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "ott" to "pv",
-            "hd" to "on"
-        )
         val data = app.get(
             "$mainUrl/pv/post.php?id=$id&t=${APIHolder.unixTime}",
             headers,
             referer = "$mainUrl/tv/home",
-            cookies = cookies
+            cookies = getCookie()
         ).parsed<PostData>()
 
         val episodes = arrayListOf<Episode>()
@@ -172,18 +174,13 @@ class PrimevideoProvider : MainAPI() {
         title: String, eid: String, sid: String, page: Int
     ): List<Episode> {
         val episodes = arrayListOf<Episode>()
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "ott" to "pv",
-            "hd" to "on"
-        )
         var pg = page
         while (true) {
             val data = app.get(
                 "$mainUrl/pv/episodes.php?s=$sid&series=$eid&t=${APIHolder.unixTime}&page=$pg",
                 headers,
                 referer = "$mainUrl/home",
-                cookies = cookies
+                cookies = getCookie()
             ).parsed<EpisodesData>()
             data.episodes?.mapTo(episodes) {
                 newEpisode(LoadData(title, it.id)) {
@@ -207,16 +204,11 @@ class PrimevideoProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val (title, id) = parseJson<LoadData>(data)
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "ott" to "pv",
-            "hd" to "on"
-        )
         val playlist = app.get(
             "$newUrl/pv/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}",
             headers,
             referer = "$newUrl/home",
-            cookies = cookies
+            cookies = getCookie()
         ).parsed<PlayList>()
 
         playlist.forEach { item ->
