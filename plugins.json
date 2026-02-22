@@ -594,7 +594,7 @@
     ],
     "iconUrl": "https://katanime.net/favicon.ico?v=5.0.66",
     "language": "mx",
-    "fileSize": 39000
+    "fileSize": 27000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
@@ -616,6 +616,6 @@
     ],
     "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
     "language": "mx",
-    "fileSize": 39000
+    "fileSize": 25000
   }
 ]
