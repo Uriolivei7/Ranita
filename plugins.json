@@ -299,7 +299,7 @@
         "iconUrl": "https://www.google.com/s2/favicons?domain=hianime.to&sz=%size%",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 52926,
+        "fileSize": 52928,
         "status": 1,
         "language": "en",
         "authors": [
@@ -339,7 +339,7 @@
         "iconUrl": "https://www.shutterstock.com/image-vector/iptv-vector-line-icon-ip-260nw-1841427610.jpg",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37833,
+        "fileSize": 37840,
         "status": 1,
         "authors": [
             "anhdaden"
@@ -371,6 +371,29 @@
         "internalName": "JkanimeProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/JkanimeProvider.cs3",
         "name": "JkanimeProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 27163,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "KatanimeProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/KatanimeProvider.cs3",
+        "name": "KatanimeProvider"
     },
     {
         "apiVersion": 1,
@@ -533,6 +556,29 @@
         "internalName": "PelispediaProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelispediaProvider.cs3",
         "name": "PelispediaProvider"
+    },
+    {
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 24977,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "PelisplusProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelisplusProvider.cs3",
+        "name": "PelisplusProvider"
     },
     {
         "apiVersion": 1,
@@ -720,7 +766,7 @@
         "iconUrl": "https://play-lh.googleusercontent.com/gMB8Eq9g9Uq6CXiOHcqatXpx-6HTexAzcQibTgpqAE756Fnt1Jyyp0j7S3UDKPztkA=w480-h960-rw",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44947,
+        "fileSize": 44946,
         "status": 1,
         "authors": [
             "anhdaden"
