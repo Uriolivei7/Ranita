@@ -4,8 +4,6 @@ import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.serialization.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
 class AnimeonsenProvider : MainAPI() {
@@ -33,12 +31,18 @@ class AnimeonsenProvider : MainAPI() {
         if (accessToken != null) return accessToken
         return try {
             val bodyString = """{"client_id":"f296be26-28b5-4358-b5a1-6259575e23b7","client_secret":"349038c4157d0480784753841217270c3c5b35f4281eaee029de21cb04084235","grant_type":"client_credentials"}"""
-            val responseText = app.post(
+
+            val response = app.post(
                 "https://auth.animeonsen.xyz/oauth/token",
-                headers = mapOf("user-agent" to userAgent),
-                requestBody = bodyString.toRequestBody("application/json".toMediaType())
+                headers = mapOf("User-Agent" to userAgent),
+                data = mapOf(
+                    "client_id" to "f296be26-28b5-4358-b5a1-6259575e23b7",
+                    "client_secret" to "349038c4157d0480784753841217270c3c5b35f4281eaee029de21cb04084235",
+                    "grant_type" to "client_credentials"
+                )
             ).text
-            val json = AppUtils.parseJson<Map<String, String>>(responseText)
+
+            val json = AppUtils.parseJson<Map<String, String>>(response)
             accessToken = json["access_token"]
             accessToken
         } catch (e: Exception) {
@@ -215,11 +219,8 @@ class AnimeonsenProvider : MainAPI() {
             val videoUrl = res.uri.stream
 
             if (videoUrl.isNotEmpty()) {
-                Log.d(TAG, "Logs: Procesando ${res.uri.subtitles.size} subtítulos")
-
                 res.uri.subtitles.forEach { (langPrefix, subUrl) ->
                     val langName = res.metadata.subtitles?.get(langPrefix) ?: langPrefix
-
                     val finalSubUrl = if (subUrl.contains("?")) "$subUrl&format=ass" else "$subUrl?format=ass"
 
                     subtitleCallback.invoke(
@@ -247,7 +248,9 @@ class AnimeonsenProvider : MainAPI() {
                         this.headers = mapOf(
                             "Authorization" to "Bearer $token",
                             "User-Agent" to userAgent,
-                            "Referer" to mainUrl
+                            "Referer" to mainUrl,
+                            "Connection" to "keep-alive",
+                            "Accept" to "*/*"
                         )
                     }
                 )
