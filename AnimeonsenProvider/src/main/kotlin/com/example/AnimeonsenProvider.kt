@@ -5,7 +5,11 @@ import com.google.gson.annotations.SerializedName
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.serialization.*
+import okhttp3.OkHttpClient
+import java.io.ByteArrayInputStream
 import java.net.URLEncoder
+import java.util.zip.GZIPInputStream
+import okhttp3.Request
 
 class AnimeonsenProvider : MainAPI() {
     override var mainUrl = "https://animeonsen.xyz"
@@ -204,65 +208,79 @@ class AnimeonsenProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val cleanPath = if (data.contains("animeonsen.xyz/")) data.substringAfter("animeonsen.xyz/") else data
+        val cleanPath = if (data.contains("animeonsen.xyz/"))
+            data.substringAfter("animeonsen.xyz/") else data
         val token = getAuthToken() ?: return false
 
-        val commonHeaders = mapOf(
-            "Authorization" to "Bearer $token",
-            "Referer" to mainUrl,
-            "User-Agent" to userAgent,
-            "Accept" to "*/*"
-        )
-
         return try {
-            val response = app.get(
-                "$apiUrl/content/$cleanPath",
-                headers = commonHeaders
-            )
+            val client = OkHttpClient.Builder().build()
 
-            val res = AppUtils.parseJson<VideoDataDto>(response.text)
+            val request = Request.Builder()
+                .url("$apiUrl/content/$cleanPath")
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Referer", "https://www.animeonsen.xyz/")
+                .addHeader("Origin", "https://www.animeonsen.xyz")
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .addHeader("Accept", "application/json, text/plain, */*")
+                .addHeader("Accept-Language", "en-US,en;q=0.9")
+                .build()
+
+            val rawText = client.newCall(request).execute().use { response ->
+                Log.d(TAG, "Logs: Code: ${response.code}, Encoding: ${response.header("content-encoding")}")
+                response.body?.string() ?: return false
+            }
+
+            Log.d(TAG, "Logs: Primeros chars: ${rawText.take(50)}")
+
+            val res = AppUtils.parseJson<VideoDataDto>(rawText)
             val videoUrl = res.uri.stream
 
             if (videoUrl.isNotEmpty()) {
+                val cdnHeaders = mapOf(
+                    "Authorization" to "Bearer $token",
+                    "Referer" to "https://www.animeonsen.xyz/",
+                    "Origin" to "https://www.animeonsen.xyz",
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                    "Accept" to "*/*",
+                    "Accept-Language" to "en-US,en;q=0.9",
+                    "Connection" to "keep-alive"
+                )
+
                 res.uri.subtitles?.forEach { (langPrefix, subUrl) ->
                     val langName = res.metadata.subtitles?.get(langPrefix) ?: langPrefix
-
                     val finalSubUrl = "${subUrl}?format=vtt&t=${System.currentTimeMillis()}"
-
                     subtitleCallback.invoke(
                         newSubtitleFile(langName, finalSubUrl) {
                             this.headers = mapOf(
                                 "Authorization" to "Bearer $token",
                                 "Origin" to "https://www.animeonsen.xyz",
                                 "Referer" to "https://www.animeonsen.xyz/",
-                                "Accept" to "application/json, text/plain, */*",
-                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                                "Sec-Fetch-Mode" to "cors",
-                                "Sec-Fetch-Site" to "same-site"
+                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                             )
                         }
                     )
-                    Log.d(TAG, "Logs: Subtítulo enviado al callback: $langName")
+                    Log.d(TAG, "Logs: Subtítulo: $langName")
                 }
-
-                val isDash = videoUrl.contains(".mpd")
 
                 callback(
                     newExtractorLink(
                         source = this.name,
                         name = this.name,
                         url = videoUrl,
-                        type = if (isDash) ExtractorLinkType.DASH else ExtractorLinkType.VIDEO
+                        type = ExtractorLinkType.DASH
                     ) {
                         this.quality = Qualities.P720.value
-                        this.referer = mainUrl
-                        this.headers = commonHeaders + mapOf("Connection" to "keep-alive")
+                        this.referer = "https://www.animeonsen.xyz/"
+                        this.headers = cdnHeaders
                     }
                 )
 
-                Log.d(TAG, "Logs: Load completo para ${res.metadata.content_title}. Score: ${res.metadata.mal_id}")
+                Log.d(TAG, "Logs: Stream DASH: $videoUrl")
                 true
-            } else false
+            } else {
+                Log.e(TAG, "Logs: videoUrl vacío")
+                false
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Logs Error Crítico loadLinks: ${e.message}")
             false
@@ -291,17 +309,6 @@ class AnimeonsenProvider : MainAPI() {
         val genres: List<Genre>? = null
     )
     @Serializable data class Genre(val name: String)
-
-    data class UriData(
-        val stream: String,
-        val subtitles: Map<String, String>? = null
-    )
-
-    data class MetadataDto(
-        @SerializedName("content_title") val contentTitle: String?,
-        @SerializedName("mal_id") val malId: Int?,
-        val subtitles: Map<String, String>? = null
-    )
 
     @Serializable
     data class VideoDataDto(
