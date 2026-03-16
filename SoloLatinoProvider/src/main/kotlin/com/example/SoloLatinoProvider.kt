@@ -256,7 +256,7 @@ class SoloLatinoProvider : MainAPI() {
             }
         } else listOf()
 
-        Log.d("SoloLatino", "load - ${episodes.size} episodios encontrados para $cleanUrl")
+        //Log.d("SoloLatino", "load - ${episodes.size} episodios encontrados para $cleanUrl")
 
         val recommendations = doc.select("div.scroll-row div.card").mapNotNull { card ->
             val recLink = card.selectFirst("a")?.attr("href")
@@ -302,88 +302,92 @@ class SoloLatinoProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val targetUrl = data.trim()
-        Log.d("SoloLatino", "loadLinks - URL objetivo: $targetUrl")
+        Log.d("SoloLatino", "loadLinks - Iniciando en: $targetUrl")
 
-        if (targetUrl.isBlank()) {
-            Log.e("SoloLatino", "loadLinks - ERROR: URL en blanco.")
+        if (targetUrl.isBlank()) return false
+
+        val html = safeAppGet(targetUrl) ?: return false
+        val doc = Jsoup.parse(html)
+
+        val serverButtons = doc.select("button[data-server-url], .server-btn")
+
+        val serverUrls = serverButtons.mapNotNull { it.attr("data-server-url") }.toMutableList()
+
+        if (serverUrls.isEmpty()) {
+            doc.selectFirst("div#player-frame iframe, iframe")?.attr("src")?.let {
+                if (it.isNotBlank()) serverUrls.add(it)
+            }
+        }
+
+        if (serverUrls.isEmpty()) {
+            Log.e("SoloLatino", "loadLinks - No se encontraron servidores en la página.")
             return false
         }
 
-        val episodeDoc = safeAppGetDoc(targetUrl)
+        Log.d("SoloLatino", "loadLinks - Total servidores detectados: ${serverUrls.size}")
 
-        val serverUrl = episodeDoc.selectFirst("button[data-server-url]")?.attr("data-server-url")
-            ?: episodeDoc.selectFirst("[data-server-url]")?.attr("data-server-url")
-            ?: episodeDoc.selectFirst("iframe[src^=http]")?.attr("src")
-            ?: episodeDoc.selectFirst("iframe[data-src^=http]")?.attr("data-src")
+        serverUrls.distinct().forEach { rawUrl ->
+            val fixedSrc = fixUrl(rawUrl)
+            Log.d("SoloLatino", "loadLinks - Procesando: $fixedSrc")
 
-        if (serverUrl == null) {
-            Log.e("SoloLatino", "loadLinks - ERROR: No se encontró server URL en $targetUrl.")
-            return false
-        }
-
-        val fixedSrc = fixUrl(serverUrl)
-        Log.d("SoloLatino", "loadLinks - Server URL: $fixedSrc")
-
-        when {
-            fixedSrc.contains("embed69.org") -> {
-                Log.d("SoloLatino", "BRANCH: embed69.org")
-                val embed69Headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-                    "Accept" to "*/*",
-                    "Accept-Language" to "es-ES,es;q=0.5",
-                    "Referer" to fixedSrc,
-                    "sec-ch-ua" to "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Brave\";v=\"146\"",
-                    "sec-ch-ua-mobile" to "?0",
-                    "sec-ch-ua-platform" to "\"Windows\"",
-                    "sec-fetch-dest" to "empty",
-                    "sec-fetch-mode" to "cors",
-                    "sec-fetch-site" to "same-origin",
-                    "sec-fetch-storage-access" to "none",
-                    "sec-gpc" to "1",
-                )
-                val embedDoc = app.get(fixedSrc, headers = embed69Headers, timeout = 30000L).document
-                embedDoc.select("script")
-                    .firstOrNull { it.html().contains("dataLink = [") }?.html()
-                    ?.substringAfter("dataLink = ")
-                    ?.substringBefore(";")?.let { dataLinkJson ->
-                        tryParseJson<List<ServersByLang>>(dataLinkJson)?.amap { lang ->
-                            val encryptedLinks = lang.sortedEmbeds.mapNotNull { it.link }
-                            if (encryptedLinks.isEmpty()) return@amap
-                            val body = LinksRequest(encryptedLinks).toJson()
-                                .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-                            val decryptedRes = app.post(
-                                "https://embed69.org/api/decrypt",
-                                requestBody = body,
-                                headers = embed69Headers
-                            )
-                            val decrypted = tryParseJson<Loadlinks>(decryptedRes.text)
-                            if (decrypted?.success == true && decrypted.links.isNotEmpty()) {
-                                decrypted.links.amap { link ->
-                                    loadSourceNameExtractor(lang.videoLanguage ?: "Latino", fixHostsLinks(link.link), targetUrl, subtitleCallback, callback)
+            when {
+                fixedSrc.contains("embed69.org") -> {
+                    Log.d("SoloLatino", "BRANCH: embed69.org")
+                    val embed69Headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                        "Accept" to "*/*",
+                        "Referer" to fixedSrc,
+                    )
+                    val embedDoc = app.get(fixedSrc, headers = embed69Headers, timeout = 30000L).document
+                    embedDoc.select("script")
+                        .firstOrNull { it.html().contains("dataLink = [") }?.html()
+                        ?.substringAfter("dataLink = ")
+                        ?.substringBefore(";")?.let { dataLinkJson ->
+                            tryParseJson<List<ServersByLang>>(dataLinkJson)?.amap { lang ->
+                                val encryptedLinks = lang.sortedEmbeds.mapNotNull { it.link }
+                                if (encryptedLinks.isEmpty()) return@amap
+                                val body = LinksRequest(encryptedLinks).toJson()
+                                    .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+                                val decryptedRes = app.post(
+                                    "https://embed69.org/api/decrypt",
+                                    requestBody = body,
+                                    headers = embed69Headers
+                                )
+                                val decrypted = tryParseJson<Loadlinks>(decryptedRes.text)
+                                if (decrypted?.success == true && decrypted.links.isNotEmpty()) {
+                                    decrypted.links.amap { link ->
+                                        loadSourceNameExtractor(lang.videoLanguage ?: "Latino", fixHostsLinks(link.link), fixedSrc, subtitleCallback, callback)
+                                    }
                                 }
-                            } else {
-                                Log.e("SoloLatino", "EMBED69 ERROR: ${decrypted?.reason}")
                             }
                         }
-                    } ?: Log.e("SoloLatino", "EMBED69: No se extrajo dataLink JSON.")
-            }
-
-            fixedSrc.contains("xupalace.org/video") -> {
-                Log.d("SoloLatino", "BRANCH: xupalace.org")
-                val regex = """(go_to_player|go_to_playerVast)\('([^']+)'""".toRegex()
-                val foundLinks = regex.findAll(safeAppGetDoc(fixedSrc).html()).map { it.groupValues[2] }.toList()
-                if (foundLinks.isNotEmpty()) {
-                    foundLinks.amap { loadExtractor(fixHostsLinks(it), targetUrl, subtitleCallback, callback) }
-                } else {
-                    Log.e("SoloLatino", "XUPALACE: No se encontraron links.")
                 }
-            }
 
-            else -> {
-                Log.d("SoloLatino", "BRANCH: Host intermedio: $fixedSrc")
-                safeAppGetDoc(fixedSrc).selectFirst("iframe")?.attr("src")?.let { nestedSrc ->
-                    loadExtractor(fixHostsLinks(fixUrl(nestedSrc)), targetUrl, subtitleCallback, callback)
-                } ?: loadExtractor(fixHostsLinks(fixedSrc), targetUrl, subtitleCallback, callback)
+                fixedSrc.contains("xupalace.org") -> {
+                    Log.d("SoloLatino", "BRANCH: xupalace.org")
+                    val xupalaceHtml = app.get(fixedSrc, headers = baseHeaders).text
+                    val regex = Regex("""go_to_playerVast\s*\(\s*'([^']+)'""")
+                    val foundLinks = regex.findAll(xupalaceHtml).map { it.groupValues[1] }.distinct().toList()
+
+                    if (foundLinks.isNotEmpty()) {
+                        foundLinks.amap { link ->
+                            loadExtractor(fixHostsLinks(fixUrl(link)), fixedSrc, subtitleCallback, callback)
+                        }
+                    } else {
+                        val docX = Jsoup.parse(xupalaceHtml)
+                        val liLinks = docX.select("li[onclick*='http']").mapNotNull {
+                            val clickAttr = it.attr("onclick")
+                            Regex("'([^']+)'").find(clickAttr)?.groupValues?.get(1)
+                        }
+                        liLinks.amap { loadExtractor(fixHostsLinks(fixUrl(it)), fixedSrc, subtitleCallback, callback) }
+                    }
+                }
+
+                else -> {
+                    Log.d("SoloLatino", "BRANCH: Direct/Generic: $fixedSrc")
+                    val cleanUrl = fixHostsLinks(fixedSrc)
+                    loadExtractor(cleanUrl, targetUrl, subtitleCallback, callback)
+                }
             }
         }
 
@@ -415,6 +419,8 @@ suspend fun loadSourceNameExtractor(
 
 fun fixHostsLinks(url: String): String {
     return url
+        .replaceFirst("https://hglink.to", "https://streamwish.to")
+        .replaceFirst("https://bysedikamoum.com", "https://filemoon.sx")
         .replaceFirst("https://hglink.to", "https://streamwish.to")
         .replaceFirst("https://swdyu.com", "https://streamwish.to")
         .replaceFirst("https://cybervynx.com", "https://streamwish.to")
