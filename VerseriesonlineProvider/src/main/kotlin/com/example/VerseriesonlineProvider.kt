@@ -150,7 +150,7 @@ class VerseriesonlineProvider : MainAPI() {
         }
         val tvType = TvType.TvSeries
 
-        val title = doc.selectFirst("div.fstory-infos h1.fstory-h1")?.text()?.replace("ver serie ", "")?.replace(" Online gratis HD", "")?.trim().orEmpty()
+        val title = doc.selectFirst("div.fstory-infos h1.fstory-h1")?.text()?.replace("ver serie ", "")?.replace(" Online HD", "")?.trim().orEmpty()
         val poster = doc.selectFirst("div.fstory-poster-in img")?.attr("src")?.trim().orEmpty()
         val description = doc.selectFirst("div.block-infos p")?.text()?.trim().orEmpty()
         val tags = doc.select("div.finfo-block a[href*='/series-online/']").map { it.text().trim().orEmpty() }
