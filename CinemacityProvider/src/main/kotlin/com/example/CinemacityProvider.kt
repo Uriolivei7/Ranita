@@ -31,6 +31,7 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.toNewSearchResponseList
+import com.lagradost.cloudstream3.ui.player.TAG
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
@@ -432,6 +433,8 @@ class CinemacityProvider : MainAPI() {
         if (streamUrls.isEmpty()) return false
 
         streamUrls.forEach { url ->
+            Log.d(TAG, "Cargando link en celular: $url")
+
             callback(
                 newExtractorLink(
                     name,
@@ -439,8 +442,13 @@ class CinemacityProvider : MainAPI() {
                     url,
                     INFER_TYPE
                 ) {
-                    referer = mainUrl
-                    quality = extractQuality(url)
+                    this.referer = mainUrl
+                    this.headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+                        "Referer" to mainUrl,
+                        "Accept" to "*/*"
+                    )
+                    this.quality = extractQuality(url)
                 }
             )
         }
