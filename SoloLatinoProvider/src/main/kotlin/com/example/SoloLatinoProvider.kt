@@ -85,20 +85,9 @@ class SoloLatinoProvider : MainAPI() {
         val items = ArrayList<HomePageList>()
         val urls = listOf(
             Pair("Series Recientes", "$mainUrl/series"),
-            Pair("Películas Recientes", "$mainUrl/peliculas"),
             Pair("Animes Recientes", "$mainUrl/animes"),
-            Pair("Netflix", "$mainUrl/red/netflix"),
-            Pair("Amazon Prime Video", "$mainUrl/red/amazon-prime-video"),
-            Pair("Disney+", "$mainUrl/red/disney"),
-            Pair("AppleTV+", "$mainUrl/red/apple-tv"),
-            Pair("Hulu", "$mainUrl/red/hulu"),
-            Pair("HBO Max", "$mainUrl/red/hbo-max"),
-            Pair("HBO", "$mainUrl/red/hbo"),
-            Pair("Tokyo Mx", "$mainUrl/red/tokyo-mx"),
-            Pair("Tv Tokyo", "$mainUrl/red/tv-tokyo"),
-            Pair("At-X", "$mainUrl/red/at-x"),
-            Pair("Bs11", "$mainUrl/red/bs11"),
-            Pair("Fuji Tv", "$mainUrl/red/fuji-tv"),
+            Pair("Doramas Recientes", "$mainUrl/doramas"),
+            Pair("Películas Recientes", "$mainUrl/peliculas")
         )
 
         val homePageLists = urls.map { (name, url) ->
