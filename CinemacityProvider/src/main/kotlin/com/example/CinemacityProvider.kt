@@ -31,7 +31,6 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.toNewSearchResponseList
-import com.lagradost.cloudstream3.ui.player.TAG
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
@@ -49,7 +48,7 @@ class CinemacityProvider : MainAPI() {
     override val hasDownloadSupport = false
     override val hasQuickSearch = false
     override val supportedTypes = setOf(
-        TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.AsianDrama
+        TvType.Movie, TvType.TvSeries
     )
     companion object
     {
@@ -79,7 +78,7 @@ class CinemacityProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "tv-series" to "Series",
         "xfsearch/genre/animation" to "Animación",
-        "movies" to "Películas",
+        "movies" to "Movies",
         "xfsearch/genre/documentary" to "Documentales",
     )
 
@@ -433,8 +432,7 @@ class CinemacityProvider : MainAPI() {
         if (streamUrls.isEmpty()) return false
 
         streamUrls.forEach { url ->
-            Log.d(TAG, "Cargando link en celular: $url")
-
+            Log.d("Cinemacity", "Cargando link: $url con headers: $headers")
             callback(
                 newExtractorLink(
                     name,
@@ -443,11 +441,7 @@ class CinemacityProvider : MainAPI() {
                     INFER_TYPE
                 ) {
                     this.referer = mainUrl
-                    this.headers = mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-                        "Referer" to mainUrl,
-                        "Accept" to "*/*"
-                    )
+                    this.headers = headers
                     this.quality = extractQuality(url)
                 }
             )
