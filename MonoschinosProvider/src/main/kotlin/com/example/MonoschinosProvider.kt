@@ -1,205 +1,189 @@
 package com.example
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import kotlinx.coroutines.*
-import org.jsoup.nodes.Element
-import android.util.Log // Aseguramos la importación
+import java.util.*
+import kotlin.collections.ArrayList
 
 class MonoschinosProvider : MainAPI() {
-    override var mainUrl = "https://ww3.monoschinos3.com"
-    override var name = "MonosChinos3"
-    override val hasMainPage = true
+    companion object {
+        fun getType(t: String): TvType {
+            return if (t.contains("OVA") || t.contains("Especial")) TvType.OVA
+            else if (t.contains("Pelicula")) TvType.AnimeMovie
+            else TvType.Anime
+        }
+        fun getDubStatus(title: String): DubStatus {
+            return if (title.contains("Latino") || title.contains("Castellano"))
+                DubStatus.Dubbed
+            else DubStatus.Subbed
+        }
+        var latestCookie: Map<String, String> = emptyMap()
+        var latestToken = ""
+    }
+
+    override var mainUrl = "https://monoschinos2.com"
+    override var name = "MonosChinos"
     override var lang = "mx"
+    override val hasMainPage = true
+    override val hasChromecastSupport = true
     override val hasDownloadSupport = true
-    override val hasQuickSearch = true
     override val supportedTypes = setOf(
-        TvType.Anime,
         TvType.AnimeMovie,
         TvType.OVA,
+        TvType.Anime,
     )
 
-    override val mainPage = mainPageOf(
-        "" to "Últimos capítulos 🔥",
-        "" to "Series recientes ⛩"
-    )
-
-    private fun getTvType(text: String): TvType {
-        return when {
-            text.contains("pelicula", ignoreCase = true) -> TvType.AnimeMovie
-            text.contains("anime", ignoreCase = true) -> TvType.Anime
-            text.contains("ova", ignoreCase = true) -> TvType.Anime
-            text.contains("especial", ignoreCase = true) -> TvType.Anime
-            else -> TvType.Anime
-        }
+    private suspend fun getToken(url: String): Map<String, String> {
+        val maintas = app.get(url)
+        val token = maintas.document.selectFirst("html head meta[name=csrf-token]")?.attr("content") ?: ""
+        val cookies = maintas.cookies
+        latestToken = token
+        latestCookie = cookies
+        return latestCookie
     }
 
-    private fun getStatus(text: String): ShowStatus? {
-        return when (text.lowercase()) {
-            "en emisión", "en emision" -> ShowStatus.Ongoing
-            "finalizado" -> ShowStatus.Completed
-            else -> null
-        }
-    }
 
-    private fun String.base64Decode(): String {
-        return try {
-            String(android.util.Base64.decode(this, android.util.Base64.DEFAULT))
-        } catch (e: IllegalArgumentException) {
-            Log.e("Base64", "Error al decodificar: $this", e)
-            ""
-        }
-    }
-
-    private fun Element.toSearchResult(): SearchResponse? {
-        val a = this.selectFirst("a") ?: return null
-
-        val href = fixUrl(a.attr("href"))
-
-        val title = a.selectFirst("h3")?.text() ?: a.selectFirst("img")?.attr("alt") ?: ""
-
-        val posterUrl = fixUrlNull(a.selectFirst("div.tarjeta img")?.attr("src") ?: a.selectFirst("img")?.attr("src"))
-
-        val spanText = a.selectFirst("span.text-muted")?.text() ?: ""
-        val type = getTvType(spanText)
-
-        return newAnimeSearchResponse(title, href, type) {
-            this.posterUrl = posterUrl
-        }
-    }
-
-    private fun Element.toEpisodeSearchResult(): SearchResponse? {
-        val a = this.selectFirst("a") ?: return null
-
-        val episodeHref = fixUrl(a.attr("href"))
-
-        val seriesPath = episodeHref.substringBefore("/episodio")
-        val seriesHref = fixUrl(seriesPath.replace("/ver/", "/anime/"))
-
-        val title = a.selectFirst("h3")?.text() ?: a.selectFirst("img")?.attr("alt") ?: ""
-
-        val posterUrl = fixUrlNull(a.selectFirst("img")?.attr("src"))
-
-        val type = TvType.Anime
-
-        return newAnimeSearchResponse(title, seriesHref, type) {
-            this.posterUrl = posterUrl
-        }
-    }
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val requestUrl = if (page <= 1) mainUrl else "$mainUrl/${request.data}?pagina=$page"
-
-        Log.d("Monoschinos3", "Solicitando URL: $requestUrl para ${request.name}")
-
-        val document = app.get(requestUrl).document
-        Log.d("Monoschinos3", "Documento cargado. Tamaño: ${document.html().length}")
-
-        val list: List<SearchResponse> = when (request.name) {
-            "Series recientes ⛩" -> {
-                // Selector basado en el H2 que viste en el HTML
-                document.select("section:has(h2:contains(Series recientes)) article").mapNotNull {
-                    it.toSearchResult()
-                }
-            }
-            "Últimos capítulos 🔥" -> {
-                document.select("section:has(h2:contains(Últimos capítulos)) article").mapNotNull {
-                    it.toEpisodeSearchResult()
-                }
-            }
-            else -> {
-                document.select("ul[role=list] li article, li.ficha_efecto").mapNotNull { it.toSearchResult() }
-            }
-        }
-
-        Log.d("Monoschinos3", "${request.name} encontrados: ${list.size}")
-
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = list,
-                isHorizontalImages = false
-            ),
-            hasNext = document.select("a.btn.btn-outline-primary").text().contains("Siguiente")
+    override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
+        val urls = listOf(
+            Pair("$mainUrl/emision", "Recientes"),
+            Pair("$mainUrl/animes", "Animes"),
         )
-    }
+        val items = ArrayList<HomePageList>()
+        val isHorizontal = true
+        items.add(
+            HomePageList(
+                "Capítulos actualizados",
+                app.get(mainUrl, timeout = 120).document.select(".row-cols-xl-4 li article").map {
+                    val title = it.selectFirst("h2")?.text() ?: it.selectFirst("h2.text-truncate")?.text() ?: ""
+                    val poster =
+                        it.selectFirst("img")?.attr("data-src") ?: ""
 
-    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
+                    val epRegex = Regex("episodio-(\\d+)")
+                    val url = it.selectFirst("a")?.attr("href")!!.replace("ver/", "anime/")
+                        .replace(epRegex, "sub-espanol")
+                    val epNum = (it.selectFirst("article span.episode")?.text() ?: it.selectFirst("div.positioning p")?.text())?.toIntOrNull()
+                    newAnimeSearchResponse(title, url) {
+                        this.posterUrl = fixUrl(poster)
+                        addDubStatus(getDubStatus(title), epNum)
+                    }
+                }, isHorizontal)
+        )
+
+        urls.amap { (url, name) ->
+
+            val home = app.get(url, timeout = 120).document.select("li.col").map {
+                val title = it.selectFirst("h3")!!.text()
+                val poster =
+                    it.selectFirst("img")?.attr("data-src")
+                        ?: ""
+
+                newAnimeSearchResponse(title, fixUrl(it.selectFirst("a")!!.attr("href"))) {
+                    this.posterUrl = fixUrl(poster)
+                    addDubStatus(getDubStatus(title))
+                }
+            }
+
+            items.add(HomePageList(name, home))
+        }
+
+        if (items.size <= 0) throw ErrorLoadingException()
+        return newHomePageResponse(items)
+    }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("${mainUrl}/animes?q=$query").document
+        return app.get("$mainUrl/buscar?q=$query", timeout = 120).document.select("li.col article").map {
+            val title = it.selectFirst("h3")!!.text()
+            val href = fixUrl(it.selectFirst("a")!!.attr("href"))
+            val image = it.selectFirst("img")!!.attr("data-src")
+            newAnimeSearchResponse(
+                title,
+                href,
+                TvType.Anime,
+            ){
+                this.posterUrl = fixUrl(image)
+                this.dubStatus = if (title.contains("Latino") || title.contains("Castellano")) EnumSet.of(
+                    DubStatus.Dubbed
+                ) else EnumSet.of(DubStatus.Subbed)
 
-        val results = document.select("li.ficha_efecto").mapNotNull { it.toSearchResult() }
-        return results
+            }
+        }
     }
 
+    data class CapList(
+        @JsonProperty("eps") val eps: List<Ep>? = null,
+        @JsonProperty("caps") val caps: List<Ep>? = null,
+    )
+
+    data class Ep(
+        @JsonProperty("num") val num: Int? = null,
+        @JsonProperty("episodio") val episodio: Int? = null,
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("thumb") val thumb: String? = null,
+    )
+
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        getToken(url)
+        val doc = app.get(url, timeout = 120).document
+        val caplist = doc.selectFirst(".caplist")!!.attr("data-ajax")
+        val poster = doc.selectFirst("img.w-100")!!.attr("data-src")
+        val backimage = doc.selectFirst("img.rounded-3")!!.attr("data-src")
+        val title = doc.selectFirst(".fs-2")!!.text()
+        val type = doc.selectFirst("div.bg-transparent > dl:nth-child(1) > dd:nth-child(2)")?.text() ?: ""
+        val description = doc.selectFirst("div.mb-3")!!.text().replace("Ver menos", "")
+        val genres = doc.select(".my-4 > div a span").map { it.text() }
+        val status = when (doc.selectFirst("div.col:nth-child(1) > div:nth-child(1) > div")?.text()) {
+            "Estreno" -> ShowStatus.Ongoing
+            "Finalizado" -> ShowStatus.Completed
+            else -> null
+        }
+        val capJson = app.post(caplist,
+            headers = mapOf(
+                "Host" to "monoschinos2.com",
+                "User-Agent" to USER_AGENT,
+                "Accept" to "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language" to "en-US,en;q=0.5",
+                "Referer" to url,
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With" to "XMLHttpRequest",
+                "Origin" to mainUrl,
+                "DNT" to "1",
+                "Alt-Used" to "monoschinos2.com",
+                "Connection" to "keep-alive",
+                "Sec-Fetch-Dest" to "empty",
+                "Sec-Fetch-Mode" to "cors",
+                "Sec-Fetch-Site" to "same-origin",
+                "TE" to "trailers"
+            ),
+            cookies = latestCookie,
+            data = mapOf("_token" to latestToken)).parsed<CapList>()
 
-        val title = document.selectFirst("h2.titulo-post")?.text()
-            ?: document.selectFirst("h2.fs-5.text-light")?.text() ?: "Unknown"
+        val allEpisodes = capJson.eps ?: capJson.caps ?: emptyList()
 
-        val poster = fixUrlNull(document.selectFirst("div.mt-5 img")?.attr("src"))
-            ?: fixUrlNull(document.selectFirst("section img")?.attr("src")) ?: ""
+        val epList = allEpisodes.map { ep ->
+            val episodeNumber = ep.episodio ?: ep.num
+            val epUrl = ep.url ?: "${url.replace("-sub-espanol","").replace("/anime/","/ver/")}-episodio-$episodeNumber"
 
-        val description = document.selectFirst("p#synopsis")?.text()
-
-        val infoDl = document.selectFirst("dl")
-
-        val rawtype = infoDl?.select("dt:contains(Tipo:) + dd")?.text() ?: ""
-        val type = getTvType(rawtype)
-
-        val yearText = infoDl?.select("dt:contains(Fecha de emisión:) + dd")?.text()
-        val year = yearText?.toIntOrNull()
-
-        val statusText = document.selectFirst("div.d-flex.gap-2.lh-sm:contains(Estado) div:last-child")?.text()
-        val showStatus = statusText?.let { getStatus(it) }
-
-        val tags = document.select("div.lh-lg a span.badge").map { it.text() }
-
-        val recommendations = emptyList<SearchResponse>()
-
-        if (type == TvType.Anime || type == TvType.AnimeMovie) {
-            val episodes = mutableListOf<Episode>()
-
-            document.select("div#home-tab-pane li article a").map {
-                val epHref = fixUrl(it.attr("href") ?: return@map)
-                val titleElement = it.selectFirst("h2")?.text() ?: ""
-
-                val epNumber = Regex("""(\d+)""").find(titleElement)?.groupValues?.get(1)?.toIntOrNull()
-                    ?: epHref.substringAfterLast("-").toIntOrNull()
-
-                episodes.add(
-                    newEpisode(epHref) {
-                        this.name = titleElement
-                        this.episode = epNumber
-                        this.posterUrl = fixUrlNull(it.selectFirst("img")?.attr("src"))
-                    }
-                )
+            val thumbUrl = if (!ep.thumb.isNullOrBlank()) {
+                if (ep.thumb.startsWith("http")) ep.thumb else "$mainUrl${ep.thumb}"
+            } else {
+                backimage
             }
 
-            val sortedEpisodes = episodes.sortedBy { it.episode }
-
-            return newAnimeLoadResponse(title, url, type) {
-                addEpisodes(DubStatus.Subbed, sortedEpisodes)
-                this.posterUrl = poster
-                this.plot = description
-                this.year = year
-                this.showStatus = showStatus
-                this.tags = tags
-                this.recommendations = recommendations
+            newEpisode(epUrl) {
+                this.episode = episodeNumber
+                this.posterUrl = thumbUrl
             }
-        } else {
-            val href = fixUrl(document.selectFirst("a[href*='/ver/']:contains(Ver Ahora)")?.attr("href") ?: "")
+        }
 
-            return newMovieLoadResponse(title, url, type, href) {
-                this.posterUrl = poster
-                this.plot = description
-                this.tags = tags
-                this.year = year
-                this.recommendations = recommendations
-            }
+        return newAnimeLoadResponse(title, url, getType(type)) {
+            posterUrl = poster
+            backgroundPosterUrl = backimage
+            addEpisodes(DubStatus.Subbed, epList)
+            showStatus = status
+            plot = description
+            tags = genres
         }
     }
 
@@ -209,62 +193,13 @@ class MonoschinosProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("Monoschinos3", "loadLinks iniciado con URL: $data")
-
-        val document = try {
-            app.get(data).document
-        } catch (e: Exception) {
-            Log.e("Monoschinos3", "Error al cargar documento: ${e.message}")
-            return false
+        app.get(data).document.select("#myTab li").amap {
+            val encodedurl = it.select(".play-video").attr("data-player")
+            val urlDecoded = base64Decode(encodedurl)
+            val url = (urlDecoded).replace("https://monoschinos2.com/reproductor?url=", "")
+                .replace("https://sblona.com","https://watchsb.com").replace("https://swdyu.com","https://streamwish.to")
+            loadExtractor(url, mainUrl, subtitleCallback, callback)
         }
-
-        val serverLinks = mutableListOf<Pair<String, String>>()
-
-        document.select("ul.nav-tabs button.play-video").forEach { element ->
-            val serverName = element.attr("data-title")
-            val base64Url = element.attr("data-video")
-
-            if (base64Url.isNotEmpty()) {
-                try {
-                    val decodedUrl = base64Url.base64Decode()
-
-                    if (decodedUrl.startsWith("http")) {
-                        serverLinks.add(serverName to decodedUrl)
-                    }
-                } catch (e: Exception) {
-                    Log.e("Monoschinos3", "Error decodificando Base64 para ${serverName}: ${e.message}")
-                }
-            }
-        }
-
-        if (serverLinks.isEmpty()) {
-            Log.e("Monoschinos3", "No se encontraron enlaces de servidores.")
-            return false
-        }
-
-        val jobs = mutableListOf<Job>()
-        coroutineScope {
-            serverLinks.forEach { (server, url) ->
-                jobs += launch(Dispatchers.IO) {
-                    Log.d("Monoschinos3", "Cargando extractor para: $server - $url")
-                    try {
-                        loadExtractor(
-                            url = url,
-                            referer = mainUrl,
-                            subtitleCallback = subtitleCallback,
-                            callback = callback
-                        )
-                    } catch (e: Exception) {
-                        Log.e("Monoschinos3", "Error procesando $server: ${e.message}, URL: $url")
-                    }
-                }
-            }
-        }
-
-        jobs.joinAll()
-
-        return serverLinks.isNotEmpty().also {
-            Log.i("Monoschinos3", "Procesamiento de loadLinks completado, Éxito: $it")
-        }
+        return true
     }
 }
