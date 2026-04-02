@@ -591,10 +591,11 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados",
+    "description": "Plugin para Animes Subtitulados y con algunos Doblajes",
     "tvTypes": [
       "Anime",
-      "AnimeMovie"
+      "AnimeMovie",
+      "OVA"
     ],
     "iconUrl": "https://monoschinos2.com/favicon.ico?v=4.53",
     "language": "mx",
