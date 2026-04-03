@@ -30,6 +30,29 @@ class Vimeos : ExtractorApi() {
             "Accept-Language" to "es-ES,es;q=0.7"
         )
 
+        val subData = Regex("""["']([^"']+\.vtt[^"']*)["']""").find(unpackedJs)?.groupValues?.get(1)
+
+        subData?.split(",")?.forEach { rawSub ->
+            try {
+                val langLabel = Regex("""\[([^\]]+)\]""").find(rawSub)?.groupValues?.get(1) ?: "Español"
+                val cleanSubUrl = rawSub.substringAfter("]").trim()
+
+                if (cleanSubUrl.startsWith("http")) {
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            lang = langLabel,
+                            url = cleanSubUrl
+                        ) {
+                            this.headers = headerMap
+                        }
+                    )
+                    Log.d("LaMovie", "LOG: Subtítulo detectado: $langLabel -> $cleanSubUrl")
+                }
+            } catch (e: Exception) {
+                Log.e("LaMovie", "LOG Error en sub: ${e.message}")
+            }
+        }
+
         videoUrl?.let { m3u8 ->
             Log.i("LaMovie", "LOG: Generando enlaces fluidos para Vimeos...")
 
