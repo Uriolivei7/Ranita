@@ -152,12 +152,17 @@ class AnimeParadiseProvider : MainAPI() {
         return if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
     }
 
+    private fun getEnglishTitle(title: String?, altTitle: AlternativeTitle?): String {
+        return altTitle?.english ?: title ?: "Unknown"
+    }
+
     private fun AnimeObject.toSearchResponse(): SearchResponse {
         val rawImage = this.image ?: this.posterImage?.large ?: this.posterImage?.original
         val rawLink = this.link ?: ""
         val cleanSlug = rawLink.trim('/').split('/').lastOrNull() ?: this.id ?: ""
+        val displayTitle = getEnglishTitle(this.title, this.alternativeTitle)
         return newAnimeSearchResponse(
-            this.title ?: "Sin título",
+            displayTitle,
             "$mainUrl/anime/$cleanSlug",
             TvType.Anime
         ) {
@@ -194,14 +199,14 @@ class AnimeParadiseProvider : MainAPI() {
             }?.sortedBy { it.episode } ?: emptyList()
 
             val recommendations = simData.data?.map { sim ->
-                newAnimeSearchResponse(sim.title ?: "", "$mainUrl/anime/${sim.link}") {
+                newAnimeSearchResponse(getEnglishTitle(sim.title, sim.alternativeTitle), "$mainUrl/anime/${sim.link}") {
                     this.posterUrl = sim.posterImage?.large
                 }
             }
 
             Log.d(TAG, "Logs: ${episodes.size} episodios encontrados")
 
-            newAnimeLoadResponse(data.title ?: "Anime", url, TvType.Anime) {
+            newAnimeLoadResponse(getEnglishTitle(data.title, data.alternativeTitle), url, TvType.Anime) {
                 this.posterUrl = data.posterImage?.original ?: data.posterImage?.large
                 this.plot = data.synopsis ?: data.synopsys
                 this.tags = if (data.tags?.isNotEmpty() == true) data.tags else data.genres
@@ -313,9 +318,11 @@ data class AnimeObject(
     @JsonAlias("synopsys", "synopsis") val synopsis: String? = null,
     val genres: List<String>? = null,
     val posterImage: ImageInfo? = null,
-    val image: String? = null
+    val image: String? = null,
+    val alternativeTitle: AlternativeTitle? = null
 )
 data class ImageInfo(val original: String? = null, val large: String? = null)
+data class AlternativeTitle(val english: String? = null, val native: String? = null, val romaji: String? = null)
 data class AnimeListResponse(val data: List<AnimeObject>? = null)
 data class AnimeDetailResponse(val success: Boolean?, val data: AnimeData?)
 data class AnimeData(
@@ -328,12 +335,13 @@ data class AnimeData(
     val genres: List<String>?,
     val tags: List<String>?,
     val posterImage: PosterImages?,
-    val animeSeason: SeasonInfo?
+    val animeSeason: SeasonInfo?,
+    val alternativeTitle: AlternativeTitle? = null
 )
 data class SeasonInfo(val season: String?, val year: Int?)
 data class PosterImages(val large: String?, val original: String?)
 data class SimilarResponse(val success: Boolean?, val data: List<SimilarAnime>?)
-data class SimilarAnime(val title: String?, val link: String?, val posterImage: PosterImages?)
+data class SimilarAnime(val title: String?, val link: String?, val posterImage: PosterImages?, val alternativeTitle: AlternativeTitle? = null)
 data class EpisodeListResponse(val success: Boolean?, val data: List<EpisodeData>?)
 data class EpisodeData(
     @JsonProperty("_id") val id: String?,
