@@ -208,38 +208,29 @@ class LamovieProvider : MainAPI() {
         Log.d(TAG, "Logs: Intentando cargar enlaces para ID: $data")
 
         val cleanData = Regex("""\d+""").find(data)?.value ?: data
-        Log.d(TAG, "Logs: ID Original: $data -> ID Limpio: $cleanData")
-
         val playerUrl = "$apiBase/player?postId=$cleanData&demo=0"
 
         val res = try {
-            val response = app.get(playerUrl, headers = mapOf("Referer" to "$mainUrl/"))
-            Log.d(TAG, "Logs: HTTP Status: ${response.code} desde $playerUrl")
-            response.text
+            app.get(playerUrl, headers = mapOf("Referer" to "$mainUrl/")).text
         } catch (e: Exception) {
-            Log.e(TAG, "Logs Error: Fallo de conexión: ${e.message}")
+            Log.e(TAG, "Logs Error: Fallo de conexión API: ${e.message}")
             return false
         }
 
-        Log.d(TAG, "Logs: Respuesta JSON: $res")
-
-        val response = try { parseJson<PlayerResponse>(res) } catch (e: Exception) {
-            Log.e(TAG, "Logs Error: Error de parseo JSON")
-            null
-        }
-
+        val response = try { parseJson<PlayerResponse>(res) } catch (e: Exception) { null }
         val embeds = response?.data?.embeds ?: emptyList()
-        if (embeds.isEmpty()) {
-            Log.w(TAG, "Logs: No se encontraron embeds. ¿Es el ID $data correcto para un episodio?")
-        }
 
         embeds.forEach { embed ->
-            val embedUrl = embed.url ?: return@forEach
-            Log.d(TAG, "Logs: Procesando URL encontrada: $embedUrl")
+            val rawUrl = embed.url ?: return@forEach
+
+            val embedUrl = rawUrl.replace("\\/", "/")
+            Log.d(TAG, "Logs: Procesando URL limpia: $embedUrl")
 
             if (embedUrl.contains("la.movie/embed.html")) {
                 try {
-                    val realUrl = app.get(embedUrl, referer = "$mainUrl/").document.select("iframe").attr("src")
+                    val doc = app.get(embedUrl, referer = "$mainUrl/").document
+                    val realUrl = doc.select("iframe").attr("src").replace("\\/", "/")
+
                     if (realUrl.isNotBlank()) {
                         Log.d(TAG, "Logs: Iframe interno encontrado: $realUrl")
                         loadExtractor(realUrl, embedUrl, subtitleCallback, callback)
@@ -248,7 +239,7 @@ class LamovieProvider : MainAPI() {
                     Log.e(TAG, "Logs Error: Fallo en el iframe -> ${e.message}")
                 }
             } else {
-                loadExtractor(embedUrl, "$mainUrl/", subtitleCallback, callback)
+                loadExtractor(embedUrl, embedUrl, subtitleCallback, callback)
             }
         }
         return true
@@ -294,7 +285,6 @@ class LamovieProvider : MainAPI() {
 
     data class EpisodeListResponse(val data: EpisodeListData?)
     data class EpisodeListData(val posts: List<EpisodePostItem>?, val seasons: List<String>?)
-
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodePostItem(
         @JsonProperty("_id") val id: Int?,
