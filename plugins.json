@@ -463,7 +463,7 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeparadiseProvider.cs3",
-    "status": 0,
+    "status": 1,
     "version": 3,
     "apiVersion": 1,
     "name": "AnimeParadise",
@@ -478,7 +478,7 @@
     ],
     "iconUrl": "https://www.animeparadise.moe/icon/favicon-32x32.png",
     "language": "en",
-    "fileSize": 33000
+    "fileSize": 35000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GnulaProvider.cs3",
