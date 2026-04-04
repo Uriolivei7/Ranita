@@ -23,7 +23,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",
     "status": 1,
-    "version": 11,
+    "version": 12,
     "apiVersion": 1,
     "name": "PlusHD",
     "internalName": "PlushdProvider",
@@ -303,45 +303,6 @@
     "iconUrl": "https://net51.cc/img/nf2/icon_x192.png",
     "language": "en",
     "fileSize": 60000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/IptvProvider.cs3",
-    "status": 1,
-    "version": 2,
-    "apiVersion": 1,
-    "name": "IPTVm3u",
-    "internalName": "IptvProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para listas IPTV",
-    "tvTypes": [
-      "Live",
-      "Other"
-    ],
-    "iconUrl": "https://img.icons8.com/?size=96&id=ZoYpHWHHeiQa&format=png",
-    "language": "mx",
-    "fileSize": 37000
-  },
-  {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/XtreamProvider.cs3",
-    "status": 1,
-    "version": 2,
-    "apiVersion": 1,
-    "name": "XtreamIPTV",
-    "internalName": "XtreamProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para cuentas IPTV",
-    "tvTypes": [
-      "TvSeries",
-      "Movie",
-      "Live"
-    ],
-    "iconUrl": "https://img.icons8.com/?size=96&id=oQQIRt5dU74V&format=png",
-    "language": "mx",
-    "fileSize": 43000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HenaojaraProvider.cs3",
