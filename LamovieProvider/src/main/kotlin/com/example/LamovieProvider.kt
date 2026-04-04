@@ -207,8 +207,10 @@ class LamovieProvider : MainAPI() {
     ): Boolean {
         Log.d(TAG, "Logs: Intentando cargar enlaces para ID: $data")
 
-        val cleanData = Regex("""\d+""").find(data)?.value ?: data
-        val playerUrl = "$apiBase/player?postId=$cleanData&demo=0"
+        val cleanId = Regex("""(\d+)$""").find(data.trimEnd('/'))?.groupValues?.get(1) ?: data
+
+        val playerUrl = "$apiBase/player?postId=$cleanId&demo=0"
+        Log.d(TAG, "Logs: URL de API final: $playerUrl")
 
         val res = try {
             app.get(playerUrl, headers = mapOf("Referer" to "$mainUrl/")).text
@@ -223,23 +225,23 @@ class LamovieProvider : MainAPI() {
         embeds.forEach { embed ->
             val rawUrl = embed.url ?: return@forEach
 
-            val embedUrl = rawUrl.replace("\\/", "/")
+            val embedUrl = rawUrl.replace("\\/", "/").trim()
             Log.d(TAG, "Logs: Procesando URL limpia: $embedUrl")
 
             if (embedUrl.contains("la.movie/embed.html")) {
                 try {
                     val doc = app.get(embedUrl, referer = "$mainUrl/").document
-                    val realUrl = doc.select("iframe").attr("src").replace("\\/", "/")
+                    val realUrl = doc.select("iframe").attr("src").replace("\\/", "/").trim()
 
                     if (realUrl.isNotBlank()) {
                         Log.d(TAG, "Logs: Iframe interno encontrado: $realUrl")
-                        loadExtractor(realUrl, embedUrl, subtitleCallback, callback)
+                        loadExtractor(realUrl, "$mainUrl/", subtitleCallback, callback)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Logs Error: Fallo en el iframe -> ${e.message}")
                 }
             } else {
-                loadExtractor(embedUrl, embedUrl, subtitleCallback, callback)
+                loadExtractor(embedUrl, "$mainUrl/", subtitleCallback, callback)
             }
         }
         return true
@@ -285,6 +287,7 @@ class LamovieProvider : MainAPI() {
 
     data class EpisodeListResponse(val data: EpisodeListData?)
     data class EpisodeListData(val posts: List<EpisodePostItem>?, val seasons: List<String>?)
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodePostItem(
         @JsonProperty("_id") val id: Int?,

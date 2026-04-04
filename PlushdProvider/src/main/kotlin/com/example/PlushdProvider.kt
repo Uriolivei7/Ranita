@@ -1,14 +1,15 @@
 package com.example
 
+import android.util.Base64
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import android.util.Base64
-import kotlinx.coroutines.delay
 import java.net.URL
+import java.util.regex.Pattern
+import kotlinx.coroutines.delay
 
 class PlushdProvider : MainAPI() {
     override var mainUrl = "https://tioplus.app"
@@ -216,6 +217,18 @@ class PlushdProvider : MainAPI() {
             .replaceFirst("https://do7go.com", "https://dood.la")
             .replaceFirst("https://doodstream.com", "https://dood.la")
             .replaceFirst("https://streamtape.com", "https://streamtape.cc")
+            .replace("https://sblanh.com", "https://lvturbo.com")
+    }
+
+    private val REGEX_LINK = Pattern.compile(
+        "^(https?:)?//(www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)$"
+    )
+
+    private fun fetchUrls(text: String): List<String> {
+        val urls = ArrayList<String>()
+        val regex = Regex("""(https?://[^\s"']+)""")
+        regex.findAll(text).forEach { urls.add(it.value) }
+        return urls
     }
 
     override suspend fun loadLinks(
@@ -225,7 +238,6 @@ class PlushdProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         var linksFound = false
-        val linkRegex = Regex("window\\.location\\.href\\s*=\\s*'([^']*)'")
 
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -244,38 +256,51 @@ class PlushdProvider : MainAPI() {
                 val serverData = serverLi.attr("data-server")
                 if (serverData.isNullOrEmpty()) return@forEach
 
-                val encodedOne = serverData.toByteArray()
-                val encodedTwo = base64Encode(encodedOne)
-                val playerUrl = "$mainUrl/player/$encodedTwo"
+                val decoded = String(Base64.decode(serverData, Base64.DEFAULT))
 
-                val text = app.get(playerUrl, headers = headers).text
+                val url = if (!REGEX_LINK.matcher(decoded).matches()) {
+                    "$mainUrl/player/${base64Encode(serverData.toByteArray())}"
+                } else {
+                    decoded
+                }
 
-                if (text.contains("bloqueo temporal")) {
-                    Log.w("PlushdProvider", "ADVERTENCIA: Bloqueo temporal detectado. Saltando servidor.")
+                val videoUrl = if (url.contains("/player/")) {
+                    val playerDoc = app.get(url, headers = headers).document
+                    val script = playerDoc.selectFirst("script:containsData(window.onload)")?.data() ?: ""
+                    fetchUrls(script).firstOrNull() ?: ""
+                } else {
+                    url
+                }
+
+                if (videoUrl.isBlank()) {
+                    Log.w("PlushdProvider", "No se pudo obtener URL del servidor")
                     return@forEach
                 }
 
-                val link = linkRegex.find(text)?.destructured?.component1()
+                val fixedLink = fixPelisplusHostsLinks(videoUrl)
+                    .replace("https://sblanh.com", "https://lvturbo.com")
+                    .replace(Regex("""([a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)=https://ww3.pelisplus.to.*"""), "")
 
-                if (!link.isNullOrBlank()) {
-                    val fixedLink = fixPelisplusHostsLinks(link)
-
-                    val extractorReferer = try {
-                        val urlObject = URL(fixedLink)
-                        urlObject.protocol + "://" + urlObject.host + "/"
-                    } catch (e: Exception) {
-                        Log.e("PlushdProvider", "Error al parsear URL para Referer: ${e.message}. Usando playerUrl como fallback.")
-                        playerUrl
-                    }
-
-                    loadExtractor(
-                        url = fixedLink,
-                        referer = extractorReferer,
-                        subtitleCallback = loggingSubtitleCallback,
-                        callback = callback
-                    )
-                    linksFound = true
+                if (fixedLink.isBlank()) {
+                    Log.w("PlushdProvider", "URL en blanco después de procesar")
+                    return@forEach
                 }
+
+                val extractorReferer = try {
+                    val urlObject = URL(fixedLink)
+                    urlObject.protocol + "://" + urlObject.host + "/"
+                } catch (e: Exception) {
+                    Log.e("PlushdProvider", "Error al parsear URL para Referer: ${e.message}")
+                    url
+                }
+
+                loadExtractor(
+                    url = fixedLink,
+                    referer = extractorReferer,
+                    subtitleCallback = loggingSubtitleCallback,
+                    callback = callback
+                )
+                linksFound = true
             } catch (e: Exception) {
                 Log.e("PlushdProvider", "Error al procesar el servidor: ${e.message}")
             }
