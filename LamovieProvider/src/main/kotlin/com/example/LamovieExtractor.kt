@@ -5,6 +5,19 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
+private val extractorHeaders = mapOf(
+    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept" to "*/*",
+    "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
+    "sec-ch-ua" to "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Brave\";v=\"146\"",
+    "sec-ch-ua-mobile" to "?0",
+    "sec-ch-ua-platform" to "\"Windows\"",
+    "sec-fetch-dest" to "empty",
+    "sec-fetch-mode" to "cors",
+    "sec-fetch-site" to "same-site",
+    "sec-gpc" to "1"
+)
+
 class Vimeos : ExtractorApi() {
     override val name = "Vimeos"
     override val mainUrl = "https://vimeos.net"
@@ -17,17 +30,36 @@ class Vimeos : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val embedUrl = getEmbedUrl(url)
-        val response = app.get(embedUrl, referer = "https://vimeos.net/")
+        Log.d("LaMovie", "Vimeos: Obteniendo embed URL -> $embedUrl")
+
+        val response = app.get(embedUrl, headers = extractorHeaders, referer = "https://vimeos.net/")
+        Log.d("LaMovie", "Vimeos: Status ${response.code}")
         val res = response.text
 
         val unpackedJs = unpackJs(response.document) ?: res
 
         extractSubsFromUnpacked(unpackedJs, subtitleCallback)
 
-        Regex("""file:\s*"([^"]+\.m3u8[^"]*)"""").find(unpackedJs)?.groupValues?.get(1)?.let { link ->
+        val m3u8Match = Regex("""file:\s*"([^"]+\.m3u8[^"]*)"""").find(unpackedJs)
+        if (m3u8Match != null) {
+            val link = m3u8Match.groupValues[1]
             val cleanLink = link.replace("\\/", "/")
             val finalLink = if (cleanLink.startsWith("http")) cleanLink else "https:$cleanLink"
-            M3u8Helper.generateM3u8(this.name, finalLink, "$mainUrl/").forEach(callback)
+            Log.d("LaMovie", "Vimeos: M3U8 encontrado -> ${finalLink.take(100)}...")
+
+            callback.invoke(
+                newExtractorLink(
+                    this.name, this.name,
+                    finalLink,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://vimeos.net/"
+                    this.quality = Qualities.Unknown.value
+                    this.headers = extractorHeaders + mapOf("Referer" to "https://vimeos.net/")
+                }
+            )
+        } else {
+            Log.e("LaMovie", "Vimeos: M3U8 NO encontrado en respuesta")
         }
     }
 
@@ -64,7 +96,7 @@ class Vimeos : ExtractorApi() {
 class GoodstreamExtractor : ExtractorApi() {
     override var name = "Goodstream"
     override val mainUrl = "https://goodstream.one"
-    override val requiresReferer = false
+    override val requiresReferer = true
 
     override suspend fun getUrl(
         url: String,
@@ -72,27 +104,39 @@ class GoodstreamExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val response = app.get(url)
-        val res = response.text
+        Log.d("LaMovie", "Goodstream: Iniciando con URL -> $url")
 
-        Regex("""file:\s*"([^"]+\.m3u8[^"]*)"""").find(res)?.groupValues?.get(1)?.let { link ->
+        val pageRes = app.get(url, headers = extractorHeaders, referer = "https://la.movie/")
+        Log.d("LaMovie", "Goodstream: Status ${pageRes.code}")
+        val res = pageRes.text
+
+        val m3u8Match = Regex("""file:\s*"([^"]+\.m3u8[^"]*)"""").find(res)
+        if (m3u8Match != null) {
+            val link = m3u8Match.groupValues[1]
             val cleanLink = link.replace("\\/", "/")
             val finalLink = if (cleanLink.startsWith("http")) cleanLink else "https:$cleanLink"
+            Log.d("LaMovie", "Goodstream: M3U8 encontrado -> ${finalLink.take(100)}...")
 
-            M3u8Helper.generateM3u8(this.name, finalLink, "$mainUrl/").forEach(callback)
+            callback.invoke(
+                newExtractorLink(
+                    this.name, this.name,
+                    finalLink,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://la.movie/"
+                    this.quality = Qualities.Unknown.value
+                    this.headers = extractorHeaders + mapOf("Referer" to "https://la.movie/")
+                }
+            )
+        } else {
+            Log.e("LaMovie", "Goodstream: M3U8 NO encontrado en respuesta")
         }
     }
 }
 
 private suspend fun invokeSubtitle(label: String, url: String, callback: (SubtitleFile) -> Unit) {
     val subFile = newSubtitleFile(label, url) {
-        this.headers = mapOf(
-            "Referer" to "https://vimeos.net/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-            "sec-ch-ua" to "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Brave\";v=\"146\"",
-            "sec-ch-ua-mobile" to "?0",
-            "sec-ch-ua-platform" to "\"Windows\""
-        )
+        this.headers = extractorHeaders + mapOf("Referer" to "https://vimeos.net/")
     }
     Log.d("LaMovie", "LOG: Registrando Sub -> $label: $url")
     callback.invoke(subFile)
