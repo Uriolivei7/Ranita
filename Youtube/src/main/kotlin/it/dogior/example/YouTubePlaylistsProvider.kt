@@ -1,95 +1,64 @@
 package it.dogior.example
 
-import android.util.Log
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
+import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvSeriesSearchResponse
-import com.lagradost.cloudstream3.mvvm.logError
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
-import org.schabi.newpipe.extractor.stream.StreamInfo
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 
-class YouTubePlaylistsProvider(language: String) : MainAPI() {
-    override var mainUrl = MAIN_URL
+class YouTubePlaylistsProvider(language: String) : YouTubeProvider(language, null) {
     override var name = "YouTube Playlists"
-    override val supportedTypes = setOf(TvType.Others)
     override val hasMainPage = false
-    override var lang = language
-    private val ytParser = YouTubeParser(this.name)
+    override val SEARCH_CONTENT_FILTER = "playlists"
 
-    companion object{
-        const val MAIN_URL = "https://www.youtube.com"
-    }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val allResults = ytParser.parseSearch(query)
-
-        return allResults?.filterIsInstance<TvSeriesSearchResponse>() ?: emptyList()
-    }
-
-    override suspend fun load(url: String): LoadResponse? {
-        if (url.contains("/watch?v=") || url.contains("/channel/") || url.contains("/user/")) {
-            return null
-        }
-
-        try {
-            val video = ytParser.playlistToLoadResponse(url)
-            return video
-        } catch (e: Exception) {
-            logError(e)
-            Log.e("Youtube", "Error al cargar la Playlist $url", e)
-            return null
-        }
-    }
-
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-
-        val info = StreamInfo.getInfo(data)
-        val refererUrl = info.url
-
-        info.videoStreams
-            .sortedByDescending { it.resolution?.removeSuffix("p")?.toIntOrNull() ?: 0 }
-            .forEach { stream ->
-
-                val streamUrl = stream.url ?: return@forEach
-                val resolutionName = stream.resolution ?: return@forEach
-
-                if (resolutionName.removeSuffix("p").toIntOrNull() == null) {
-                    return@forEach
-                }
-
-                callback.invoke(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "Video - $resolutionName",
-                        url = streamUrl
-                    ) {
-                        this.referer = refererUrl
-                    }
-                )
+    private fun getPlaylistVideos(videos: List<StreamInfoItem>): List<Episode> {
+        val episodes = videos.map { video ->
+            newEpisode(video.url) {
+                this.name = video.name
+                this.posterUrl = video.thumbnails.last().url
+                this.runTime = (video.duration / 60).toInt()
             }
+        }
+        return episodes
+    }
 
-        info.subtitles.forEach { sub ->
-            val subUrl = sub.url ?: return@forEach
-            val subName = sub.languageTag ?: return@forEach
-
-            subtitleCallback.invoke(
-                SubtitleFile(
-                    subName,
-                    subUrl
+    override suspend fun load(url: String): LoadResponse {
+        val playlistInfo = PlaylistInfo.getInfo(url)
+        val banner =
+            if (playlistInfo.banners.isNotEmpty()) playlistInfo.banners.last().url else playlistInfo.thumbnails.last().url
+        val eps = playlistInfo.relatedItems.toMutableList()
+        var hasNext = playlistInfo.hasNextPage()
+        var count = 1
+        var nextPage = playlistInfo.nextPage
+        while (hasNext) {
+            val more = PlaylistInfo.getMoreItems(service, url, nextPage)
+            eps.addAll(more.items)
+            hasNext = more.hasNextPage()
+            nextPage = more.nextPage
+            count++
+            if (count >= 10) break
+//            Log.d("YouTubeParser", "Page ${count + 1}: ${more.items.size}")
+        }
+        return newTvSeriesLoadResponse(
+            playlistInfo.name,
+            url,
+            TvType.Others,
+            getPlaylistVideos(eps)
+        ) {
+            this.posterUrl = playlistInfo.thumbnails.last().url
+            this.backgroundPosterUrl = banner
+            this.plot = playlistInfo.description.content
+            this.actors = listOf(
+                ActorData(
+                    Actor(playlistInfo.uploaderName, playlistInfo.uploaderAvatars.lastOrNull()?.url)
                 )
             )
         }
-
-        return true
     }
+
 }

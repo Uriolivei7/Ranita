@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
@@ -15,8 +16,9 @@ import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.core.content.res.ResourcesCompat
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.example.BuildConfig
 import it.dogior.example.YouTubePlugin
+
+private const val LIBRARY_PACKAGE_NAME = "it.dogior.example"
 
 /**
  * A simple [Fragment] subclass.
@@ -30,7 +32,7 @@ class SettingsFragment(
     private val res = plugin.resources ?: throw Exception("Unable to read resources")
 
     private fun <T : View> View.findView(name: String): T {
-        val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = res.getIdentifier(name, "id", LIBRARY_PACKAGE_NAME)
         return this.findViewById(id)
     }
 
@@ -46,13 +48,13 @@ class SettingsFragment(
 
     private fun getDrawable(name: String): Drawable? {
         val id =
-            res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+            res.getIdentifier(name, "drawable", LIBRARY_PACKAGE_NAME)
         return ResourcesCompat.getDrawable(res, id, null)
     }
 
     private fun getString(name: String): String? {
         val id =
-            res.getIdentifier(name, "string", BuildConfig.LIBRARY_PACKAGE_NAME)
+            res.getIdentifier(name, "string", LIBRARY_PACKAGE_NAME)
         return res.getString(id)
     }
 
@@ -60,11 +62,10 @@ class SettingsFragment(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View? {
-        // Inflate the layout for this fragment
         val id = res.getIdentifier(
             "settings_fragment",
             "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            LIBRARY_PACKAGE_NAME
         )
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
@@ -75,16 +76,6 @@ class SettingsFragment(
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val headerTw = view.findView<TextView>("header_tw")
         headerTw.text = getString("header_tw")
-
-        val hlsSwitch = view.findView<Switch>("hls_switch")
-        hlsSwitch.text = getString("hls")
-        hlsSwitch.isChecked = sharedPref?.getBoolean("hls", true) ?: true
-        hlsSwitch.setOnCheckedChangeListener { compoundButton, b ->
-            with(sharedPref?.edit()) {
-                this?.putBoolean("hls", hlsSwitch.isChecked)
-                this?.apply()
-            }
-        }
 
         val localizationTW = view.findView<TextView>("localization_tw")
         val homepageTW = view.findView<TextView>("homepage_tw")

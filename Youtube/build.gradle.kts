@@ -28,23 +28,9 @@ android {
         buildConfig = true
         viewBinding = true
     }
-
-    compileOptions {
-        isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-        }
-    }
 }
 
 dependencies {
     implementation("com.google.android.material:material:1.13.0")
-    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.24.8")
-    //noinspection GradleDependency
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
+    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.25.2")
 }

@@ -15,11 +15,12 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.res.ResourcesCompat
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.cloudstream3.CommonActivity.showToast
-import com.example.BuildConfig
 import it.dogior.example.YouTubePlugin
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
+
+private const val LIBRARY_PACKAGE_NAME = "it.dogior.example"
 
 /**
  * A simple [Fragment] subclass.
@@ -30,7 +31,7 @@ class LocalizationSettings(private val plugin: YouTubePlugin, val sharedPref: Sh
     BottomSheetDialogFragment() {
 
     private fun <T : View> View.findView(name: String): T {
-        val id = plugin.resources!!.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = plugin.resources!!.getIdentifier(name, "id", LIBRARY_PACKAGE_NAME)
         return this.findViewById(id)
     }
 
@@ -41,13 +42,13 @@ class LocalizationSettings(private val plugin: YouTubePlugin, val sharedPref: Sh
 
     private fun getDrawable(name: String): Drawable? {
         val id =
-            plugin.resources!!.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+            plugin.resources!!.getIdentifier(name, "drawable", LIBRARY_PACKAGE_NAME)
         return ResourcesCompat.getDrawable(plugin.resources!!, id, null)
     }
 
     private fun getString(name: String): String? {
         val id =
-            plugin.resources!!.getIdentifier(name, "string", BuildConfig.LIBRARY_PACKAGE_NAME)
+            plugin.resources!!.getIdentifier(name, "string", LIBRARY_PACKAGE_NAME)
         return plugin.resources!!.getString(id)
     }
 
@@ -55,11 +56,10 @@ class LocalizationSettings(private val plugin: YouTubePlugin, val sharedPref: Sh
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View? {
-        // Inflate the layout for this fragment
         val id = plugin.resources!!.getIdentifier(
             "localization_settings",
             "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            LIBRARY_PACKAGE_NAME
         )
         val layout = plugin.resources!!.getLayout(id)
         return inflater.inflate(layout, container, false)

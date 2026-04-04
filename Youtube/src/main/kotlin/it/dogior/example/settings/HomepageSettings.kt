@@ -23,7 +23,6 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.CommonActivity.showToast
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.example.BuildConfig
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -32,6 +31,9 @@ import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
+
+private const val LIBRARY_PACKAGE_NAME = "it.dogior.example"
 
 /**
  * A simple [Fragment] subclass.
@@ -45,7 +47,7 @@ class HomepageSettings(
     BottomSheetDialogFragment() {
 
     private fun <T : View> View.findView(name: String): T {
-        val id = plugin.resources!!.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
+        val id = plugin.resources!!.getIdentifier(name, "id", LIBRARY_PACKAGE_NAME)
         return this.findViewById(id)
     }
 
@@ -56,13 +58,13 @@ class HomepageSettings(
 
     private fun getDrawable(name: String): Drawable? {
         val id =
-            plugin.resources!!.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
+            plugin.resources!!.getIdentifier(name, "drawable", LIBRARY_PACKAGE_NAME)
         return ResourcesCompat.getDrawable(plugin.resources!!, id, null)
     }
 
     private fun getString(name: String): String? {
         val id =
-            plugin.resources!!.getIdentifier(name, "string", BuildConfig.LIBRARY_PACKAGE_NAME)
+            plugin.resources!!.getIdentifier(name, "string", LIBRARY_PACKAGE_NAME)
         return plugin.resources!!.getString(id)
     }
 
@@ -70,11 +72,10 @@ class HomepageSettings(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View? {
-        // Inflate the layout for this fragment
         val id = plugin.resources!!.getIdentifier(
             "homepage_settings",
             "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            LIBRARY_PACKAGE_NAME
         )
         val layout = plugin.resources!!.getLayout(id)
         return inflater.inflate(layout, container, false)
@@ -197,7 +198,6 @@ class HomepageSettings(
         playlistList: LinearLayout,
     ): RelativeLayout {
         val title = item.second
-        // Create the RelativeLayout
         val relativeLayout = RelativeLayout(this@HomepageSettings.requireContext()).apply {
             layoutParams = RelativeLayout.LayoutParams(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
@@ -208,11 +208,10 @@ class HomepageSettings(
                     0,
                     0,
                     dpToPx(this@HomepageSettings.requireContext(), 8)
-                ) // Convert dp to px
+                )
             }
         }
 
-        // Create the TextView (Label)
         val label = TextView(this.context).apply {
             text = title
             textSize = 15f
@@ -222,13 +221,11 @@ class HomepageSettings(
             RelativeLayout.LayoutParams.WRAP_CONTENT,
             RelativeLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            addRule(RelativeLayout.CENTER_VERTICAL) // Vertically center in parent
+            addRule(RelativeLayout.CENTER_VERTICAL)
             addRule(RelativeLayout.ALIGN_PARENT_START)
             marginEnd = dpToPx(this@HomepageSettings.requireContext(), 8)
         }
 
-
-        // Create the ImageButton
         val deleteButton = ImageButton(this.context).apply {
             id = generateViewId()
             setImageDrawable(getDrawable("delete_icon"))
@@ -242,8 +239,8 @@ class HomepageSettings(
             RelativeLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             addRule(RelativeLayout.ALIGN_PARENT_END)
-            addRule(RelativeLayout.CENTER_VERTICAL) // Vertically center in parent
-            marginEnd = dpToPx(this@HomepageSettings.requireContext(), 8) // Convert dp to px
+            addRule(RelativeLayout.CENTER_VERTICAL)
+            marginEnd = dpToPx(this@HomepageSettings.requireContext(), 8)
         }
 
         relativeLayout.addView(label, labelParams)
