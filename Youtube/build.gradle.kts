@@ -24,6 +24,7 @@ cloudstream {
 }
 
 android {
+    namespace = "it.dogior.example"
     buildFeatures {
         buildConfig = true
         viewBinding = true
