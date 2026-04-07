@@ -159,6 +159,24 @@
         "name": "AnizoneProvider"
     },
     {
+        "iconUrl": "https://asialiveaction.com/favicon.ico",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 22669,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "AsianDrama"
+        ],
+        "version": 5,
+        "internalName": "AsialiveactionProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AsialiveactionProvider.cs3",
+        "name": "AsialiveactionProvider"
+    },
+    {
         "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -299,7 +317,7 @@
         "iconUrl": "https://www.google.com/s2/favicons?domain=hianime.to&sz=%size%",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 52928,
+        "fileSize": 53087,
         "status": 1,
         "language": "en",
         "authors": [
@@ -339,7 +357,7 @@
         "iconUrl": "https://www.shutterstock.com/image-vector/iptv-vector-line-icon-ip-260nw-1841427610.jpg",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37840,
+        "fileSize": 38207,
         "status": 1,
         "authors": [
             "anhdaden"
@@ -766,7 +784,7 @@
         "iconUrl": "https://play-lh.googleusercontent.com/gMB8Eq9g9Uq6CXiOHcqatXpx-6HTexAzcQibTgpqAE756Fnt1Jyyp0j7S3UDKPztkA=w480-h960-rw",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44946,
+        "fileSize": 45356,
         "status": 1,
         "authors": [
             "anhdaden"
