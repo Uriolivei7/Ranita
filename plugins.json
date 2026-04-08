@@ -583,7 +583,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AsialiveactionProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "AsiaLiveAction",
     "internalName": "AsialiveactionProvider",
@@ -596,6 +596,6 @@
     ],
     "iconUrl": "https://asialiveaction.com/wp-content/uploads/2025/04/cropped-logo.png",
     "language": "mx",
-    "fileSize": 23000
+    "fileSize": 24000
   }
 ]
