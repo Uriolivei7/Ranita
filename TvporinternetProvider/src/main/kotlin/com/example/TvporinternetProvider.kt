@@ -27,40 +27,44 @@ class TvporinternetProvider : MainAPI() {
     override val hasDownloadSupport = true
 
     private val cfKiller = CloudflareKiller()
-    private val nowAllowed = listOf("Red Social", "Donacion")
+    private val nowAllowed = listOf("Red Social", "Donacion", "Donar con Paypal", "Mundo Latam")
 
-    private val deportesCat = setOf(
-        "TUDN", "WWE", "Afizzionados", "Gol Perú", "Gol TV", "TNT SPORTS", "Fox Sports Premium",
-        "TYC Sports", "Movistar Deportes", "Dazn F1", "Bein", "Directv Sports", "Espn", "Fox Sports"
+    private val infantilCat = setOf(
+        "Cartoon Network", "Tooncast", "Disney Channel", "Nick", "Nickelodeon", "FM Hot Kids"
+    )
+
+    private val peliculasSeriesCat = setOf(
+        "Universal Channel", "Universal Premiere", "Universal Cinema", "TNT", "TNT Series", "TNT Novelas",
+        "Star Channel", "Cinemax", "Space", "Syfy", "Warner Channel", "Cinecanal", "FX",
+        "AXN", "AMC", "Studio Universal", "Multipremier", "Golden", "Sony", "Panico", "Extrema",
+        "USA", "Canal Sony"
+    )
+
+    private val educacionCat = setOf(
+        "Discovery Channel", "Discovery World", "Discovery Theater", "Discovery Science", "Discovery Familia",
+        "Discovery H&H", "Discovery A&E", "ID Investigation",
+        "History", "History 2", "Animal Planet", "Nat Geo"
     )
 
     private val entretenimientoCat = setOf(
-        "Telefe", "El Trece", "Televisión Pública", "Telemundo", "Univisión", "Pasiones", "Caracol",
-        "RCN", "Latina", "America TV", "Willax TV", "ATV", "Las Estrellas", "Tl Novelas", "Galavision",
-        "Azteca", "Canal 5", "Distrito Comedia", "MTV", "E!"
+        "Telefe", "El Trece", "Television Publica", "Telemundo", "Univision", "Pasiones", "Caracol",
+        "RCN", "Latina", "America TV", "Willax TV", "ATV", "Las Estrellas", "Tlnovelas", "Galavision",
+        "Azteca", "Canal 5", "Distrito Comedia", "MTV", "E!", "Unicable", "Imagen TV", "Azteca 7",
+        "Azteca Uno", "Antena 3", "DW", "FM Hot Movies"
+    )
+
+    private val deportesCat = setOf(
+        "TUDN", "WWE", "Afizzionados", "Gol Peru", "Gol TV", "TNT Sports", "Fox Sports",
+        "TyC Sports", "Movistar", "Dazn", "Bein", "Directv Sports", "ESPN", "Win Sports",
+        "Azteca Deportes", "Liga 1", "Sky Sports", "VIX TUDN"
     )
 
     private val noticiasCat = setOf(
         "Telemundo 51", "CNN", "Noticias", "RTVE"
     )
 
-    private val peliculasSeriesCat = setOf(
-        "Movistar Accion", "Movistar Drama", "Universal Channel", "TNT", "TNT Series", "Star Channel",
-        "Star Action", "Star Series", "Cinemax", "Space", "Syfy", "Warner Channel", "Cinecanal", "FX",
-        "AXN", "AMC", "Studio Universal", "Multipremier", "Golden", "Sony", "DHE", "NEXT HD", "HBO"
-    )
-
-    private val infantilCat = setOf(
-        "Cartoon Network", "Tooncast", "Cartoonito", "Disney Channel", "Disney JR", "Nick", "Discovery Kids"
-    )
-
-    private val educacionCat = setOf(
-        "Discovery Channel", "Discovery World", "Discovery Theater", "Discovery Science", "Discovery Familia",
-        "History", "History 2", "Animal Planet", "Nat Geo", "Nat Geo Mundo"
-    )
-
     private val localLatinoCat = setOf(
-        "Canal", "Televisa", "TV Azteca", "TV Publica", "TV Perú"
+        "Canal", "Televisa", "TV Azteca", "TV Publica", "TV Peru"
     )
 
     private suspend fun safeAppGet(
@@ -97,46 +101,40 @@ class TvporinternetProvider : MainAPI() {
 
     private fun getCategory(title: String): String {
         val normalizedTitle = title.uppercase().replace(" EN VIVO", "").trim()
+
         return when {
-            deportesCat.any { normalizedTitle.contains(it.uppercase()) } -> "Deportes"
-            peliculasSeriesCat.any { normalizedTitle.contains(it.uppercase()) } -> "Películas y Series"
-            infantilCat.any { normalizedTitle.contains(it.uppercase()) } -> "Infantil"
-            educacionCat.any { normalizedTitle.contains(it.uppercase()) } -> "Documentales/Educación"
-            noticiasCat.any { normalizedTitle.contains(it.uppercase()) } -> "Noticias"
-            entretenimientoCat.any { normalizedTitle.contains(it.uppercase()) } -> "Entretenimiento"
-            localLatinoCat.any { normalizedTitle.contains(it.uppercase()) } -> "Latinoamérica"
-            else -> "Otros Canales"
+            infantilCat.any { normalizedTitle.contains(it) } -> "Infantil"
+            educacionCat.any { normalizedTitle.contains(it) } -> "Educacion"
+            noticiasCat.any { normalizedTitle.contains(it) } -> "Noticias"
+            entretenimientoCat.any { normalizedTitle.contains(it) } -> "Entretenimiento"
+            peliculasSeriesCat.any { normalizedTitle.contains(it) } -> "Peliculas"
+            deportesCat.any { normalizedTitle.contains(it) } -> "Deportes"
+            localLatinoCat.any { normalizedTitle.contains(it) } -> "Latino"
+            else -> "Canales"
         }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val html = safeAppGet(mainUrl) ?: return null
-        val doc = Jsoup.parse(html)
         val categoryMap = mutableMapOf<String, MutableList<SearchResponse>>()
 
-        doc.select("div.p-2.rounded.bg-slate-200.border").forEach { channelDiv ->
-            val linkElement = channelDiv.selectFirst("a.channel-link")
-            val link = linkElement?.attr("href")
-            val imgElement = linkElement?.selectFirst("img")
-            val titleRaw = imgElement?.attr("alt") ?: linkElement?.selectFirst("p.des")?.text()
+        val channels = extractChannelsFromHtml(html)
 
-            if (titleRaw != null && link != null) {
-                val title = titleRaw.replace("Ver ", "").replace(" en vivo", "").trim()
-                val img = fixUrl(imgElement?.attr("src") ?: "")
+        channels.forEach { (titleRaw, link, img) ->
+            val title = titleRaw.replace("Ver ", "").replace(" en vivo", "").trim()
 
-                if (nowAllowed.any { title.contains(it, ignoreCase = true) }) return@forEach
+            if (nowAllowed.any { title.contains(it, ignoreCase = true) }) return@forEach
 
-                val channelResponse = newTvSeriesSearchResponse(
-                    name = title,
-                    url = fixUrl(link)
-                ) {
-                    this.type = TvType.Live
-                    this.posterUrl = img
-                }
-
-                val category = getCategory(title)
-                categoryMap.getOrPut(category) { ArrayList() }.add(channelResponse)
+            val channelResponse = newTvSeriesSearchResponse(
+                name = title,
+                url = fixUrl(link)
+            ) {
+                this.type = TvType.Live
+                this.posterUrl = fixUrl(img)
             }
+
+            val category = getCategory(title)
+            categoryMap.getOrPut(category) { ArrayList() }.add(channelResponse)
         }
 
         val homePageList = categoryMap.entries
@@ -148,31 +146,76 @@ class TvporinternetProvider : MainAPI() {
         return newHomePageResponse(homePageList, false)
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val html = safeAppGet(mainUrl) ?: return emptyList()
-        val doc = Jsoup.parse(html)
+    private fun extractChannelsFromHtml(html: String): List<Triple<String, String, String>> {
+        val channels = mutableListOf<Triple<String, String, String>>()
 
-        return doc.select("div.p-2.rounded.bg-slate-200.border").filterNot { element ->
-            val text = element.selectFirst("p.des")?.text() ?: ""
-            nowAllowed.any { text.contains(it, ignoreCase = true) } || text.isBlank()
-        }.filter { element ->
-            element.selectFirst("p.des")?.text()?.contains(query, ignoreCase = true) ?: false
-        }.mapNotNull {
-            val titleRaw = it.selectFirst("p.des")?.text()
-            val linkRaw = it.selectFirst("a")?.attr("href")
-            val imgRaw = it.selectFirst("a img.w-28")?.attr("src")
+        val homeChannelsMatch = Regex("""const\s+homeChannels\s*=\s*`([^`]*)`""", RegexOption.DOT_MATCHES_ALL).find(html)
 
-            if (titleRaw != null && linkRaw != null && imgRaw != null) {
-                val title = titleRaw.replace("Ver ", "").replace(" en vivo", "").trim()
-                newLiveSearchResponse(
-                    name = title,
-                    url = fixUrl(linkRaw),
-                    type = TvType.Live
-                ) {
-                    this.posterUrl = fixUrl(imgRaw)
+        if (homeChannelsMatch != null) {
+            val channelsHtml = homeChannelsMatch.groupValues[1]
+            val channelDoc = Jsoup.parse(channelsHtml)
+
+            channelDoc.select("a.channel-card").forEach { channelCard ->
+                val link = channelCard.attr("href")
+                val imgElement = channelCard.selectFirst("img")
+                val pElement = channelCard.selectFirst("p")
+                val titleRaw = if (imgElement?.attr("alt")?.isNotBlank() == true) {
+                    imgElement.attr("alt")
+                } else if (pElement?.text()?.isNotBlank() == true) {
+                    pElement.text()
+                } else {
+                    ""
                 }
-            } else {
-                null
+                val img = imgElement?.attr("src") ?: ""
+
+                Log.d("TvporInternet", "Extract: link=$link, title='$titleRaw', img='$img'")
+
+                if (titleRaw.isNotBlank() && link.isNotBlank()) {
+                    channels.add(Triple(titleRaw, link, img))
+                }
+            }
+        }
+
+        return channels
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        Log.d("TvporInternet", "Search: query='$query'")
+        val html = safeAppGet(mainUrl) ?: run {
+            Log.d("TvporInternet", "Search: failed to get HTML")
+            return emptyList()
+        }
+
+        val channels = extractChannelsFromHtml(html)
+        Log.d("TvporInternet", "Search: found ${channels.size} channels")
+
+        if (query.isBlank()) {
+            Log.d("TvporInternet", "Search: query is blank, returning empty")
+            return emptyList()
+        }
+
+        val filtered = channels.filterNot { (titleRaw, _, _) ->
+            val shouldFilter = nowAllowed.any { titleRaw.contains(it, ignoreCase = true) } || titleRaw.isBlank()
+            if (shouldFilter) Log.d("TvporInternet", "Search: filtering out '$titleRaw'")
+            shouldFilter
+        }
+
+        val matched = filtered.filter { (titleRaw, _, _) ->
+            val matches = titleRaw.contains(query, ignoreCase = true)
+            Log.d("TvporInternet", "Search: '$titleRaw' matches '$query' = $matches")
+            matches
+        }
+
+        Log.d("TvporInternet", "Search: matched ${matched.size} channels")
+
+        return matched.mapNotNull { (titleRaw, linkRaw, imgRaw) ->
+            val title = titleRaw.replace("Ver ", "").replace(" en vivo", "").trim()
+            newLiveSearchResponse(
+                name = title,
+                url = fixUrl(linkRaw),
+                type = TvType.Live
+            ) {
+                this.posterUrl = fixUrl(imgRaw)
             }
         }
     }
