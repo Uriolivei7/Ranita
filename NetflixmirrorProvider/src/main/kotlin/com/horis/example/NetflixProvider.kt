@@ -1,7 +1,9 @@
 package com.horis.example
 
 import com.horis.example.entities.EpisodesData
+import com.horis.example.entities.HomePageData
 import com.horis.example.entities.PlayList
+import com.horis.example.entities.PostCategory
 import com.horis.example.entities.PostData
 import com.horis.example.entities.SearchData
 import com.lagradost.cloudstream3.*
@@ -50,33 +52,76 @@ class NetflixProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        // Probar endpoint de API similar a Primevideo
+        return tryApiHomePage() ?: tryHtmlHomePage()
+    }
+
+    private suspend fun tryApiHomePage(): HomePageResponse? {
+        return try {
+            val data = app.get(
+                "$mainUrl/tv/nf/homepage.php",
+                cookies = getCookie(),
+                referer = "$mainUrl/home",
+            ).parsed<HomePageData>()
+
+            val postList = data.post ?: return null
+            val items = postList.mapNotNull { it.toHomePageList() }
+            if (items.isEmpty()) return null
+            newHomePageResponse(items, false)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun tryHtmlHomePage(): HomePageResponse? {
         val document = app.get(
             "$mainUrl/home",
-            cookies = getCookie() + mapOf (
-                "user_token" to "233123f803cf02184bf6c67e149cdd50"
-            ),
+            cookies = getCookie() + mapOf("user_token" to "233123f803cf02184bf6c67e149cdd50"),
             referer = "$mainUrl/",
         ).document
-        val items = document.select(".lolomoRow").map {
-            it.toHomePageList()
+
+        val items = document.select(".lolomoRow").mapNotNull { row ->
+            row.toHomePageList()
         }
+        if (items.isEmpty()) return null
         return newHomePageResponse(items, false)
     }
 
-    private fun Element.toHomePageList(): HomePageList {
-        val name = select("h2 > span > div").text()
-        val items = select("img.lazy").mapNotNull {
-            it.toSearchResult()
+    private fun Element.toHomePageList(): HomePageList? {
+        val name = selectFirst(".row-header-title")?.text()
+            ?: selectFirst("h2.rowHeader")?.text()
+            ?: select("h2, span").firstOrNull()?.text()
+        if (name.isNullOrBlank()) return null
+
+        val items = select(".boxart-image, img.lazy").mapNotNull { img ->
+            img.toSearchResult()
         }
+        if (items.isEmpty()) return null
         return HomePageList(name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val id = attr("data-src").substringAfterLast("/").substringBefore(".")
-        val posterUrl = "https://imgcdn.kim/poster/v/$id.jpg"
-
+        val src = attr("data-src")
+        if (src.isBlank()) return null
+        val id = src.substringAfterLast("/").substringBefore(".")
+        if (id.isBlank()) return null
         return newAnimeSearchResponse("", Id(id).toJson()) {
-            this.posterUrl = posterUrl
+            this.posterUrl = "https://imgcdn.kim/poster/v/$id.jpg"
+            posterHeaders = mapOf("Referer" to "$mainUrl/home")
+        }
+    }
+
+    private fun PostCategory.toHomePageList(): HomePageList? {
+        val name = cate ?: return null
+        val idList = ids?.split(",")?.filter { it.isNotBlank() } ?: return null
+        val items = idList.mapNotNull { id -> toSearchResult(id) }
+        if (items.isEmpty()) return null
+        return HomePageList(name, items, isHorizontalImages = false)
+    }
+
+    private fun toSearchResult(id: String): SearchResponse? {
+        return newAnimeSearchResponse("", Id(id).toJson()) {
+            this.posterUrl = "https://imgcdn.kim/poster/v/$id.jpg"
             posterHeaders = mapOf("Referer" to "$mainUrl/home")
         }
     }

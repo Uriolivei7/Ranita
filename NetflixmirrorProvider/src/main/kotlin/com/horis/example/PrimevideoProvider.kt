@@ -67,15 +67,10 @@ class PrimevideoProvider : MainAPI() {
     }
 
     private fun PostCategory.toHomePageList(): HomePageList {
-        val name = cate
-        val items = ids.split(",").mapNotNull {
-            toSearchResult(it)
-        }
-        return HomePageList(
-            name,
-            items,
-            isHorizontalImages = false
-        )
+        val name = cate ?: return HomePageList("", emptyList())
+        val idList = ids?.split(",")?.filter { it.isNotBlank() } ?: return HomePageList(name, emptyList())
+        val items = idList.mapNotNull { toSearchResult(it) }
+        return HomePageList(name, items, isHorizontalImages = false)
     }
 
     private fun toSearchResult(id: String): SearchResponse? {
