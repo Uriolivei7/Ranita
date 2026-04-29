@@ -65,28 +65,6 @@
         "name": "AnimeioProvider"
     },
     {
-        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-ccd01314c7073987a4406ba6e941fa1478a43fe3f1baf0bcf66903984db2acbc",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 29543,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Phisher98"
-        ],
-        "tvTypes": [
-            "Movie",
-            "Anime",
-            "AnimeMovie"
-        ],
-        "version": 1,
-        "internalName": "AnimekaiProvider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimekaiProvider.cs3",
-        "name": "AnimekaiProvider"
-    },
-    {
         "fileHash": "sha256-2760ffb8e761726a700c3dac3a29c2756665fc91fec73c9a043259a2a75e97f3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -108,10 +86,10 @@
         "name": "AnimeonsenProvider"
     },
     {
-        "fileHash": "sha256-97081bfe220135f45e3b7d300b855469a4dfba8dfbe6157ee0b2bb237eb4ffe5",
+        "fileHash": "sha256-e8b023caa910adff50cafbcdbc87422094fe66efd7961e4852c29998494db5b5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 36827,
+        "fileSize": 37547,
         "status": 1,
         "language": "en",
         "authors": [
@@ -127,31 +105,10 @@
         "name": "AnimeparadiseProvider"
     },
     {
-        "fileHash": "sha256-a58147068e0d9d07c0e0c1fed7827cb4ee74c074e08bd9a403a425532a2ac396",
+        "fileHash": "sha256-007c47fa38fdb9d878fa8e041468a3e4ecd7586f166cf20a06f6051efc554355",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 14184,
-        "status": 1,
-        "language": "en",
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "Movie",
-            "Anime",
-            "AnimeMovie"
-        ],
-        "version": 1,
-        "internalName": "AnimeytProvider",
-        "description": "Animes Subtitulos en varios idiomas",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeytProvider.cs3",
-        "name": "AnimeytProvider"
-    },
-    {
-        "fileHash": "sha256-ad6424c792c0a8cf8836cd065542ba43b4bae17f7fd0b754316f0cc806d6474b",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 15082,
+        "fileSize": 22194,
         "status": 1,
         "language": "en",
         "authors": [
@@ -330,29 +287,6 @@
         "name": "HenaojaraProvider"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=hianime.to&sz=%size%",
-        "fileHash": "sha256-1ef8e9480ee0cd9f1d8618edcaae54e0b641281a531f015b410f1b2da09b661b",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53087,
-        "status": 1,
-        "language": "en",
-        "authors": [
-            "Stormunblessed",
-            "KillerDogeEmpire",
-            "RowdyRushya",
-            "Phisher98"
-        ],
-        "tvTypes": [
-            "Anime",
-            "OVA"
-        ],
-        "version": 27,
-        "internalName": "HianimeProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/HianimeProvider.cs3",
-        "name": "HianimeProvider"
-    },
-    {
         "fileHash": "sha256-d45a90f82c91a66f7f37b6ddfbe08137392b92910dc371b53d5ed7c42a3fe113",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -370,25 +304,6 @@
         "internalName": "HomecineProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/HomecineProvider.cs3",
         "name": "HomecineProvider"
-    },
-    {
-        "iconUrl": "https://www.shutterstock.com/image-vector/iptv-vector-line-icon-ip-260nw-1841427610.jpg",
-        "fileHash": "sha256-5369e5b85e353b94119eee51b40a1dea80d0c029220ee84e67b841ea15aa5710",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38207,
-        "status": 1,
-        "authors": [
-            "anhdaden"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 9,
-        "internalName": "IptvProvider",
-        "description": "C\u1ea7n nh\u1eadp link IPTV \u0111\u1ec3 xem",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/IptvProvider.cs3",
-        "name": "IptvProvider"
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
@@ -586,26 +501,6 @@
         "jarHash": "sha256-ee39fba055f44d30d4d6950da559682fe5ac57c4fb02df201cdfc96a172bcf70"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=pelispedia.is&sz=%size%",
-        "fileHash": "sha256-83c4dfab7e992e6b5e6524574721ea120456ef2c31dc8260895c82d7532a7c36",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 27485,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Stormunblessed"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Movie"
-        ],
-        "version": 5,
-        "internalName": "PelispediaProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PelispediaProvider.cs3",
-        "name": "PelispediaProvider"
-    },
-    {
         "fileHash": "sha256-b4a7ee021f3f08a3eb4b719fbe00733eb81f16bbec3d0165881d262d1a937799",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -777,28 +672,6 @@
         "name": "TvporinternetProvider"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=twitch.tv&sz=%size%",
-        "jarFileSize": 79435,
-        "fileHash": "sha256-481f11af65d87ba76e3dfe9ed43a53339b4571ada6fafba1471fe5a6d92bdcbe",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21710,
-        "status": 1,
-        "authors": [
-            "CranberrySoup"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 2,
-        "internalName": "TwitchProvider",
-        "jarUrl": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TwitchProvider.jar",
-        "description": "Watch livestreams from Twitch",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TwitchProvider.cs3",
-        "name": "TwitchProvider",
-        "jarHash": "sha256-59f7ba3439e90d844d27c70c268a5af0e88df83063ebc20224a9b27ac3eed079"
-    },
-    {
         "fileHash": "sha256-e5e233fad85e3500f74bae127fdeb0500c5c08f45131bb815299214f47c2ac85",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -820,25 +693,6 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VerseriesonlineProvider.cs3",
         "name": "VerseriesonlineProvider"
-    },
-    {
-        "iconUrl": "https://play-lh.googleusercontent.com/gMB8Eq9g9Uq6CXiOHcqatXpx-6HTexAzcQibTgpqAE756Fnt1Jyyp0j7S3UDKPztkA=w480-h960-rw",
-        "fileHash": "sha256-3551c25a7b8546e545d6c3bd5a51ce2eb71d007b9b9d7246c55244032e9048a6",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 45356,
-        "status": 1,
-        "authors": [
-            "anhdaden"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 1,
-        "internalName": "XtreamProvider",
-        "description": "C\u1ea7n nh\u1eadp link Xtream IPTV, t\u00e0i kho\u1ea3n v\u00e0 m\u1eadt kh\u1ea9u \u0111\u1ec3 xem",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/XtreamProvider.cs3",
-        "name": "XtreamProvider"
     },
     {
         "fileHash": "sha256-16de24230255bed00160a77f2c7b068e7de1c4743632389cf60782b3fe26fada",
