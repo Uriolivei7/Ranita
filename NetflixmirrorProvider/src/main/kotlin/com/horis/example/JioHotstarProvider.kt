@@ -1,277 +1,189 @@
 package com.horis.example
 
-import com.horis.example.entities.EpisodesData
-import com.horis.example.entities.PlayList
-import com.horis.example.entities.PostData
-import com.horis.example.entities.SearchData
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.httpsify
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import okhttp3.Interceptor
-import okhttp3.Response
-import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class JioHotstarProvider : MainAPI() {
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries,
-        TvType.Anime,
-        TvType.AsianDrama
-    )
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
     override var lang = "en"
-
     override var mainUrl = "https://net20.cc"
-    private var newUrl = "https://net52.cc"
     override var name = "JioHotstar"
-
     override val hasMainPage = true
-    private var cookie_value = ""
-    private val headers = mapOf(
-        "X-Requested-With" to "XMLHttpRequest"
-    )
+
+    private val ott = "hs"
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "ott" to "hs",
-            "hd" to "on"
-        )
-        val document = app.get(
-            "$mainUrl/mobile/home",
-            cookies = cookies,
-            referer = "$mainUrl/home",
-        ).document
-        val items = document.select(".tray-container, #top10").map {
-            it.toHomePageList()
-        }
-        return newHomePageResponse(items, false)
-    }
+        val apiBase = resolveApiUrl()
 
-    private fun Element.toHomePageList(): HomePageList {
-        val name = select("h2, span").text()
-        val items = select("article, .top10-post").mapNotNull {
-            it.toSearchResult()
-        }
-        return HomePageList(name, items, isHorizontalImages = false)
-    }
+        val response = app.get(
+            "$apiBase/newtv/main.php",
+            headers = buildNewTvHeaders(ott, mapOf("Page" to "all", "Recentplay" to "", "Watchlist" to "", "Usertoken" to ""))
+        ).parsed<NewTvMainResponse>()
 
-    private fun Element.toSearchResult(): SearchResponse? {
-        val id = selectFirst("a")?.attr("data-post") ?: attr("data-post")
-        // val posterUrl =
-        //     fixUrlNull(selectFirst(".card-img-container img, .top10-img img")?.attr("data-src"))
-
-        return newAnimeSearchResponse("", Id(id).toJson()) {
-            this.posterUrl = "https://imgcdn.kim/hs/v/$id.jpg"
-            posterHeaders = mapOf("Referer" to "$mainUrl/home")
+        val imgReferer = response.img_referer ?: apiBase
+        val items = response.post.orEmpty().map { category ->
+            val ids = category.ids?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+            val template = response.imgcdn_v.takeUnless { it.isNullOrBlank() } ?: response.imgcdn_h
+            val results = ids.mapNotNull { id ->
+                newAnimeSearchResponse("", NewTvId(id).toJson()) {
+                    posterUrl = buildPosterUrl(template, id) ?: buildVerticalPosterUrl(id, ott)
+                    posterHeaders = mapOf("Referer" to imgReferer)
+                }
+            }
+            HomePageList(category.cate.orEmpty(), results, isHorizontalImages = false)
         }
+
+        return newHomePageResponse(items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "hd" to "on",
-            "ott" to "hs"
-        )
-        val url = "$mainUrl/mobile/hs/search.php?s=$query&t=${APIHolder.unixTime}"
-        val data = app.get(url, referer = "$mainUrl/home", cookies = cookies).parsed<SearchData>()
+        val apiBase = resolveApiUrl()
+        val data = app.get(
+            "$apiBase/newtv/search.php?s=${URLEncoder.encode(query, "UTF-8")}",
+            headers = buildNewTvHeaders(ott)
+        ).parsed<NewTvSearchResponse>()
 
-        return data.searchResult.map {
-            newAnimeSearchResponse(it.t, Id(it.id).toJson()) {
-                posterUrl = "https://imgcdn.kim/hs/v/${it.id}.jpg"
-                posterHeaders = mapOf("Referer" to "$mainUrl/home")
+        val imgReferer = data.img_referer ?: apiBase
+        val template = data.detailsimgcdn ?: data.imgcdn
+
+        return data.searchResult.orEmpty().map { item ->
+            newAnimeSearchResponse(item.t, NewTvId(item.id).toJson()) {
+                posterUrl = buildPosterUrl(template, item.id) ?: buildVerticalPosterUrl(item.id, ott)
+                posterHeaders = mapOf("Referer" to imgReferer)
             }
         }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        cookie_value = if(cookie_value.isEmpty()) bypass(mainUrl) else cookie_value
-        val id = parseJson<Id>(url).id
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "hd" to "on",
-            "ott" to "hs"
-        )
+        val apiBase = resolveApiUrl()
+        val id = parseJson<NewTvId>(url).id
+
         val data = app.get(
-            "$mainUrl/mobile/hs/post.php?id=$id&t=${APIHolder.unixTime}",
-            headers,
-            referer = "$mainUrl/home",
-            cookies = cookies
-        ).parsed<PostData>()
+            "$apiBase/newtv/post.php?id=$id",
+            headers = buildNewTvHeaders(ott, mapOf("Lastep" to "", "Usertoken" to ""))
+        ).parsed<NewTvPostResponse>()
+
+        val title = data.title ?: id
+        val playbackId = data.main_id ?: id
+        val cast = data.cast?.split(",")?.map { it.trim() }?.map { ActorData(Actor(it)) } ?: emptyList()
+        val genre = data.genre?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+        val rating = data.match?.replace("IMDb ", "")
+        val runTime = convertRuntimeToMinutes(data.runtime ?: "")
+        val isSeries = data.type == "t" || data.episodes?.any { it != null } == true
+        val suggest = data.suggest?.map {
+            newAnimeSearchResponse("", NewTvId(it.id).toJson()) {
+                posterUrl = buildVerticalPosterUrl(it.id, ott)
+                posterHeaders = mapOf("Referer" to apiBase)
+            }
+        }
+
+        if (!isSeries) {
+            return newMovieLoadResponse(title, url, TvType.Movie, NewTvLoadData(title, playbackId).toJson()) {
+                posterUrl = buildPosterUrl(data.main_poster, id) ?: buildVerticalPosterUrl(id, ott)
+                backgroundPosterUrl = buildBackgroundPosterUrl(id, ott)
+                posterHeaders = mapOf("Referer" to apiBase)
+                plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
+                actors = cast; this.score = Score.from10(rating); duration = runTime
+                recommendations = suggest
+            }
+        }
 
         val episodes = arrayListOf<Episode>()
 
-        val title = data.title
-        val castList = data.cast?.split(",")?.map { it.trim() } ?: emptyList()
-        val cast = castList.map {
-            ActorData(
-                Actor(it),
-            )
-        }
-        val genre = data.genre?.split(",")
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-
-        val rating = data.match?.replace("IMDb ", "")
-        val runTime = convertRuntimeToMinutes(data.runtime.toString())
-
-        val suggest = data.suggest?.map {
-            newAnimeSearchResponse("", Id(it.id).toJson()) {
-                this.posterUrl = "https://imgcdn.kim/hs/v/${it.id}.jpg"
-                posterHeaders = mapOf("Referer" to "$mainUrl/home")
-            }
-        }
-
-        if (data.episodes.first() == null) {
-            episodes.add(newEpisode(LoadData(title, id)) {
-                name = data.title
-            })
+        if (data.episodes.isNullOrEmpty()) {
+            if (data.type != "t") episodes.add(newEpisode(NewTvLoadData(title, playbackId)) { name = title })
         } else {
+            val selectedSeasonIdx = data.season?.indexOfFirst { it.selected == true }?.takeIf { it >= 0 }
+            val selectedSeasonId = selectedSeasonIdx?.let { data.season?.getOrNull(it)?.id } ?: data.nextPageSeason
+            val selectedSeasonNumber = selectedSeasonIdx?.plus(1)
+
             data.episodes.filterNotNull().mapTo(episodes) {
-                newEpisode(LoadData(title, it.id)) {
+                newEpisode(NewTvLoadData(title, it.id.orEmpty())) {
                     this.name = it.t
-                    this.episode = it.ep.replace("E", "").toIntOrNull()
-                    this.season = it.s.replace("S", "").toIntOrNull()
-                    this.posterUrl = "https://imgcdn.kim/hsepimg/150/${it.id}.jpg"
-                    this.runTime = it.time.replace("m", "").toIntOrNull()
+                    episode = it.ep?.toIntOrNull() ?: it.epNum?.replace("E", "").orEmpty().toIntOrNull()
+                    season = selectedSeasonNumber ?: it.sNum?.replace("S", "").orEmpty().toIntOrNull()
+                    posterUrl = buildPosterUrl(data.ep_poster, it.id.orEmpty()) ?: buildVerticalPosterUrl(it.id.orEmpty(), ott)
+                    this.runTime = it.timeVal?.replace("m", "").orEmpty().toIntOrNull()
+                    description = it.ep_desc
                 }
             }
 
-            if (data.nextPageShow == 1) {
-                episodes.addAll(getEpisodes(title, url, data.nextPageSeason!!, 2))
-            }
+            if (data.nextPageShow == 1 && !selectedSeasonId.isNullOrBlank())
+                episodes.addAll(getEpisodes(title, selectedSeasonId, 2, data.ep_poster, selectedSeasonNumber))
 
-            data.season?.dropLast(1)?.amap {
-                episodes.addAll(getEpisodes(title, url, it.id, 1))
+            data.season?.forEachIndexed { index, season ->
+                if (season.id != selectedSeasonId && !season.id.isNullOrBlank())
+                    episodes.addAll(getEpisodes(title, season.id, 1, data.ep_poster, index + 1))
             }
         }
 
-        val type = if (data.episodes.first() == null) TvType.Movie else TvType.TvSeries
+        if (data.type == "t" && episodes.isEmpty() && !data.season.isNullOrEmpty()) {
+            data.season.forEachIndexed { index, season ->
+                if (!season.id.isNullOrBlank())
+                    episodes.addAll(getEpisodes(title, season.id, 1, data.ep_poster, index + 1))
+            }
+        }
 
-        return newTvSeriesLoadResponse(title, url, type, episodes) {
-            posterUrl = "https://imgcdn.kim/hs/v/$id.jpg"
-            backgroundPosterUrl = "https://imgcdn.kim/hs/h/$id.jpg"
-            posterHeaders = mapOf("Referer" to "$mainUrl/home")
-            plot = data.desc
-            year = data.year.toIntOrNull()
-            tags = genre
-            actors = cast
-            this.score =  Score.from10(rating)
-            this.duration = runTime
-            this.contentRating = data.ua
-            this.recommendations = suggest
+        return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            posterUrl = buildPosterUrl(data.main_poster, id) ?: buildVerticalPosterUrl(id, ott)
+            backgroundPosterUrl = buildBackgroundPosterUrl(id, ott)
+            posterHeaders = mapOf("Referer" to apiBase)
+            plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
+            actors = cast; this.score = Score.from10(rating); duration = runTime
+            recommendations = suggest
         }
     }
 
     private suspend fun getEpisodes(
-        title: String, eid: String, sid: String, page: Int
+        title: String, sid: String, page: Int,
+        epPoster: String? = null, seasonNumber: Int? = null
     ): List<Episode> {
+        val apiBase = resolveApiUrl()
         val episodes = arrayListOf<Episode>()
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "hd" to "on",
-            "ott" to "hs"
-        )
         var pg = page
         while (true) {
             val data = app.get(
-                "$mainUrl/mobile/hs/episodes.php?s=$sid&series=$eid&t=${APIHolder.unixTime}&page=$pg",
-                headers,
-                referer = "$mainUrl/home",
-                cookies = cookies
-            ).parsed<EpisodesData>()
-            data.episodes?.mapTo(episodes) {
-                newEpisode(LoadData(title, it.id)) {
+                "$apiBase/newtv/episodes.php",
+                params = mapOf("id" to sid, "page" to pg.toString()),
+                headers = buildNewTvHeaders(ott)
+            ).parsed<NewTvEpisodesResponse>()
+
+            data.episodes.orEmpty().mapTo(episodes) {
+                newEpisode(NewTvLoadData(title, it.id.orEmpty())) {
                     name = it.t
-                    episode = it.ep.replace("E", "").toIntOrNull()
-                    season = it.s.replace("S", "").toIntOrNull()
-                    this.posterUrl = "https://imgcdn.kim/hsepimg/${it.id}.jpg"
-                    this.runTime = it.time.replace("m", "").toIntOrNull()
+                    episode = it.ep?.toIntOrNull() ?: it.epNum?.replace("E", "").orEmpty().toIntOrNull()
+                    season = seasonNumber ?: it.sNum?.replace("S", "").orEmpty().toIntOrNull()
+                    posterUrl = buildPosterUrl(epPoster, it.id.orEmpty()) ?: buildVerticalPosterUrl(it.id.orEmpty(), ott)
+                    this.runTime = it.timeVal?.replace("m", "").orEmpty().toIntOrNull()
+                    description = it.ep_desc
                 }
             }
-            if (data.nextPageShow == 0) break
+
+            if (data.nextPageShow != 1) break
             pg++
         }
         return episodes
     }
 
     override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        data: String, isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val (title, id) = parseJson<LoadData>(data)
-        val cookies = mapOf(
-            "t_hash_t" to cookie_value,
-            "hd" to "on",
-            "ott" to "hs"
-        )
+        val apiBase = resolveApiUrl()
+        val id = parseJson<NewTvLoadData>(data).id
 
-        val playlist = app.get(
-            "$newUrl/mobile/hs/playlist.php?id=$id&t=$title&tm=${APIHolder.unixTime}",
-            headers,
-            referer = "$mainUrl/",
-            cookies = cookies
-        ).parsed<PlayList>()
+        val response = app.get(
+            "$apiBase/newtv/player.php?id=$id",
+            headers = buildNewTvHeaders(ott, mapOf("Usertoken" to ""))
+        ).parsed<NewTvPlayerResponse>()
 
-        playlist.forEach { item ->
-            item.sources.forEach {
-                callback.invoke(
-                    newExtractorLink(
-                        name,
-                        it.label,
-                        "$newUrl/${it.file}",
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "$newUrl/"
-                        this.quality = getQualityFromName(it.file.substringAfter("q=", "").substringBefore("&in"))
-                    }
-                )
-            }
+        if (response.status != "ok" || response.video_link.isNullOrBlank()) return false
 
-            item.tracks?.filter { it.kind == "captions" }?.map { track ->
-                subtitleCallback.invoke(
-                    newSubtitleFile(
-                        track.label.toString(),
-                        httpsify(track.file.toString().replace("\\", "")),
-                    ) {
-                        this.headers = mapOf(
-                            "Referer" to "$newUrl/"
-                        )
-                    }
-                )
-            }
-        }
-
+        callback.invoke(newExtractorLink(name, name, response.video_link, type = ExtractorLinkType.M3U8) {
+            this.referer = response.referer ?: apiBase
+        })
         return true
     }
-
-    @Suppress("ObjectLiteralToLambda")
-    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                if (request.url.toString().contains(".m3u8")) {
-                    val newRequest = request.newBuilder()
-                        .header("Cookie", "hd=on")
-                        .build()
-                    return chain.proceed(newRequest)
-                }
-                return chain.proceed(request)
-            }
-        }
-    }
-
-    data class Id(
-        val id: String
-    )
-
-    data class LoadData(
-        val title: String, val id: String
-    )
 }

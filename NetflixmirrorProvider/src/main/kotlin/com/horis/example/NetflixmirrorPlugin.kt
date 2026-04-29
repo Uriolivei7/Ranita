@@ -7,8 +7,6 @@ import android.content.Context
 @CloudstreamPlugin
 open class NetflixmirrorPlugin: Plugin() {
     override fun load(context: Context) {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
-        NetflixmirrorStorage.init(context.applicationContext)
         registerMainAPI(NetflixProvider())
         registerMainAPI(PrimevideoProvider())
     }
