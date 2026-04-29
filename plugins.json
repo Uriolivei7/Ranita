@@ -76,7 +76,7 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=200&id=fztMk7eF9g8D&format=png",
     "language": "en",
-    "fileSize": 15000
+    "fileSize": 22000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeflvnetProvider.cs3",
@@ -266,24 +266,6 @@
     "fileSize": 24000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TwitchProvider.cs3",
-    "status": 1,
-    "version": 3,
-    "apiVersion": 1,
-    "name": "Twitch",
-    "internalName": "TwitchProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Twitch",
-    "tvTypes": [
-      "Live"
-    ],
-    "iconUrl": "https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png",
-    "language": "es",
-    "fileSize": 19000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NetflixmirrorProvider.cs3",
     "status": 1,
     "version": 7,
@@ -439,7 +421,7 @@
     ],
     "iconUrl": "https://www.animeparadise.moe/icon/favicon-32x32.png",
     "language": "en",
-    "fileSize": 36000
+    "fileSize": 37000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GnulaProvider.cs3",

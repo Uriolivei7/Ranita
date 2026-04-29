@@ -40,7 +40,12 @@ class AnimeParadiseProvider : MainAPI() {
         "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
     )
 
-    private suspend fun getSessionCookie(path: String): String {
+    private data class PageSession(val cookie: String, val actionHash: String)
+
+    private val searchActionHash = "70bc90e5d6f376d6614c3a08d7c8aca80385f082c9"
+    private val watchActionHash = "600dc21e94ea824156f9863dfc1bd5118623ebe0a0"
+
+    private suspend fun getPageSession(path: String): PageSession {
         return try {
             val res = app.get(
                 "$mainUrl/$path",
@@ -55,10 +60,10 @@ class AnimeParadiseProvider : MainAPI() {
                 ?.firstOrNull { it.trimStart().startsWith("anp_session") }
                 ?.trim() ?: ""
             Log.d(TAG, "Logs: Cookie: ${if (cookie.isNotEmpty()) cookie.take(40) + "..." else "VACÍA"}")
-            cookie
+            PageSession(cookie, if (path.startsWith("search")) searchActionHash else watchActionHash)
         } catch (e: Exception) {
-            Log.e(TAG, "Logs: Error obteniendo cookie: ${e.message}")
-            ""
+            Log.e(TAG, "Logs: Error getPageSession: ${e.message}")
+            PageSession("", searchActionHash)
         }
     }
 
@@ -89,24 +94,24 @@ class AnimeParadiseProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         Log.d(TAG, "Logs: --- BUSCANDO: $query ---")
         return try {
-            val sessionCookie = getSessionCookie("search?q=${query.encodeUri()}&page=1")
+            val searchPath = "search?q=${query.encodeUri()}&page=1"
+            val session = getPageSession(searchPath)
 
             val searchHeaders = mapOf(
                 "accept" to "text/x-component",
                 "content-type" to "text/plain;charset=UTF-8",
-                "next-action" to "70bb5dc82858424fa4bc2324f41b75ee1e0677e006",
+                "next-action" to session.actionHash,
                 "next-router-state-tree" to """["",{"children":["search",{"children":["__PAGE__",{},null,null]},null,null]}]""",
                 "origin" to mainUrl,
-                "referer" to "$mainUrl/search?q=${query.encodeUri()}&page=1",
+                "referer" to "$mainUrl/$searchPath",
                 "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-                "cookie" to sessionCookie
+                "cookie" to session.cookie
             )
 
-            // Usamos string normal (no triple-quote) para poder escapar $ correctamente
             val body = "[\"$query\",{\"genres\":[],\"year\":null,\"season\":null,\"page\":1,\"limit\":25,\"sort\":null},\"\$undefined\"]"
 
             val response = app.post(
-                "$mainUrl/search?q=${query.encodeUri()}&page=1",
+                "$mainUrl/$searchPath",
                 headers = searchHeaders,
                 requestBody = body.toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
             )
@@ -233,23 +238,24 @@ class AnimeParadiseProvider : MainAPI() {
         Log.d(TAG, "Logs: uid: $uid | origin: $origin")
 
         return try {
-            val sessionCookie = getSessionCookie("watch/$uid?origin=$origin")
+            val watchPath = "watch/$uid?origin=$origin"
+            val session = getPageSession(watchPath)
 
             val routerStateTree = """["",{"children":["watch",{"children":[["id","$uid","d"],{"children":["__PAGE__",{},null,null]}]},null,null]}]"""
 
             val actionHeaders = mapOf(
                 "accept" to "text/x-component",
                 "content-type" to "text/plain;charset=UTF-8",
-                "next-action" to "60b3f46488dfd22923bda168ef78cd866882713cca",
+                "next-action" to session.actionHash,
                 "next-router-state-tree" to routerStateTree,
                 "origin" to mainUrl,
-                "referer" to "$mainUrl/watch/$uid?origin=$origin",
+                "referer" to "$mainUrl/$watchPath",
                 "user-agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-                "cookie" to sessionCookie
+                "cookie" to session.cookie
             )
 
             val resText = app.post(
-                "$mainUrl/watch/$uid?origin=$origin",
+                "$mainUrl/$watchPath",
                 headers = actionHeaders,
                 requestBody = "[\"$uid\",\"$origin\"]"
                     .toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
