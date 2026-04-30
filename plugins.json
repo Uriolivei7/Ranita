@@ -525,6 +525,30 @@
         "name": "PelisplusProvider"
     },
     {
+        "fileHash": "sha256-9d0c8b44a8c67669cb61d4b8a22b7657d2868fd767278bead1e0473f53b21ea9",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 46221,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "PlayhubProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlayhubProvider.cs3",
+        "name": "PlayhubProvider"
+    },
+    {
         "fileHash": "sha256-5823c2131c33fdd2a1a355865796bca0355ba8e39b85c2fa419ff6323b74c154",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
