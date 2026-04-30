@@ -590,7 +590,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para contenido en Latino",
+    "description": "Plugin para ver series y películas en Latino",
     "tvTypes": [
       "TvSeries",
       "Movie",
