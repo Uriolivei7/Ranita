@@ -229,20 +229,20 @@ class SoloLatinoProvider : MainAPI() {
                 val epPoster = element.selectFirst("img.ep-thumb")?.attr("src") ?: ""
                 val epDesc = element.selectFirst("p.line-clamp-2")?.text() ?: ""
                 val epDate = element.select("p.text-xs").lastOrNull()?.text() ?: ""
-                Log.d("SoloLatino", "load - EP S${seasonNumber}E${episodeNumber}: $epTitle | fecha=$epDate")
+                val epReleaseDate = if (epDate.isNotBlank()) {
+                    try {
+                        SimpleDateFormat("dd MMM yyyy", Locale("es")).parse(epDate)?.time
+                    } catch (_: Exception) { null }
+                } else null
+                //Log.d("SoloLatino", "load - EP S${seasonNumber}E${episodeNumber}: $epTitle | fecha=$epDate")
                 if (epUrl.isNotBlank() && epTitle.isNotBlank()) {
+                    val displayName = if (epDate.isNotBlank()) "$epTitle\n$epDate" else epTitle
                     newEpisode(epUrl) {
-                        this.name = epTitle
+                        this.name = displayName
                         this.season = seasonNumber
                         this.episode = episodeNumber
                         this.posterUrl = epPoster
-                        this.description = buildString {
-                            if (epDesc.isNotBlank()) append(epDesc)
-                            if (epDate.isNotBlank()) {
-                                if (isNotEmpty()) append("\n")
-                                append(" $epDate")
-                            }
-                        }.ifBlank { null }
+                        this.description = epDesc.ifBlank { null }
                     }
                 } else null
             }
