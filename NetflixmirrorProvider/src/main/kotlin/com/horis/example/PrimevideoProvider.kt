@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
+import android.util.Log
 
 class PrimevideoProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
@@ -58,6 +59,11 @@ class PrimevideoProvider : MainAPI() {
         }
     }
 
+    private fun extractSeasonNumber(s: String?): Int? {
+        if (s.isNullOrBlank()) return null
+        return Regex("(\\d+)").find(s)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
     override suspend fun load(url: String): LoadResponse? {
         val apiBase = resolveApiUrl()
         val id = parseJson<NewTvId>(url).id
@@ -66,6 +72,14 @@ class PrimevideoProvider : MainAPI() {
             "$apiBase/newtv/post.php?id=$id",
             headers = buildNewTvHeaders(ott, mapOf("Lastep" to "", "Usertoken" to ""))
         ).parsed<NewTvPostResponse>()
+
+        Log.d("Primevideo", "Seasons count: ${data.season?.size ?: 0}")
+        data.season?.forEachIndexed { i, s ->
+            Log.d("Primevideo", "Season[$i]: id=${s.id}, s=${s.s}, selected=${s.selected}")
+        }
+        Log.d("Primevideo", "Episodes count: ${data.episodes?.size ?: 0}")
+        Log.d("Primevideo", "nextPageSeason: ${data.nextPageSeason}")
+        Log.d("Primevideo", "type: ${data.type}")
 
         val title = data.title ?: id
         val playbackId = data.main_id ?: id
@@ -99,32 +113,38 @@ class PrimevideoProvider : MainAPI() {
         } else {
             val selectedSeasonIdx = data.season?.indexOfFirst { it.selected == true }?.takeIf { it >= 0 }
             val selectedSeasonId = selectedSeasonIdx?.let { data.season?.getOrNull(it)?.id } ?: data.nextPageSeason
-            val selectedSeasonNumber = selectedSeasonIdx?.plus(1)
+            val selectedSeasonNum = extractSeasonNumber(data.season?.find { it.selected == true }?.s)
 
             data.episodes.filterNotNull().mapTo(episodes) {
                 newEpisode(NewTvLoadData(title, it.id.orEmpty())) {
                     this.name = it.t
                     episode = it.ep?.toIntOrNull() ?: it.epNum?.replace("E", "").orEmpty().toIntOrNull()
-                    season = selectedSeasonNumber ?: it.sNum?.replace("S", "").orEmpty().toIntOrNull()
+                    season = selectedSeasonNum ?: extractSeasonNumber(it.s)
                     posterUrl = pvEpPoster(it.id.orEmpty())
                     this.runTime = it.timeVal?.replace("m", "").orEmpty().toIntOrNull()
                     description = it.ep_desc
                 }
             }
 
-            if (data.nextPageShow == 1 && !selectedSeasonId.isNullOrBlank())
-                episodes.addAll(getEpisodes(title, selectedSeasonId, 2, selectedSeasonNumber))
+            if (data.nextPageShow == 1 && !selectedSeasonId.isNullOrBlank()) {
+                val selNum = extractSeasonNumber(data.season?.find { it.id == selectedSeasonId }?.s)
+                episodes.addAll(getEpisodes(title, selectedSeasonId, 2, selNum))
+            }
 
-            data.season?.forEachIndexed { index, season ->
-                if (season.id != selectedSeasonId && !season.id.isNullOrBlank())
-                    episodes.addAll(getEpisodes(title, season.id, 1, index + 1))
+            data.season?.forEach { season ->
+                if (season.id != selectedSeasonId && !season.id.isNullOrBlank()) {
+                    val num = extractSeasonNumber(season.s)
+                    episodes.addAll(getEpisodes(title, season.id, 1, num))
+                }
             }
         }
 
         if (data.type == "t" && episodes.isEmpty() && !data.season.isNullOrEmpty()) {
-            data.season.forEachIndexed { index, season ->
-                if (!season.id.isNullOrBlank())
-                    episodes.addAll(getEpisodes(title, season.id, 1, index + 1))
+            data.season.forEach { season ->
+                if (!season.id.isNullOrBlank()) {
+                    val num = extractSeasonNumber(season.s)
+                    episodes.addAll(getEpisodes(title, season.id, 1, num))
+                }
             }
         }
 
@@ -139,8 +159,7 @@ class PrimevideoProvider : MainAPI() {
     }
 
     private suspend fun getEpisodes(
-        title: String, sid: String, page: Int,
-        seasonNumber: Int? = null
+        title: String, sid: String, page: Int, seasonNumber: Int? = null
     ): List<Episode> {
         val apiBase = resolveApiUrl()
         val episodes = arrayListOf<Episode>()
@@ -152,11 +171,16 @@ class PrimevideoProvider : MainAPI() {
                 headers = buildNewTvHeaders(ott)
             ).parsed<NewTvEpisodesResponse>()
 
+            Log.d("Primevideo", "getEpisodes: sid=$sid page=$pg got=${data.episodes?.size ?: 0}")
+            data.episodes?.forEach { e ->
+                Log.d("Primevideo", "  ep: t=${e.t}, s=${e.s}, ep=${e.ep}")
+            }
+
             data.episodes.orEmpty().mapTo(episodes) {
                 newEpisode(NewTvLoadData(title, it.id.orEmpty())) {
                     name = it.t
                     episode = it.ep?.toIntOrNull() ?: it.epNum?.replace("E", "").orEmpty().toIntOrNull()
-                    season = seasonNumber ?: it.sNum?.replace("S", "").orEmpty().toIntOrNull()
+                    season = seasonNumber ?: extractSeasonNumber(it.s) ?: extractSeasonNumber(it.sNum)
                     posterUrl = pvEpPoster(it.id.orEmpty())
                     this.runTime = it.timeVal?.replace("m", "").orEmpty().toIntOrNull()
                     description = it.ep_desc

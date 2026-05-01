@@ -228,7 +228,9 @@ data class NewTvApiEpisode(
 
 data class NewTvSeason(
     val id: String? = null,
-    val selected: Boolean? = null
+    val selected: Boolean? = null,
+    val s: String? = null,
+    val t: String? = null
 )
 
 data class NewTvSuggest(
