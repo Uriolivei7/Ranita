@@ -42,8 +42,7 @@ class AnimeGratisProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/directorio" to "Animes",
-        "$mainUrl/directorio/doblado" to "Doblados"
+        "$mainUrl/directorio" to "Animes"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -201,8 +200,10 @@ class AnimeGratisProvider : MainAPI() {
         val poster = extractPoster(document)
         Log.d("AnimeGratis", "load poster: $poster")
 
-        val description = document.select("div.space-y-3 > p.text-white\\/90").firstOrNull()?.text()
+        val description = document.select("section:has(h2:contains(Sinopsis)) p").firstOrNull()?.text()
+            ?: document.select("div.space-y-3 > p.text-white\\/90").firstOrNull()?.text()
             ?: document.selectFirst("p.text-white\\/90.leading-relaxed")?.text()
+            ?: document.selectFirst("p.text-white\\/85.leading-relaxed")?.text()
             ?: ""
 
         val tags = document.select("div.space-y-3 a[href*='/directorio/genero/']").map { it.text() }
@@ -243,7 +244,7 @@ class AnimeGratisProvider : MainAPI() {
     private fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
 
-        document.select("#episodes-grid a[data-episode]").forEach { card ->
+        document.select("#episodes-grid a[data-episode], #dh-episodes-grid a[data-episode]").forEach { card ->
             val epHref = card.attr("abs:href")
             val epNum = card.attr("data-episode").toIntOrNull()
             if (epHref.isNotBlank() && epNum != null) {
@@ -269,11 +270,12 @@ class AnimeGratisProvider : MainAPI() {
         if (numEpisodes <= 0) return episodes
 
         val slug = Regex("/anime/([^/]+)-anime").find(animeUrl)?.groupValues?.get(1)
-            ?: Regex("/donghua/([^/]+)-donghua").find(animeUrl)?.groupValues?.get(1)
+            ?: Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
             ?: return episodes
 
+        val baseUrl = if (animeUrl.contains("/donghua/")) "$mainUrl/donghua/$slug" else "$mainUrl/anime/$slug"
         for (epNum in 1..numEpisodes) {
-            val epUrl = "$mainUrl/anime/$slug/episodio-$epNum"
+            val epUrl = "$baseUrl/episodio-$epNum"
             episodes.add(
                 newEpisode(epUrl) {
                     this.name = "Episodio $epNum"
@@ -308,7 +310,7 @@ class AnimeGratisProvider : MainAPI() {
     }
 
     private fun extractPoster(document: Document): String {
-        val pageImg = document.selectFirst("div.rounded-xl.overflow-hidden img[src*='cdn.animegratis.net']")
+        val pageImg = document.selectFirst("div.rounded-xl.overflow-hidden img[src*='cdn.animegratis.net'], div.relative.aspect-\\[2\\/3\\] img[src*='cdn.animegratis.net']")
         if (pageImg != null) {
             val src = pageImg.attr("src")
             if (src.isNotBlank() && !src.contains("cdn-cgi/image")) return src
@@ -319,7 +321,8 @@ class AnimeGratisProvider : MainAPI() {
             ?: Regex("/donghua/([^/]+)").find(canonicalUrl)?.groupValues?.get(1)
 
         if (!slug.isNullOrBlank()) {
-            val cdnUrl = "https://cdn.animegratis.net/anime/$slug/images/cover.webp"
+            val prefix = if (canonicalUrl.contains("/donghua/")) "donghua" else "anime"
+            val cdnUrl = "https://cdn.animegratis.net/$prefix/$slug/images/cover.webp"
             return cdnUrl
         }
 

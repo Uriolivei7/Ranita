@@ -118,12 +118,12 @@ class DonghuaGratisProvider : MainAPI() {
 
         val poster = extractPoster(document)
 
-        val description = document.selectFirst("p.text-white\\/90.leading-relaxed")?.text()
-            ?: document.select("p.text-white\\/90").firstOrNull()?.text()
+        val description = document.select("section:has(h2:contains(Sinopsis)) p").firstOrNull()?.text()
+            ?: document.selectFirst("p.text-white\\/90.leading-relaxed")?.text()
+            ?: document.selectFirst("p.text-white\\/85.leading-relaxed")?.text()
             ?: ""
 
-        val genresText = document.selectFirst("p.text-slate-500.text-xs")?.text()
-        val tags = if (genresText.isNullOrBlank()) emptyList() else genresText.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val tags = document.select("span.bg-gradient-to-r").map { it.text().trim() }.filter { it.isNotBlank() }
 
         val allSpans = document.select("span.text-white\\/90, span.text-slate-400")
         val statusText = allSpans.find { it.text().contains("Finalizado", ignoreCase = true) || it.text().contains("Emisión", ignoreCase = true) }?.text()
@@ -135,7 +135,7 @@ class DonghuaGratisProvider : MainAPI() {
 
         val year = Regex("(\\d{4})").find(document.text())?.groupValues?.get(1)?.toIntOrNull()
 
-        val episodes = extractEpisodes(document, url)
+        val episodes = extractEpisodes(document, url, poster)
         Log.d("DonghuaGratis", "Episodes found: ${episodes.size}")
 
         return if (episodes.isNotEmpty()) {
@@ -157,14 +157,29 @@ class DonghuaGratisProvider : MainAPI() {
         }
     }
 
-    private fun extractEpisodes(document: Document, animeUrl: String): List<Episode> {
+    private fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
+
+        document.select("#dh-episodes-grid a[data-episode]").forEach { card ->
+            val epHref = fixUrl(card.attr("href"))
+            val epNum = card.attr("data-episode").toIntOrNull()
+            if (epHref.isNotBlank() && epNum != null) {
+                episodes.add(
+                    newEpisode(epHref) {
+                        this.name = "Episodio $epNum"
+                        this.episode = epNum
+                        this.posterUrl = posterUrl.ifBlank { null }
+                    }
+                )
+            }
+        }
+
+        if (episodes.isNotEmpty()) return episodes
 
         val numEpisodes = extractEpisodeCount(document)
         if (numEpisodes <= 0) return episodes
 
-        val slug = Regex("/donghua/([^/]+)-donghua").find(animeUrl)?.groupValues?.get(1)
-            ?: Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
+        val slug = Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
             ?: return episodes
 
         for (epNum in 1..numEpisodes) {
@@ -173,6 +188,7 @@ class DonghuaGratisProvider : MainAPI() {
                 newEpisode(epUrl) {
                     this.name = "Episodio $epNum"
                     this.episode = epNum
+                    this.posterUrl = posterUrl.ifBlank { null }
                 }
             )
         }
@@ -187,6 +203,18 @@ class DonghuaGratisProvider : MainAPI() {
                 val match = Regex("\"numberOfEpisodes\":(\\d+)").find(data)
                 match?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
             }
+        }
+
+        val epCountText = document.selectFirst("p.text-slate-400.text-sm")?.text()
+        if (!epCountText.isNullOrBlank()) {
+            val match = Regex("(?i)(\\d+)\\s+episodios?\\s+disponibles?").find(epCountText)
+            match?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        }
+
+        val badgeText = document.selectFirst("span:contains(episodio)")?.text()
+        if (!badgeText.isNullOrBlank()) {
+            val match = Regex("(\\d+)").find(badgeText)
+            match?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
         }
 
         return 0
