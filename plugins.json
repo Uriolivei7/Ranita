@@ -633,10 +633,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-f9931077cb65332b712ce002b2f7b4c295808c3923fc914adb1dd9ab7e2daba2",
+        "fileHash": "sha256-599fb2192f7e1487aeba8ae87717c0703d581015dc6135b0609824b89e1b3685",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35702,
+        "fileSize": 35756,
         "status": 1,
         "language": "es",
         "authors": [
