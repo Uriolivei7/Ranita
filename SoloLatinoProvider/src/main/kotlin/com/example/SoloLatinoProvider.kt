@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import java.util.Date
 
 //yeji
 class SoloLatinoProvider : MainAPI() {
@@ -231,18 +232,19 @@ class SoloLatinoProvider : MainAPI() {
                 val epDate = element.select("p.text-xs").lastOrNull()?.text() ?: ""
                 val epReleaseDate = if (epDate.isNotBlank()) {
                     try {
-                        SimpleDateFormat("dd MMM yyyy", Locale("es")).parse(epDate)?.time
+                        SimpleDateFormat("dd/MM/yyyy", Locale.US).parse(epDate)?.time
                     } catch (_: Exception) { null }
                 } else null
-                //Log.d("SoloLatino", "load - EP S${seasonNumber}E${episodeNumber}: $epTitle | fecha=$epDate")
                 if (epUrl.isNotBlank() && epTitle.isNotBlank()) {
-                    val displayName = if (epDate.isNotBlank()) "$epTitle\n$epDate" else epTitle
                     newEpisode(epUrl) {
-                        this.name = displayName
+                        this.name = epTitle
                         this.season = seasonNumber
                         this.episode = episodeNumber
                         this.posterUrl = epPoster
                         this.description = epDesc.ifBlank { null }
+                        if (epReleaseDate != null) {
+                            this.addDate(java.util.Date(epReleaseDate))
+                        }
                     }
                 } else null
             }
