@@ -41,6 +41,28 @@
         "name": "AnimeflvnetProvider"
     },
     {
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
+        "fileHash": "sha256-243998fdf96cd9d8c2b87c919e6c15e00254b5a5a6c19416ed1a3d1b2df1be0f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 30668,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 1,
+        "internalName": "AnimegratisProvider",
+        "description": "Espa\u00f1ola (Spanish) Anime Extension",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimegratisProvider.cs3",
+        "name": "AnimegratisProvider"
+    },
+    {
         "fileHash": "sha256-75ef275d1b2d72b0cc9acaed0f41ae820b3536aa24cd35e761f71327a12ebec3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
