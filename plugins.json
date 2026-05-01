@@ -610,7 +610,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ver Animes y Donghuas",
+    "description": "Plugin para ver Animes (Subtitulados y con Doblajes) y Donghuas",
     "tvTypes": [
       "Anime",
       "AnimeMovie"
