@@ -24,6 +24,7 @@ import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.newAnimeLoadResponse
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -157,7 +158,49 @@ class DonghuaGratisProvider : MainAPI() {
         }
     }
 
-    private fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
+    private suspend fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
+        val slug = Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
+            ?: return extractEpisodesFallback(document, animeUrl, posterUrl)
+
+        val numEpisodes = extractEpisodeCount(document)
+        if (numEpisodes <= 0) return extractEpisodesFallback(document, animeUrl, posterUrl)
+
+        try {
+            val apiUrl = "$mainUrl/api/donghua-episodes-range?slug=$slug&start=1&end=$numEpisodes"
+            Log.d("DonghuaGratis", "API URL: $apiUrl")
+            val response = app.get(apiUrl).text
+            val json = JSONObject(response)
+            val episodesArray = json.optJSONArray("episodes")
+
+            if (episodesArray != null && episodesArray.length() > 0) {
+                val episodes = mutableListOf<Episode>()
+                for (i in 0 until episodesArray.length()) {
+                    val ep = episodesArray.getJSONObject(i)
+                    val epNum = ep.optInt("episode_number", 0)
+                    if (epNum > 0) {
+                        val epUrl = "$mainUrl/donghua/$slug/episodio-$epNum"
+                        episodes.add(
+                            newEpisode(epUrl) {
+                                this.name = ep.optString("title", "Episodio $epNum")
+                                this.episode = epNum
+                                this.posterUrl = posterUrl.ifBlank { null }
+                            }
+                        )
+                    }
+                }
+                if (episodes.isNotEmpty()) {
+                    Log.d("DonghuaGratis", "API returned ${episodes.size} episodes")
+                    return episodes
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DonghuaGratis", "API error: ${e.message}")
+        }
+
+        return extractEpisodesFallback(document, animeUrl, posterUrl)
+    }
+
+    private fun extractEpisodesFallback(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
 
         document.select("#dh-episodes-grid a[data-episode]").forEach { card ->
@@ -174,15 +217,15 @@ class DonghuaGratisProvider : MainAPI() {
             }
         }
 
-        if (episodes.isNotEmpty()) return episodes
-
         val numEpisodes = extractEpisodeCount(document)
         if (numEpisodes <= 0) return episodes
 
         val slug = Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
             ?: return episodes
 
+        val foundNums = episodes.map { it.episode }.toSet()
         for (epNum in 1..numEpisodes) {
+            if (epNum in foundNums) continue
             val epUrl = "$mainUrl/donghua/$slug/episodio-$epNum"
             episodes.add(
                 newEpisode(epUrl) {
@@ -192,7 +235,8 @@ class DonghuaGratisProvider : MainAPI() {
                 }
             )
         }
-        return episodes
+
+        return episodes.sortedBy { it.episode }
     }
 
     private fun extractEpisodeCount(document: Document): Int {

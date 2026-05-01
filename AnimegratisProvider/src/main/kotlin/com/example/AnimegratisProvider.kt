@@ -25,6 +25,7 @@ import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.newAnimeLoadResponse
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -241,7 +242,72 @@ class AnimeGratisProvider : MainAPI() {
         }
     }
 
-    private fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
+    private suspend fun extractEpisodes(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
+        val slug = Regex("/anime/([^/]+)").find(animeUrl)?.groupValues?.get(1)
+            ?: return extractEpisodesFromHtml(document, animeUrl, posterUrl)
+
+        try {
+            val episodes = mutableListOf<Episode>()
+            var start = 1
+            val chunkSize = 100
+
+            while (true) {
+                val end = start + chunkSize - 1
+                val apiUrl = "$mainUrl/api/episodes-range?slug=$slug&start=$start&end=$end"
+                Log.d("AnimeGratis", "API chunk: $start-$end")
+                val response = app.get(apiUrl).text
+                val json = JSONObject(response)
+                val chunkArray = json.optJSONArray("episodes")
+
+                if (chunkArray == null || chunkArray.length() == 0) break
+
+                for (i in 0 until chunkArray.length()) {
+                    val ep = chunkArray.getJSONObject(i)
+                    val epNum = ep.optInt("episode_number", 0)
+                    if (epNum > 0) {
+                        val epUrl = "$mainUrl/anime/$slug/episodio-$epNum"
+                        val thumb = ep.optString("thumbnail_url", "")
+                        val thumbUrl = if (thumb.isNotBlank()) {
+                            if (thumb.startsWith("http")) thumb else "$mainUrl$thumb"
+                        } else posterUrl.ifBlank { null }
+
+                        val titleJson = ep.opt("title")
+                        val epTitle = if (titleJson != null && titleJson != JSONObject.NULL && titleJson.toString().isNotBlank()) {
+                            titleJson.toString()
+                        } else "Episodio $epNum"
+
+                        val playersArray = ep.optJSONArray("players") ?: JSONArray()
+                        val epData = JSONObject().apply {
+                            put("url", epUrl)
+                            put("players", playersArray)
+                        }
+
+                        episodes.add(
+                            newEpisode(epData.toString()) {
+                                this.name = epTitle
+                                this.episode = epNum
+                                this.posterUrl = thumbUrl
+                            }
+                        )
+                    }
+                }
+
+                if (chunkArray.length() < chunkSize) break
+                start = end + 1
+            }
+
+            if (episodes.isNotEmpty()) {
+                Log.d("AnimeGratis", "API returned ${episodes.size} episodes total")
+                return episodes
+            }
+        } catch (e: Exception) {
+            Log.e("AnimeGratis", "API error: ${e.message}")
+        }
+
+        return extractEpisodesFromHtml(document, animeUrl, posterUrl)
+    }
+
+    private fun extractEpisodesFromHtml(document: Document, animeUrl: String, posterUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
 
         document.select("#episodes-grid a[data-episode], #dh-episodes-grid a[data-episode]").forEach { card ->
@@ -264,18 +330,17 @@ class AnimeGratisProvider : MainAPI() {
             }
         }
 
-        if (episodes.isNotEmpty()) return episodes
-
         val numEpisodes = extractEpisodeCount(document)
         if (numEpisodes <= 0) return episodes
 
-        val slug = Regex("/anime/([^/]+)-anime").find(animeUrl)?.groupValues?.get(1)
+        val slug = Regex("/anime/([^/]+)").find(animeUrl)?.groupValues?.get(1)
             ?: Regex("/donghua/([^/]+)").find(animeUrl)?.groupValues?.get(1)
             ?: return episodes
 
-        val baseUrl = if (animeUrl.contains("/donghua/")) "$mainUrl/donghua/$slug" else "$mainUrl/anime/$slug"
+        val foundNums = episodes.map { it.episode }.toSet()
         for (epNum in 1..numEpisodes) {
-            val epUrl = "$baseUrl/episodio-$epNum"
+            if (epNum in foundNums) continue
+            val epUrl = "$mainUrl/anime/$slug/episodio-$epNum"
             episodes.add(
                 newEpisode(epUrl) {
                     this.name = "Episodio $epNum"
@@ -284,7 +349,7 @@ class AnimeGratisProvider : MainAPI() {
                 }
             )
         }
-        return episodes
+        return episodes.sortedBy { it.episode }
     }
 
     private fun extractEpisodeCount(document: Document): Int {
@@ -341,15 +406,49 @@ class AnimeGratisProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("AnimeGratis", "loadLinks URL: $data")
-        val document = app.get(data).document
-
+        Log.d("AnimeGratis", "loadLinks data: $data")
         val langMap = mapOf("ja" to "Subtitulado", "cast" to "Castellano", "lat" to "Latino")
+
+        try {
+            val dataObj = JSONObject(data)
+            val players = dataObj.optJSONArray("players")
+            if (players != null && players.length() > 0) {
+                Log.d("AnimeGratis", "Using API players: ${players.length()} found")
+                for (i in 0 until players.length()) {
+                    val player = players.getJSONObject(i)
+                    val embedUrl = player.optString("embed_url", "")
+                    val lang = player.optString("language", "ja")
+                    val langLabel = langMap[lang] ?: "Subtitulado"
+
+                    if (embedUrl.isNotBlank()) {
+                        Log.d("AnimeGratis", "Player: [$langLabel] -> $embedUrl")
+                        val wrappedCallback: (ExtractorLink) -> Unit = { link ->
+                            callback(
+                                ExtractorLink(
+                                    source = "[$langLabel] ${link.source}",
+                                    name = "[$langLabel] ${link.name}",
+                                    url = link.url,
+                                    referer = link.referer,
+                                    quality = link.quality,
+                                    isM3u8 = link.isM3u8,
+                                )
+                            )
+                        }
+                        loadExtractor(embedUrl, mainUrl, subtitleCallback, wrappedCallback)
+                    }
+                }
+                return true
+            }
+        } catch (e: Exception) {
+            Log.d("AnimeGratis", "No API player data, falling back to HTML")
+        }
+
+        val document = app.get(data).document
 
         document.select("button.server-btn").forEach { btn ->
             val serverName = btn.attr("data-server")
             val serverUrl = btn.attr("data-url")
-            val langGroup = btn.attr("data-lang-group")
+            val langGroup = btn.attr("data-lang_group")
             val langLabel = langMap[langGroup] ?: "SUB"
 
             if (serverUrl.isNotBlank()) {
