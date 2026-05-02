@@ -28,7 +28,7 @@ class NetflixProvider : MainAPI() {
             val template = response.imgcdn_v.takeUnless { it.isNullOrBlank() } ?: response.imgcdn_h
             val results = ids.mapNotNull { id ->
                 newAnimeSearchResponse("", NewTvId(id).toJson()) {
-                    posterUrl = buildPosterUrl(template, id) ?: buildVerticalPosterUrl(id, ott)
+                    posterUrl = buildVerticalPosterUrl(id, ott)
                     posterHeaders = mapOf("Referer" to imgReferer)
                 }
             }
@@ -50,7 +50,7 @@ class NetflixProvider : MainAPI() {
 
         return data.searchResult.orEmpty().map { item ->
             newAnimeSearchResponse(item.t, NewTvId(item.id).toJson()) {
-                posterUrl = buildPosterUrl(template, item.id) ?: buildVerticalPosterUrl(item.id, ott)
+                posterUrl = buildVerticalPosterUrl(item.id, ott)
                 posterHeaders = mapOf("Referer" to imgReferer)
             }
         }
@@ -81,7 +81,7 @@ class NetflixProvider : MainAPI() {
 
         if (!isSeries) {
             return newMovieLoadResponse(title, url, TvType.Movie, NewTvLoadData(title, playbackId).toJson()) {
-                posterUrl = buildPosterUrl(data.main_poster, id) ?: buildVerticalPosterUrl(id, ott)
+                posterUrl = buildVerticalPosterUrl(id, ott)
                 backgroundPosterUrl = buildBackgroundPosterUrl(id, ott)
                 posterHeaders = mapOf("Referer" to apiBase)
                 plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
@@ -127,7 +127,7 @@ class NetflixProvider : MainAPI() {
         }
 
         return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-            posterUrl = buildPosterUrl(data.main_poster, id) ?: buildVerticalPosterUrl(id, ott)
+            posterUrl = buildVerticalPosterUrl(id, ott)
             backgroundPosterUrl = buildBackgroundPosterUrl(id, ott)
             posterHeaders = mapOf("Referer" to apiBase)
             plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
