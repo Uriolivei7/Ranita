@@ -108,10 +108,10 @@
         "name": "AnimeonsenProvider"
     },
     {
-        "fileHash": "sha256-e8b023caa910adff50cafbcdbc87422094fe66efd7961e4852c29998494db5b5",
+        "fileHash": "sha256-95249dac678d8430bb172848f5cb4ec2e9b2058f1a98800f18d7b5b5b82f67b7",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37547,
+        "fileSize": 35935,
         "status": 1,
         "language": "en",
         "authors": [
