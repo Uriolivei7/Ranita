@@ -117,21 +117,30 @@ class PrimevideoProvider : MainAPI() {
             val allSeasons = mutableListOf<Pair<String, Int?>>()
 
             // Main block episodes belong to selected season
-            val mainBlockEpisodes = data.episodes.filterNotNull().map { ep ->
-                newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
-                    name = ep.t
-                    episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
-                    season = selectedSeasonNum ?: extractSeasonNumber(ep.s)
-                    posterUrl = pvEpPoster(ep.id.orEmpty())
-                    this.runTime = ep.timeVal?.replace("m", "").orEmpty().toIntOrNull()
-                    description = ep.ep_desc
-                }
+            Log.d("Primevideo", "Main block episodes count: ${data.episodes?.size ?: 0}")
+            data.episodes?.forEachIndexed { i, ep ->
+                Log.d("Primevideo", "  main ep[$i]: id=${ep?.id}, t=${ep?.t}, ep=${ep?.ep}")
             }
+            val mainBlockEpisodes = data.episodes
+                .filterNotNull()
+                .distinctBy { it.id }
+                .map { ep ->
+                    newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
+                        name = ep.t
+                        episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
+                        season = selectedSeasonNum ?: extractSeasonNumber(ep.s)
+                        posterUrl = pvEpPoster(ep.id.orEmpty())
+                        this.runTime = ep.timeVal?.replace("m", "").orEmpty().toIntOrNull()
+                        description = ep.ep_desc
+                    }
+                }
 
-            if (data.nextPageShow == 1 && !selectedSeasonId.isNullOrBlank()) {
+            // Always add selected season to allSeasons (nextPageShow only controls if there are extra pages)
+            if (!selectedSeasonId.isNullOrBlank()) {
                 val selNum = extractSeasonNumber(data.season?.find { it.id == selectedSeasonId }?.s)
                 allSeasons.add(Pair(selectedSeasonId, selNum))
             }
+            Log.d("Primevideo", "selectedSeasonId=$selectedSeasonId, nextPageShow=${data.nextPageShow}, allSeasons before loop=${allSeasons.size}")
 
             data.season?.forEach { season ->
                 if (season.id != selectedSeasonId && !season.id.isNullOrBlank()) {
@@ -188,6 +197,7 @@ class PrimevideoProvider : MainAPI() {
     ): List<Episode> {
         val apiBase = resolveApiUrl()
         val episodes = arrayListOf<Episode>()
+        val seenIds = mutableSetOf<String>()
         var pg = page
         while (true) {
             val data = app.get(
@@ -198,18 +208,21 @@ class PrimevideoProvider : MainAPI() {
 
             Log.d("Primevideo", "getEpisodes: sid=$sid page=$pg got=${data.episodes?.size ?: 0}")
             data.episodes?.forEach { e ->
-                Log.d("Primevideo", "  ep: t=${e.t}, s=${e.s}, ep=${e.ep}")
+                Log.d("Primevideo", "  ep: id=${e.id}, t=${e.t}, s=${e.s}, ep=${e.ep}")
             }
 
-            data.episodes.orEmpty().mapTo(episodes) { ep ->
-                newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
+            data.episodes.orEmpty().forEach { ep ->
+                if (ep.id.isNullOrBlank()) return@forEach
+                if (ep.id in seenIds) return@forEach
+                seenIds.add(ep.id)
+                episodes.add(newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
                     name = ep.t
                     episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
                     season = seasonNumber ?: extractSeasonNumber(ep.s) ?: extractSeasonNumber(ep.sNum)
                     posterUrl = pvEpPoster(ep.id.orEmpty())
                     this.runTime = ep.timeVal?.replace("m", "").orEmpty().toIntOrNull()
                     description = ep.ep_desc
-                }
+                })
             }
 
             if (data.nextPageShow != 1) break
@@ -223,14 +236,19 @@ class PrimevideoProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
     ): Boolean {
         val apiBase = resolveApiUrl()
-        val id = parseJson<NewTvLoadData>(data).id
-        val response = app.get(
-            "$apiBase/newtv/player.php?id=$id",
+        val load = parseJson<NewTvLoadData>(data)
+        Log.d("Primevideo", "loadLinks: playbackId=${load.id}")
+        val result = app.get(
+            "$apiBase/newtv/player.php?id=${load.id}",
             headers = buildNewTvHeaders(ott, mapOf("Usertoken" to ""))
         ).parsed<NewTvPlayerResponse>()
-        if (response.status != "ok" || response.video_link.isNullOrBlank()) return false
-        callback.invoke(newExtractorLink(name, name, response.video_link, type = ExtractorLinkType.M3U8) {
-            this.referer = response.referer ?: apiBase
+        Log.d("Primevideo", "loadLinks result=${result}")
+        if (result.status != "ok" || result.video_link.isNullOrBlank()) {
+            Log.e("Primevideo", "loadLinks FAILED: status=${result.status}, video_link=${result.video_link}")
+            return false
+        }
+        callback.invoke(newExtractorLink(name, name, result.video_link, type = ExtractorLinkType.M3U8) {
+            this.referer = result.referer ?: apiBase
         })
         return true
     }
