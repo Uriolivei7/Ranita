@@ -109,10 +109,10 @@ class MhdflixProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         Log.d("Mhdflix-Search", "=== search START - query: '$query' ===")
-        
+
         val searchUrl = "$mainUrl/api/search?query=${query.replace(" ", "+")}&page=1&limit=25"
         Log.d("Mhdflix-Search", "API URL: $searchUrl")
-        
+
         return try {
             val response = app.get(
                 searchUrl,
@@ -122,23 +122,23 @@ class MhdflixProvider : MainAPI() {
                     "Accept" to "application/json, text/plain, */*"
                 )
             ).text
-            
+
             Log.d("Mhdflix-Search", "Response: ${response.take(500)}")
-            
+
             val searchResponse = parseJson<SearchApiResponse>(response)
             val results = searchResponse.data.mapNotNull { item ->
                 val slug = item.slug ?: item.title?.lowercase()?.replace(Regex("[^a-z0-9]+"), "-")?.trim('-') ?: return@mapNotNull null
                 val type = item.type ?: "tv"
                 val url = if (type == "movie") "$mainUrl/movies/${item.id}/$slug" else "$mainUrl/tvs/${item.id}/$slug"
                 val tvType = if (type == "movie") TvType.Movie else TvType.TvSeries
-                
+
                 Log.d("Mhdflix-Search", "  Result: title='${item.title}', poster='${item.poster}', url='$url'")
-                
+
                 newMovieSearchResponse(item.title ?: "", url, tvType) {
                     this.posterUrl = fixUrlPath(item.poster)
                 }
             }
-            
+
             Log.d("Mhdflix-Search", "=== search END - returning ${results.size} results ===")
             results
         } catch (e: Exception) {
@@ -149,7 +149,7 @@ class MhdflixProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         Log.d("Mhdflix-Load", "=== load START - url: $url ===")
-        
+
         if (url.contains("/episode/")) {
             return loadEpisodePage(url)
         }
@@ -158,19 +158,19 @@ class MhdflixProvider : MainAPI() {
         Log.d("Mhdflix-Load", "HTML length: ${html.length}")
 
         val doc = Jsoup.parse(html)
-        
+
         val title = doc.selectFirst("meta[property='og:title']")?.attr("content")
             ?: doc.selectFirst("title")?.text()?.substringBefore("|")?.trim()
             ?: "Sin título"
-        
+
         val poster = doc.selectFirst("meta[property='og:image']")?.attr("content") ?: ""
         val description = doc.selectFirst("meta[property='og:description']")?.attr("content")
             ?: doc.selectFirst("meta[name='description']")?.attr("content")
             ?: ""
-        
+
         val idFromUrl = Regex("""/(?:movies|tvs)/(\d+)/""").find(url)?.groupValues?.get(1)?.toLongOrNull()
         val typeFromUrl = if (url.contains("/movies/")) "movie" else "tv"
-        
+
         Log.d("Mhdflix-Load", "title: $title, poster: $poster, idFromUrl: $idFromUrl, type: $typeFromUrl")
 
         val tvType = if (typeFromUrl == "movie") TvType.Movie else TvType.TvSeries
@@ -197,20 +197,20 @@ class MhdflixProvider : MainAPI() {
             .mapNotNull { card ->
                 val href = card.attr("href")
                 if (href.isBlank() || !href.startsWith("/")) return@mapNotNull null
-                
+
                 val link = "$mainUrl$href"
                 val img = card.selectFirst("img")
                 val poster = img?.attr("src") ?: ""
                 val recTitle = img?.attr("alt") ?: ""
                 val recType = if (href.startsWith("/movies/")) TvType.Movie else TvType.TvSeries
-                
+
                 Log.d("Mhdflix-Load", "  Rec: title='$recTitle', poster='$poster', link='$link'")
-                
+
                 newMovieSearchResponse(recTitle, link, recType) {
                     this.posterUrl = fixUrlPath(poster)
                 }
             }.take(20)
-        
+
         Log.d("Mhdflix-Load", "Total recommendations: ${recommendations.size}")
 
         if (tvType == TvType.Movie) {
@@ -222,7 +222,7 @@ class MhdflixProvider : MainAPI() {
             }
         } else {
             val episodes = loadEpisodesFromApi(idFromUrl, url)
-            
+
             if (episodes.isNotEmpty()) {
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                     this.posterUrl = poster
@@ -231,7 +231,7 @@ class MhdflixProvider : MainAPI() {
                     this.recommendations = recommendations
                 }
             }
-            
+
             Log.d("Mhdflix-Load", "No episodes found via API, returning single episode placeholder")
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, listOf(newEpisode(url) {
                 this.name = title
@@ -246,15 +246,15 @@ class MhdflixProvider : MainAPI() {
 
     private suspend fun loadEpisodesFromApi(tvId: Long?, tvUrl: String): List<Episode> {
         if (tvId == null) return emptyList()
-        
+
         Log.d("Mhdflix-Load", "Fetching seasons for TV ID: $tvId")
-        
+
         val seasonsHeaders = mapOf(
             "User-Agent" to baseHeaders.getValue("User-Agent"),
             "Referer" to "$mainUrl/",
             "Accept" to "application/json, text/plain, */*"
         )
-        
+
         val seasonsResponse = try {
             val res = app.get("$mainUrl/api/series/$tvId/seasons", headers = seasonsHeaders).text
             Log.d("Mhdflix-Load", "Seasons response: ${res.take(300)}")
@@ -263,47 +263,47 @@ class MhdflixProvider : MainAPI() {
             Log.e("Mhdflix-Load", "Failed to fetch seasons: ${e.message}")
             null
         }
-        
+
         if (seasonsResponse?.data.isNullOrEmpty()) {
             Log.d("Mhdflix-Load", "No seasons found")
             return emptyList()
         }
-        
+
         val episodes = mutableListOf<Episode>()
-        
+
         for (season in seasonsResponse.data) {
             val seasonId = season.id ?: continue
             val seasonNum = season.seasonNumber ?: continue
-            
+
             Log.d("Mhdflix-Load", "Fetching episodes for season $seasonNum (id=$seasonId)")
-            
+
             val episodesHeaders = mapOf(
                 "User-Agent" to baseHeaders.getValue("User-Agent"),
                 "Referer" to "$tvUrl?seasson=$seasonId",
                 "Accept" to "application/json, text/plain, */*"
             )
-            
+
             var page = 1
             var hasMore = true
-            
+
             while (hasMore) {
                 try {
                     val epUrl = "$mainUrl/api/series/season/$seasonId/episodes?page=$page"
                     Log.d("Mhdflix-Load", "  Requesting: $epUrl with Referer: ${episodesHeaders["Referer"]}")
                     val res = app.get(epUrl, headers = episodesHeaders).text
                     Log.d("Mhdflix-Load", "  Response: ${res.take(200)}")
-                    
+
                     val epResponse = tryParseJson<EpisodesApiResponse>(res)
                     val seasonEpisodes = epResponse?.data ?: emptyList()
-                    
+
                     Log.d("Mhdflix-Load", "  Season $seasonNum page $page: ${seasonEpisodes.size} episodes")
-                    
+
                     for (ep in seasonEpisodes) {
                         val epId = ep.idEpisodios ?: continue
                         val epNum = ep.numEpisode ?: continue
                         val epTitle = ep.title?.takeIf { it.isNotBlank() } ?: "Episodio $epNum"
                         val epPoster = ep.posterPath?.takeIf { it.isNotBlank() }?.let { fixUrlPath(it) } ?: ""
-                        
+
                         episodes.add(newEpisode("$mainUrl/tvs/episode/$epId") {
                             this.name = epTitle
                             this.season = seasonNum
@@ -312,7 +312,7 @@ class MhdflixProvider : MainAPI() {
                             this.description = ep.overview?.takeIf { it.isNotBlank() }
                         })
                     }
-                    
+
                     hasMore = seasonEpisodes.isNotEmpty() && seasonEpisodes.size >= 20
                     page++
                 } catch (e: Exception) {
@@ -321,27 +321,27 @@ class MhdflixProvider : MainAPI() {
                 }
             }
         }
-        
+
         Log.d("Mhdflix-Load", "Total episodes loaded: ${episodes.size}")
         return episodes
     }
 
     private suspend fun loadEpisodePage(url: String): LoadResponse? {
         Log.d("Mhdflix-EpPage", "=== loadEpisodePage - url: $url ===")
-        
+
         val epId = Regex("""/episode/(\d+)""").find(url)?.groupValues?.get(1)
         val epUrl = "$mainUrl/api/links?id=$epId&type=episode"
-        
+
         var episodeTitle: String
         var description: String
         var poster: String
-        
+
         try {
             val html = app.get(url, headers = baseHeaders).text
             val doc = Jsoup.parse(html)
             episodeTitle = doc.selectFirst("meta[property='og:title']")?.attr("content")
                 ?: doc.selectFirst("title")?.text()?.substringBefore("|")?.trim()
-                ?: "Episodio $epId"
+                        ?: "Episodio $epId"
             description = doc.selectFirst("meta[property='og:description']")?.attr("content") ?: ""
             poster = doc.selectFirst("meta[property='og:image']")?.attr("content") ?: ""
         } catch (e: Exception) {
@@ -349,7 +349,7 @@ class MhdflixProvider : MainAPI() {
             description = ""
             poster = ""
         }
-        
+
         Log.d("Mhdflix-EpPage", "episodeTitle: $episodeTitle, epId: $epId")
 
         val serieMatch = Regex("""/tvs/(\d+)/([^/]+)""").find(url)
@@ -374,17 +374,17 @@ class MhdflixProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d("Mhdflix-Links", "=== loadLinks START - data: $data ===")
-        
+
         val contentInfo = extractContentInfo(data)
         if (contentInfo == null) {
             Log.e("Mhdflix-Links", "Could not extract ID from: $data")
             return false
         }
-        
+
         val (id, type) = contentInfo
         val apiUrl = "$mainUrl/api/links?id=$id&type=$type"
         Log.d("Mhdflix-Links", "API URL: $apiUrl")
-        
+
         return try {
             val response = app.get(
                 apiUrl,
@@ -394,9 +394,9 @@ class MhdflixProvider : MainAPI() {
                     "Accept" to "application/json, text/plain, */*"
                 )
             ).text
-            
+
             Log.d("Mhdflix-Links", "Response: $response")
-            
+
             when {
                 response.trim().startsWith("[") -> {
                     val links = parseJson<List<ApiLink>>(response)
@@ -440,6 +440,33 @@ class MhdflixProvider : MainAPI() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun createExtractorLink(
+        source: String,
+        name: String,
+        url: String,
+        referer: String = "",
+        quality: Int = Qualities.Unknown.value,
+        type: ExtractorLinkType = ExtractorLinkType.VIDEO
+    ): ExtractorLink {
+        return ExtractorLink(
+            source = source,
+            name = name,
+            url = url,
+            referer = referer,
+            quality = quality,
+            type = type
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createSubtitleFile(lang: String, url: String): SubtitleFile {
+        return SubtitleFile(
+            lang = lang,
+            url = url
+        )
+    }
+
     private suspend fun processApiLinks(
         links: List<ApiLink>,
         referer: String,
@@ -448,7 +475,7 @@ class MhdflixProvider : MainAPI() {
     ): Boolean {
         var found = false
         Log.d("Mhdflix-Links", "Processing ${links.size} links with referer: $referer")
-        
+
         val extractorDomains = setOf(
             "dood", "doodstream", "streamwish", "filelions", "streamhub",
             "luluvdo", "netu", "uqload", "mixdrop", "netuplayer",
@@ -457,22 +484,22 @@ class MhdflixProvider : MainAPI() {
             "streamtape", "filemoon0", "gupload", "savefiles", "streamp2p",
             "cubeembed", "rpmvid"
         )
-        
-        for ((index, link) in links.withIndex()) {
-            val videoUrl = link.url ?: link.embedUrl ?: link.iframeUrl
-            Log.d("Mhdflix-Links", "Link[$index]: url=$videoUrl, server=${link.server?.name}")
-            
+
+        for ((index, item) in links.withIndex()) {
+            val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl
+            Log.d("Mhdflix-Links", "Link[$index]: url=$videoUrl, server=${item.server?.name}")
+
             if (videoUrl.isNullOrBlank() || videoUrl.contains("undefined")) continue
-            
-            val serverName = link.server?.name ?: link.serverName ?: "Server"
-            val languageName = link.language?.name ?: link.languageName ?: "Latino"
-            val qualityName = link.quality?.name ?: ""
+
+            val serverName = item.server?.name ?: item.serverName ?: "Server"
+            val languageName = item.language?.name ?: item.languageName ?: "Latino"
+            val qualityName = item.quality?.name ?: ""
             val linkName = "$serverName - $languageName"
-            
+
             val hasExtractor = extractorDomains.any { domain -> videoUrl.contains(domain, ignoreCase = true) }
             val isDirectMp4 = videoUrl.contains(".mp4", ignoreCase = true)
             val isStreamtape = videoUrl.contains("streamtape", ignoreCase = true)
-            
+
             if ((isDirectMp4 || isStreamtape) && !hasExtractor) {
                 val qualityValue = when {
                     qualityName.contains("4k", ignoreCase = true) || qualityName.contains("2160") -> Qualities.P2160.value
@@ -481,42 +508,44 @@ class MhdflixProvider : MainAPI() {
                     qualityName.contains("480") -> Qualities.P480.value
                     else -> Qualities.Unknown.value
                 }
-                
+
                 callback.invoke(
-                    newExtractorLink(name, linkName, videoUrl) {
-                        this.referer = referer
-                        this.quality = qualityValue
-                        this.type = ExtractorLinkType.VIDEO
-                    }
+                    createExtractorLink(
+                        source = name,
+                        name = linkName,
+                        url = videoUrl,
+                        referer = referer,
+                        quality = qualityValue,
+                        type = ExtractorLinkType.VIDEO
+                    )
                 )
                 found = true
             } else if (hasExtractor) {
                 @Suppress("DEPRECATION")
-                loadExtractor(fixUrl(videoUrl), referer, subtitleCallback) { link ->
-                    val nameWithLang = "${link.name} [$languageName]"
-                    callback(
-                        ExtractorLink(
+                loadExtractor(videoUrl, subtitleCallback) { extractedLink ->
+                    val nameWithLang = "${extractedLink.name} [$languageName]"
+                    callback.invoke(
+                        createExtractorLink(
                             source = nameWithLang,
                             name = linkName,
-                            url = link.url,
-                            referer = link.referer,
-                            quality = link.quality,
-                            type = link.type
+                            url = extractedLink.url,
+                            referer = extractedLink.referer,
+                            quality = extractedLink.quality,
+                            type = extractedLink.type
                         )
                     )
-                }
-                found = true
+                }.also { if (it) found = true }
             }
-            
-            link.subtitles?.forEach { sub ->
+
+            item.subtitles?.forEach { sub ->
                 sub.url?.let { url ->
                     subtitleCallback.invoke(
-                        newSubtitleFile(sub.name ?: languageName, fixUrl(url))
+                        createSubtitleFile(sub.name ?: languageName, fixUrl(url))
                     )
                 }
             }
         }
-        
+
         Log.d("Mhdflix-Links", "processApiLinks - found=$found")
         return found
     }

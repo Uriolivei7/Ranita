@@ -582,7 +582,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MhdflixProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "MHDFLIX",
     "internalName": "MhdflixProvider",
@@ -599,7 +599,7 @@
     ],
     "iconUrl": "https://ww1.mhdflix.com/favicon.ico",
     "language": "mx",
-    "fileSize": 50000
+    "fileSize": 49000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DonghualifeProvider.cs3",
