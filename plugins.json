@@ -348,10 +348,10 @@
         "name": "LamovieProvider"
     },
     {
-        "fileHash": "sha256-17593b674e03921744bdb57a5f5215361db4239058fbd3193c8b79736e2e7f99",
+        "fileHash": "sha256-6cbea54dec631704a61ebeae091ae9c3bccc333641bab10859d5b98fbad31ac6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 16987,
+        "fileSize": 16986,
         "status": 1,
         "language": "es",
         "authors": [
