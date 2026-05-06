@@ -264,25 +264,6 @@
         "name": "HenaojaraProvider"
     },
     {
-        "fileHash": "sha256-d45a90f82c91a66f7f37b6ddfbe08137392b92910dc371b53d5ed7c42a3fe113",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24123,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Movie"
-        ],
-        "version": 5,
-        "internalName": "HomecineProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/HomecineProvider.cs3",
-        "name": "HomecineProvider"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
         "fileHash": "sha256-eb84198ffcd632069c3f4c08e1dd17f011e9e63f80f026276ea129e0094c9d8d",
         "apiVersion": 1,
