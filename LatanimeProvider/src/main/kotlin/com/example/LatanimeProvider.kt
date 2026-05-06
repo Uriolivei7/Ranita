@@ -53,8 +53,8 @@ class LatanimeProvider : MainAPI() {
     private fun formatTitleWithLanguage(rawTitle: String): String {
         val clean = cleanTitle(rawTitle)
         return when {
-            rawTitle.contains("Latino", true) -> "$clean (Latino)"
-            rawTitle.contains("Castellano", true) -> "$clean (Castellano)"
+            rawTitle.contains("Latino", true) -> "$clean Latino"
+            rawTitle.contains("Castellano", true) -> "$clean Castellano"
             else -> clean
         }
     }
