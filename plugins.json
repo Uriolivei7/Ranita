@@ -135,27 +135,6 @@
     "fileSize": 15000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/HomecineProvider.cs3",
-    "status": 1,
-    "version": 1,
-    "apiVersion": 1,
-    "name": "HomeCine",
-    "internalName": "HomecineProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Latino, Español y Subtitulado",
-    "tvTypes": [
-      "TvSeries",
-      "Anime",
-      "Movie",
-      "Cartoon"
-    ],
-    "iconUrl": "https://www3.homecine.to/wp-content/uploads/2018/05/homedark-1-3.png",
-    "language": "mx",
-    "fileSize": 24000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
     "status": 0,
     "version": 4,
