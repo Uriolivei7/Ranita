@@ -139,6 +139,27 @@
         "name": "CinemacityProvider"
     },
     {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=mundodonghua.com&sz=%size%",
+        "fileHash": "sha256-7e3a73e767c4cf906b4f4f074a7f5e1d49753f935ccc49035f34848b9df7b85b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 22355,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "Anime",
+            "OVA",
+            "AnimeMovie"
+        ],
+        "version": 3,
+        "internalName": "DonghualifeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DonghualifeProvider.cs3",
+        "name": "DonghualifeProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
         "fileHash": "sha256-3ab3881b608a1fee391e92f07aa27608d0690c38315b8f219438923e3a1c70c8",
         "apiVersion": 1,
