@@ -601,22 +601,25 @@
     "fileSize": 46000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimegratisProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MhdflixProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 1,
     "apiVersion": 1,
-    "name": "AnimeGratis",
-    "internalName": "AnimegratisProvider",
+    "name": "MHDFLIX",
+    "internalName": "MhdflixProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ver Animes (Subtitulados y con Doblajes) y Donghuas",
+    "description": "Plugin para ver series, animes, doramas y películas en Latino., Subtitulado y Castellano",
     "tvTypes": [
+      "TvSeries",
       "Anime",
-      "AnimeMovie"
+      "Cartoon",
+      "AsianDrama",
+      "Movie"
     ],
-    "iconUrl": "https://animegratis.net/icons/favicon-32x32.png",
+    "iconUrl": "https://ww1.mhdflix.com/favicon.ico",
     "language": "mx",
-    "fileSize": 38000
+    "fileSize": 50000
   }
 ]
