@@ -41,52 +41,6 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-37aeeb703a07521ee31571ba1f0fe7b40d0ae351db3635938b96787c4889cda0",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38047,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Phisher98"
-        ],
-        "tvTypes": [
-            "Movie",
-            "Anime",
-            "AnimeMovie"
-        ],
-        "version": 1,
-        "internalName": "AnimegratisProvider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimegratisProvider.cs3",
-        "name": "AnimegratisProvider"
-    },
-    {
-        "fileHash": "sha256-75ef275d1b2d72b0cc9acaed0f41ae820b3536aa24cd35e761f71327a12ebec3",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 27144,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "Cartoon",
-            "Anime"
-        ],
-        "version": 21,
-        "internalName": "AnimeioProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeioProvider.cs3",
-        "name": "AnimeioProvider"
-    },
-    {
         "fileHash": "sha256-2760ffb8e761726a700c3dac3a29c2756665fc91fec73c9a043259a2a75e97f3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -163,26 +117,6 @@
         "internalName": "AsialiveactionProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AsialiveactionProvider.cs3",
         "name": "AsialiveactionProvider"
-    },
-    {
-        "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
-        "fileHash": "sha256-7535727f5d8bc4eca7f4e8c3bb9208901cc36c7ab13db51d1a06bcb6799d4797",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 20143,
-        "status": 1,
-        "language": "mx",
-        "authors": [
-            "redblacker8"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Movie"
-        ],
-        "version": 2,
-        "internalName": "CinehdplusProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/CinehdplusProvider.cs3",
-        "name": "CinehdplusProvider"
     },
     {
         "fileHash": "sha256-9769cee2d33afaf60d5127c53c64fb5e57d71add74ad75cf4f80f3686464c990",
@@ -435,6 +369,30 @@
         "name": "LatanimeProvider"
     },
     {
+        "fileHash": "sha256-9ebbfbd85da634770e112f33381b2cad8f462db639cd2b0509e1a5049185c84b",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 50999,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Cartoon",
+            "Anime"
+        ],
+        "version": 21,
+        "internalName": "MhdflixProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/MhdflixProvider.cs3",
+        "name": "MhdflixProvider"
+    },
+    {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
         "fileHash": "sha256-b42301dea7caf99e4518132421a8adff77025f1c09cbf0860105ce4aace03b83",
         "apiVersion": 1,
@@ -593,25 +551,6 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlushdProvider.cs3",
         "name": "PlushdProvider"
-    },
-    {
-        "iconUrl": "https://reydonghua.org/public/favicon.ico?v=4.71",
-        "fileHash": "sha256-35b0c028a6c88b665b632a293a26fbfe24cbd945cb772314dfe7368805ef338c",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 18433,
-        "status": 1,
-        "language": "mx",
-        "authors": [
-            "redblacker8"
-        ],
-        "tvTypes": [
-            "Anime"
-        ],
-        "version": 1,
-        "internalName": "ReydonghuaProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/ReydonghuaProvider.cs3",
-        "name": "ReydonghuaProvider"
     },
     {
         "fileHash": "sha256-7800e3ce67097d6d3f2464620894665a927fe9b273c3e6e32c4babd5b6417eeb",
