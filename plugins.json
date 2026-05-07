@@ -698,5 +698,19 @@
         "description": "Videos, playlists and channels from YouTube",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Youtube.cs3",
         "name": "Youtube"
+    },
+    {
+        "fileHash": "sha256-54c93222e3d1a108217a953c3ec203bf904cfef20748ab59d49d2bb87a530e0e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 141143,
+        "status": 3,
+        "authors": [
+            "Ranita"
+        ],
+        "version": -1,
+        "internalName": "YoutubeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/YoutubeProvider.cs3",
+        "name": "YoutubeProvider"
     }
 ]
