@@ -569,7 +569,7 @@ class MhdflixProvider : MainAPI() {
             return Pair(id, "episode")
         }
         Regex("""/tvs/(\d+)""").find(data)?.groupValues?.get(1)?.let { id ->
-            return Pair(id, "episode")
+            return Pair(id, "tv")
         }
         if (data.all { it.isDigit() }) {
             return Pair(data, "movie")
