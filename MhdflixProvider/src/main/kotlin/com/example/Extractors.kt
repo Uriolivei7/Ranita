@@ -2,6 +2,7 @@ package com.example
 
 import android.util.Log
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.extractors.VidStack
 import com.lagradost.cloudstream3.utils.*
 import okhttp3.FormBody
 
@@ -34,7 +35,7 @@ class ByseExtractor : ExtractorApi() {
             val fileUrl = Regex("""file["']\s*:\s*["']([^"']+)["']""")
                 .find(apiRes.text)?.groupValues?.get(1)
                 ?: Regex("""url["']\s*:\s*["']([^"']+)["']""")
-                .find(apiRes.text)?.groupValues?.get(1)
+                    .find(apiRes.text)?.groupValues?.get(1)
                 ?: return
 
             callback.invoke(
@@ -48,4 +49,9 @@ class ByseExtractor : ExtractorApi() {
             Log.e("SoloLatino", "[Byse] Error: ${e.message}")
         }
     }
+}
+
+class MhdflixCubeembed : VidStack() {
+    override var name = "Cubeembed"
+    override var mainUrl = "https://cubeembed.rpmvid.com"
 }

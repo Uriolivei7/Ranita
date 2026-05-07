@@ -445,17 +445,17 @@ class MhdflixProvider : MainAPI() {
         source: String,
         name: String,
         url: String,
-        referer: String = "",
-        quality: Int = Qualities.Unknown.value,
-        type: ExtractorLinkType = ExtractorLinkType.VIDEO
+        referer: String,
+        quality: Int,
+        type: ExtractorLinkType?
     ): ExtractorLink {
         return ExtractorLink(
             source = source,
             name = name,
             url = url,
-            referer = referer,
+            referer = referer.takeIf { it.isNotBlank() } ?: "",
             quality = quality,
-            type = type
+            type = type ?: ExtractorLinkType.VIDEO
         )
     }
 
@@ -521,20 +521,31 @@ class MhdflixProvider : MainAPI() {
                 )
                 found = true
             } else if (hasExtractor) {
-                @Suppress("DEPRECATION")
-                loadExtractor(videoUrl, subtitleCallback) { extractedLink ->
-                    val nameWithLang = "${extractedLink.name} [$languageName]"
-                    callback.invoke(
-                        createExtractorLink(
-                            source = nameWithLang,
-                            name = linkName,
-                            url = extractedLink.url,
-                            referer = extractedLink.referer,
-                            quality = extractedLink.quality,
-                            type = extractedLink.type
-                        )
-                    )
-                }.also { if (it) found = true }
+                try {
+                    @Suppress("DEPRECATION")
+                    loadExtractor(videoUrl, referer, subtitleCallback) { extractedLink ->
+                        try {
+                            if (extractedLink.url.isNotBlank()) {
+                                val nameWithLang = "${extractedLink.name} [$languageName]"
+                                Log.d("Mhdflix-Links", "Emitting: name=$nameWithLang, url=${extractedLink.url}")
+                                callback.invoke(
+                                    createExtractorLink(
+                                        source = nameWithLang,
+                                        name = linkName,
+                                        url = extractedLink.url,
+                                        referer = extractedLink.referer,
+                                        quality = extractedLink.quality,
+                                        type = extractedLink.type
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Mhdflix-Links", "Callback error: ${e.message}", e)
+                        }
+                    }.also { if (it) found = true }
+                } catch (e: Exception) {
+                    Log.e("Mhdflix-Links", "loadExtractor failed: ${e.message}", e)
+                }
             }
 
             item.subtitles?.forEach { sub ->

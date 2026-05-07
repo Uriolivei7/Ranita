@@ -13,8 +13,3 @@ class MhdflixPlugin : Plugin() {
         registerExtractorAPI(MhdflixCubeembed())
     }
 }
-
-class MhdflixCubeembed : VidStack() {
-    override var name = "Cubeembed"
-    override var mainUrl = "https://cubeembed.rpmvid.com"
-}
