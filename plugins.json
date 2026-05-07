@@ -41,10 +41,10 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "fileHash": "sha256-6e8ca5a181516a2e4ee3f337b37679e5fbc7b35870f1d89c58948a0bc24f777e",
+        "fileHash": "sha256-91220be98057aa0291795cae060320c2f883e80a633db4e0d2960a43ac43e2e0",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44661,
+        "fileSize": 44651,
         "status": 1,
         "language": "en",
         "authors": [
@@ -62,10 +62,10 @@
         "name": "AnimeonsenProvider"
     },
     {
-        "fileHash": "sha256-40567373f05a30148318fc83d824426f04d1b88df369af4f49d01506775d7892",
+        "fileHash": "sha256-4aa063ddd4925cc94ef992096e52c1839899a5409a022a675ed3416fc011aa63",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35982,
+        "fileSize": 35972,
         "status": 1,
         "language": "en",
         "authors": [
@@ -219,10 +219,10 @@
         "name": "ExampleProvider"
     },
     {
-        "fileHash": "sha256-18cbd9c2a5965e71fe20f08ca222c6b091f690d2b8b2f054a294f74057c8c859",
+        "fileHash": "sha256-f895e794f67a8698d64e1ab97648184b567f5a961de7c5e287284b1f834d53b6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53918,
+        "fileSize": 53913,
         "status": 1,
         "language": "es",
         "authors": [
@@ -284,10 +284,10 @@
         "name": "JkanimeProvider"
     },
     {
-        "fileHash": "sha256-37c3a858d22ffeb8f5fad31f843d4629da2ad0902ff73a57d55079f491a3c8f1",
+        "fileHash": "sha256-61f26bd73b46a8b4b58f796825de8c3f97a670f59378b325bc694494ea478a05",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 34382,
+        "fileSize": 34374,
         "status": 1,
         "language": "es",
         "authors": [
@@ -460,11 +460,11 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=onetouchtv.xyz/&sz=%size%",
-        "jarFileSize": 167641,
-        "fileHash": "sha256-855e871a4dce52517950fe10462b907481a1eec26f4df05e9839f60f6357117d",
+        "jarFileSize": 167684,
+        "fileHash": "sha256-d83e3e780a4ddf522bc2c6d8513f6180f6c0660c1829570bb160b950b17f6365",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37399,
+        "fileSize": 37400,
         "status": 1,
         "language": "en",
         "authors": [
@@ -480,13 +480,13 @@
         "description": "Asian Dramas",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OnetouchtvProvider.cs3",
         "name": "OnetouchtvProvider",
-        "jarHash": "sha256-1718f996d77a3ceba02ea1ecfd4904c4b1b892063432938b56dcd58bf011b90f"
+        "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
-        "fileHash": "sha256-3ec90dbe2cb2bf79e3ca72604cf9bada43bf627a791061fb286b30152ea6fbaa",
+        "fileHash": "sha256-4f9857113cbf55452afafa1c927a9d9492de0627bb1cefc0e21da35bce82d16b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 31909,
+        "fileSize": 31907,
         "status": 1,
         "language": "es",
         "authors": [
@@ -599,10 +599,10 @@
     },
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-b1a2caeb7d01baea6bf041d3e5b21c2dba6196e95dbc76f4517e8d857faddf10",
+        "fileHash": "sha256-c5742ad95067f3df4e6353cef8c27024a65929940cb217f5566b696ab2b30ec1",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 23886,
+        "fileSize": 23884,
         "status": 1,
         "language": "es",
         "authors": [
@@ -641,7 +641,7 @@
     },
     {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-45bb7d5212f1c397379f42eda198e21b50b663df5c2f5400d33da60c6d6c3fb8",
+        "fileHash": "sha256-cbe321148271013f2e4c8e6b0e112397423a59186dbee82f0c8416e2acce373e",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 24175,
