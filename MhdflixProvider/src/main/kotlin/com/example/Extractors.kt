@@ -35,7 +35,7 @@ class ByseExtractor : ExtractorApi() {
             val fileUrl = Regex("""file["']\s*:\s*["']([^"']+)["']""")
                 .find(apiRes.text)?.groupValues?.get(1)
                 ?: Regex("""url["']\s*:\s*["']([^"']+)["']""")
-                    .find(apiRes.text)?.groupValues?.get(1)
+                .find(apiRes.text)?.groupValues?.get(1)
                 ?: return
 
             callback.invoke(
