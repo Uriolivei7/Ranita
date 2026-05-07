@@ -4,6 +4,7 @@ import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.extractors.VidStack
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import okhttp3.FormBody
 
 class ByseExtractor : ExtractorApi() {
@@ -35,7 +36,7 @@ class ByseExtractor : ExtractorApi() {
             val fileUrl = Regex("""file["']\s*:\s*["']([^"']+)["']""")
                 .find(apiRes.text)?.groupValues?.get(1)
                 ?: Regex("""url["']\s*:\s*["']([^"']+)["']""")
-                .find(apiRes.text)?.groupValues?.get(1)
+                    .find(apiRes.text)?.groupValues?.get(1)
                 ?: return
 
             callback.invoke(
@@ -54,4 +55,38 @@ class ByseExtractor : ExtractorApi() {
 class MhdflixCubeembed : VidStack() {
     override var name = "Cubeembed"
     override var mainUrl = "https://cubeembed.rpmvid.com"
+}
+
+class Sendvid : ExtractorApi() {
+    override var name = "Sendvid"
+    override val mainUrl = "https://sendvid.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val doc = app.get(url).document
+        val urlString = doc.select("head meta[property=og:video:secure_url]").attr("content")
+        if (urlString.contains("m3u8")) {
+            generateM3u8(
+                name,
+                urlString,
+                mainUrl,
+            ).forEach(callback)
+        } else {
+            callback.invoke(
+                newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = urlString,
+                    type = INFER_TYPE
+                ) {
+                    this.referer = url
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
+    }
 }
