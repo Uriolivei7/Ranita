@@ -457,7 +457,7 @@ class MhdflixProvider : MainAPI() {
             quality = quality ?: Qualities.Unknown.value,
             type = type ?: ExtractorLinkType.VIDEO
         )
-    }
+    } 
 
     @Suppress("DEPRECATION")
     private fun createSubtitleFile(lang: String, url: String): SubtitleFile {
