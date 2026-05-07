@@ -32,7 +32,7 @@ class YoutubeProvider(
     override var name = "YouTube"
     override val hasMainPage = true
     override var lang = "mx"
-    override val supportedTypes = setOf(TvType.Movie, TvType.Live)
+    override val supportedTypes = setOf(TvType.Others)
 
     companion object {
 
