@@ -97,7 +97,7 @@ open class YoutubeExtractor : ExtractorApi() {
 
                         StreamInfo(streamUrl, mime, height, label, initR, indexR)
                     } catch (e: Exception) { null }
-                }.distinctBy { it.height } // هذا السطر يمنع تكرار الجودات المتشابهة
+                }.distinctBy { it.height }
 
                 val audioInfoList = (s.audioStreams ?: emptyList()).mapNotNull { asr ->
                     try {
@@ -110,7 +110,7 @@ open class YoutubeExtractor : ExtractorApi() {
                         val indexR = if (asr.indexStart != null && asr.indexEnd != null) "${asr.indexStart}-${asr.indexEnd}" else null
 
                         var rawLang = asr.audioTrackId ?: "Default"
-                        if (rawLang.contains(".")) rawLang = rawLang.substringBefore(".") // يحول fr.3 إلى fr
+                        if (rawLang.contains(".")) rawLang = rawLang.substringBefore(".")
 
                         AudioInfo(aUrl, mime, bitrate, initR, indexR, rawLang.uppercase())
                     } catch (e: Exception) { null }
@@ -123,9 +123,6 @@ open class YoutubeExtractor : ExtractorApi() {
                 } catch (e: Exception) { }
 
                 startServerIfNeeded()
-
-
-
 
                 for (video in videoOnlyList) {
                     if (audiosByLanguage.isNotEmpty()) {
@@ -144,9 +141,7 @@ open class YoutubeExtractor : ExtractorApi() {
 
                                 if (localLink != null) {
 
-
-
-                                    val finalName = "${video.label} ($lang) ${video.label}"
+                                    val finalName = if (lang != "DEFAULT") "${this.name} ${video.label} ($lang)" else "${this.name} ${video.label}"
 
                                     builtLinks.add(
                                         newExtractorLink(
@@ -176,7 +171,7 @@ open class YoutubeExtractor : ExtractorApi() {
                 }
                 for ((mUrl, mLabel, mHeight) in muxedList) {
                     builtLinks.add(
-                        newExtractorLink(this.name, "$mLabel (Legacy)", mUrl, type = INFER_TYPE) {
+                        newExtractorLink(this.name, "${this.name} $mLabel", mUrl, type = INFER_TYPE) {
                             this.referer = mainUrl
                             this.quality = mHeight
                         }

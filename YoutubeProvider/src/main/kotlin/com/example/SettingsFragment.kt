@@ -126,7 +126,7 @@ class YoutubeSettingsBottomSheet(private val sharedPref: SharedPreferences) : Bo
                 key = KEY_LANGUAGE
                 entryValues = Loc.availableLanguages.map { it.first }.toTypedArray()
                 entries = Loc.availableLanguages.map { "${it.third} (${it.second})" }.toTypedArray()
-                if (value == null) setValue("ar")
+                if (value == null) setValue("es")
                 summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
                 setOnPreferenceChangeListener { _, newValue ->
 
@@ -280,8 +280,6 @@ class YoutubeSettingsBottomSheet(private val sharedPref: SharedPreferences) : Bo
             playlistTagPref.setNegativeButtonText(Loc.getString(sharedPref, "cancel"))
         }
     }
-
-
 
     class CustomSectionsDialog(private val sharedPref: SharedPreferences) : DialogFragment() {
 

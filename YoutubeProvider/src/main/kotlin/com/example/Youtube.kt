@@ -1,7 +1,8 @@
-package com.lagradost.cloudstream3.ar.youtube
+package com.example
 
 import org.json.JSONObject
 import android.content.SharedPreferences
+import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.mvvm.logError
@@ -12,7 +13,7 @@ import okhttp3.Response
 import java.net.URLEncoder
 import com.lagradost.cloudstream3.AcraApplication
 import androidx.preference.PreferenceManager
-import com.lagradost.cloudstream3.ar.youtube.YoutubeProvider.Config.SLEEP_BETWEEN
+import com.example.YoutubeProvider.Config.SLEEP_BETWEEN
 
 class YoutubeProvider(
     private val sharedPref: SharedPreferences? = null
@@ -23,7 +24,7 @@ class YoutubeProvider(
     data class CustomSection(
         @JsonProperty("name") var name: String = "",
         @JsonProperty("url") var url: String = "",
-        @JsonProperty("isEnabled") var isEnabled: Boolean = true // المتغير الجديد لحالة التفعيل
+        @JsonProperty("isEnabled") var isEnabled: Boolean = true
     )
     object Config {
         const val SLEEP_BETWEEN = 1
@@ -520,11 +521,12 @@ class YoutubeProvider(
             val list = mutableListOf<MainPageData>()
             val isEn = lang == "en"
 
-            if (sharedPref?.getBoolean("show_trending_home", true) == true) {
-                list.add(MainPageData(if (isEn) "Trending" else "الرئيسية (Trending)", "Home"))
-            }
-
             val customSections = getCustomHomepages()
+            val hasEnabledSections = customSections.any { it.isEnabled }
+
+            if (!hasEnabledSections && sharedPref?.getBoolean("show_trending_home", true) == true) {
+                list.add(MainPageData(if (isEn) "Tendencias" else "Principal (Tendencias)", "Home"))
+            }
 
             customSections.filter { it.isEnabled }.forEach { section ->
                 var title = section.name
@@ -826,6 +828,52 @@ class YoutubeProvider(
         }
     }
 
+    private fun parseDurationToSeconds(durationText: String?): Int? {
+        if (durationText == null) return null
+        val parts = durationText.split(":").mapNotNull { it.toIntOrNull() }
+        return when (parts.size) {
+            3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+            2 -> parts[0] * 60 + parts[1]
+            1 -> parts[0]
+            else -> null
+        }
+    }
+
+    private fun parseIsoDurationToSeconds(iso: String?): Int? {
+        if (iso == null) return null
+        val regex = Regex("PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?")
+        val m = regex.matchEntire(iso) ?: return null
+        val h = m.groupValues[1].toIntOrNull() ?: 0
+        val min = m.groupValues[2].toIntOrNull() ?: 0
+        val s = m.groupValues[3].toIntOrNull() ?: 0
+        return h * 3600 + min * 60 + s
+    }
+
+    private fun formatSecondsToDuration(seconds: Int?): String? {
+        if (seconds == null) return null
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+    }
+
+    private fun translateDateToSpanish(text: String?): String? {
+        if (text == null) return null
+        return text
+            .replace(Regex("(\\d+)\\s*years?\\s*ago"), "hace $1 años")
+            .replace(Regex("(\\d+)\\s*months?\\s*ago"), "hace $1 meses")
+            .replace(Regex("(\\d+)\\s*weeks?\\s*ago"), "hace $1 semanas")
+            .replace(Regex("(\\d+)\\s*days?\\s*ago"), "hace $1 días")
+            .replace(Regex("(\\d+)\\s*hours?\\s*ago"), "hace $1 horas")
+            .replace(Regex("(\\d+)\\s*minutes?\\s*ago"), "hace $1 minutos")
+            .replace(Regex("(\\d+)\\s*seconds?\\s*ago"), "hace $1 segundos")
+            .replace("Streamed live", "Transmitido en vivo")
+            .replace("Premiered", "Estrenado")
+            .replace("Scheduled for", "Programado para")
+            .replace("Recommended", "Recomendado")
+            .trim()
+    }
+
     private fun safeGet(data: Any?, vararg keys: Any): Any? {
         var current = data
         for (key in keys) {
@@ -870,7 +918,7 @@ class YoutubeProvider(
 
             return newTvSeriesLoadResponse("Shorts Feed", url, TvType.TvSeries, targetEpisodes) {
                 this.posterUrl = poster
-                this.plot = "قائمة تشغيل تلقائية من الشورتس (${targetEpisodes.size} فيديو)"
+                this.plot = "Lista de reproducción automática de cortos (${targetEpisodes.size} Video)"
                 this.tags = listOf("Shorts", "Feed")
             }
         }
@@ -974,11 +1022,16 @@ class YoutubeProvider(
                             val vidUrl = "$mainUrl/watch?v=$vId"
                             val viewCount = formatViews(safeGet(videoRenderer, "viewCountText", "simpleText") as? String)
                             val publishedTime = extractTitle(safeGet(videoRenderer, "publishedTimeText") as? Map<*, *>)
+                            val durationText = extractTitle(safeGet(videoRenderer, "lengthText") as? Map<*, *>)
+                            val durationSec = parseDurationToSeconds(durationText)
+                            Log.d("YoutubeProvider", "Video $vId lengthText=$durationText durationSec=$durationSec")
+                            val finalName = if (durationText != null) "{$durationText} $vidTitle" else vidTitle
 
                             collectTo.add(newEpisode(vidUrl) {
-                                this.name = vidTitle
+                                this.name = finalName
                                 this.posterUrl = thumb
-                                this.description = listOfNotNull(viewCount, publishedTime).joinToString(" • ")
+                                this.runTime = (durationSec ?: 0) / 60
+                                this.description = listOfNotNull(viewCount, translateDateToSpanish(publishedTime)).joinToString(" • ")
                             })
                         }
                     }
@@ -1042,8 +1095,8 @@ class YoutubeProvider(
 
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, allEpisodes) {
                     this.posterUrl = poster
-                    this.plot = "Channel: $title\nSubscribers: ${subscriberCount ?: "N/A"}\nVideos Fetched: ${allEpisodes.size}"
-                    this.tags = listOf(title, "Channel")
+                    this.plot = "Canal: $title\nSuscriptores: ${subscriberCount ?: "N/A"}\nVideos obtenidos: ${allEpisodes.size}"
+                    this.tags = listOf(title, "Canal")
                 }
 
             } catch (e: Exception) {
@@ -1060,9 +1113,13 @@ class YoutubeProvider(
                 val data = extractYtInitialData(html) ?: throw ErrorLoadingException("Failed to extract playlist data")
 
                 val header = safeGet(data, "header", "playlistHeaderRenderer") as? Map<*, *>
-                val title = extractTitle(safeGet(header, "title") as? Map<*, *>) ?: "YouTube Playlist"
+                val title = extractTitle(safeGet(header, "title") as? Map<*, *>)
+                    ?: response.document.selectFirst("title")?.text()?.substringBefore(" - YouTube")?.trim()
+                    ?: "YouTube Playlist"
                 val ownerObj = safeGet(header, "ownerText") as? Map<*, *>
-                val author = extractTitle(ownerObj) ?: "Unknown Channel"
+                val author = extractTitle(ownerObj)
+                    ?: response.document.selectFirst("a[href^='/channel/']")?.text()
+                    ?: "Canal Desconocido"
                 val description = extractTitle(safeGet(header, "description") as? Map<*, *>)
 
                 val episodes = mutableListOf<Episode>()
@@ -1083,11 +1140,14 @@ class YoutubeProvider(
                             val thumb = getBestThumbnail(renderer["thumbnail"]) ?: buildThumbnailFromId(vId)
                             val vidUrl = "$mainUrl/watch?v=$vId"
                             val durationText = extractTitle(safeGet(renderer, "lengthText") as? Map<*, *>)
+                            val durationSec = parseDurationToSeconds(durationText)
+                            com.lagradost.api.Log.d("YoutubeProvider", "Playlist video $vId lengthText=$durationText durationSec=$durationSec")
                             episodes.add(newEpisode(vidUrl) {
                                 this.name = vidTitle
                                 this.episode = index + 1
                                 this.posterUrl = thumb
-                                this.description = if (durationText != null) "Duration: $durationText" else null
+                                this.runTime = (durationSec ?: 0) / 60
+                                this.description = if (durationText != null) "Duración: $durationText" else null
                             })
                         }
                     }
@@ -1097,7 +1157,7 @@ class YoutubeProvider(
 
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                     this.posterUrl = playlistPoster
-                    val finalDescription = if (description.isNullOrBlank()) "Channel: $author" else "Channel: $author\n\n$description"
+                    val finalDescription = if (description.isNullOrBlank()) "Canal: $author" else "Canal: $author\n\n$description"
                     this.plot = finalDescription
                     this.tags = listOf(author)
                 }
@@ -1121,6 +1181,7 @@ class YoutubeProvider(
         var channelName = ""
         var channelId = ""
         var channelAvatar = ""
+        var singleVideoDurationMin = 0
 
         val recommendations = mutableListOf<SearchResponse>()
         val seenRecIds = mutableSetOf<String>()
@@ -1137,8 +1198,16 @@ class YoutubeProvider(
                     val t = extractTitle(primary["title"] as? Map<*, *>)
                     if (!t.isNullOrBlank()) title = t
 
-                    val dateText = extractTitle(primary["dateText"] as? Map<*, *>)
-                    if (!dateText.isNullOrBlank()) plot += "$dateText\n\n"
+                    val dateText = translateDateToSpanish(extractTitle(primary["dateText"] as? Map<*, *>))
+                    if (!dateText.isNullOrBlank()) plot += "📅 $dateText - \n"
+                    val lengthText = extractTitle(primary["lengthText"] as? Map<*, *>)
+                        ?: extractTitle(primary["length"] as? Map<*, *>)
+                    com.lagradost.api.Log.d("YoutubeProvider", "Single video $videoId lengthText=$lengthText primaryKeys=${primary.keys}")
+                    val lengthSec = parseDurationToSeconds(lengthText)
+                    if (lengthSec != null) {
+                        singleVideoDurationMin = lengthSec / 60
+                        plot = "⏱ ${formatSecondsToDuration(lengthSec)}" + if (plot.isNotEmpty()) "\n$plot" else ""
+                    }
                 }
 
                 val secondary = m?.get("videoSecondaryInfoRenderer") as? Map<*, *>
@@ -1159,7 +1228,7 @@ class YoutubeProvider(
                     val descObj = secondary["attributedDescription"] as? Map<*, *>
                         ?: secondary["description"] as? Map<*, *>
 
-                    val fullDesc = getText(descObj)// استخدام دالة getText الموحدة
+                    val fullDesc = getText(descObj)
                     if (fullDesc.isNotBlank()) {
                         plot += fullDesc
                     }
@@ -1179,12 +1248,25 @@ class YoutubeProvider(
             plot = doc.selectFirst("meta[property=og:description]")?.attr("content") ?: plot
         }
 
+        if (singleVideoDurationMin == 0) {
+            val durationMeta = response.document.selectFirst("meta[itemprop=duration]")?.attr("content")
+                ?: response.document.selectFirst("link[itemprop=duration]")?.attr("href")
+            if (durationMeta != null) {
+                val sec = parseIsoDurationToSeconds(durationMeta)
+                com.lagradost.api.Log.d("YoutubeProvider", "Single video $videoId durationMeta=$durationMeta sec=$sec")
+                if (sec != null) {
+                    singleVideoDurationMin = sec / 60
+                    plot = "⏱ ${formatSecondsToDuration(sec)}" + if (plot.isNotEmpty()) "\n$plot" else ""
+                }
+            }
+        }
+
 
         if (channelName.isNotBlank() && channelId.isNotBlank()) {
             val channelUrlFull = if (channelId.startsWith("UC") || channelId.startsWith("@")) "$mainUrl/channel/$channelId" else "$mainUrl/$channelId"
 
             val channelCard = newMovieSearchResponse(
-                "Channel: $channelName",
+                "Canal: $channelName",
                 channelUrlFull,
                 TvType.Live
             ) {
@@ -1201,6 +1283,7 @@ class YoutubeProvider(
         return newMovieLoadResponse(title, url, TvType.Movie, videoId) {
             this.posterUrl = poster
             this.plot = plot
+            this.duration = singleVideoDurationMin
 
             if (channelName.isNotBlank()) {
                 this.tags = listOf(channelName)
@@ -1321,7 +1404,7 @@ class YoutubeProvider(
                         if (!seenSubs.contains(vttUrl)) {
                             seenSubs.add(vttUrl)
                             val displayTitle = "$name ($lang)"
-                            subtitleCallback(SubtitleFile(displayTitle, vttUrl))
+                            subtitleCallback(newSubtitleFile(displayTitle, vttUrl))
                         }
                     }
 
@@ -1345,7 +1428,7 @@ class YoutubeProvider(
                             if (!seenSubs.contains(autoUrl)) {
                                 seenSubs.add(autoUrl)
                                 val displayName = "$baseLangCode → $targetLang"
-                                subtitleCallback(SubtitleFile(displayName, autoUrl))
+                                subtitleCallback(newSubtitleFile(displayName, autoUrl))
                             }
                         }
                     }
@@ -1471,336 +1554,336 @@ class YoutubeProvider(
 
 
 
-            fun logLarge(tag: String, text: String) {
-                var i = 0
-                val max = 4000
-                while (i < text.length) {
-                    val end = minOf(i + max, text.length)
-
-                    i = end
-                }
-            }
-
-            fun addParamsToUrl(base: String, params: Map<String, String>): String {
-                val sep = if (base.contains("?")) "&" else "?"
-                return base + sep + params.map { "${it.key}=${URLEncoder.encode(it.value, "utf-8")}" }.joinToString("&")
-            }
-
-            val ALL_LANGS = listOf(
-                "aa","ab","af","ak","am","ar","as","ay","az","ba","be","bg","bho","bn","bo","br","bs","ca","ceb","co","crs",
-                "cs","cy","da","de","dv","dz","ee","el","en","eo","es","et","eu","fa","fi","fil","fj","fo","fr","fy","ga",
-                "gaa","gd","gl","gn","gu","gv","ha","haw","he","hi","hmn","hr","ht","hu","hy","id","ig","is","it","iu","iw",
-                "ja","jv","ka","kha","kk","kl","km","kn","ko","kri","ku","ky","la","lb","lg","ln","lo","lt","lua","luo","lv",
-                "mfe","mg","mi","mk","ml","mn","mr","ms","mt","my","ne","new","nl","no","nso","ny","oc","om","or","os","pa",
-                "pam","pl","ps","pt","pt-BR","pt-PT","qu","rn","ro","ru","rw","sa","sd","sg","si","sk","sl","sm","sn","so","sq",
-                "sr","ss","st","su","sv","sw","ta","te","tg","th","ti","tk","tn","to","tr","ts","tt","tum","ug","uk","ur","uz",
-                "ve","vi","war","wo","xh","yi","yo","zh-Hans","zh-Hant","zu"
-            )
-
-            try {
-
-
-                val videoId = data.extractYoutubeId() ?: run {
-                    if (data.length == 11 && data.matches(Regex("[A-Za-z0-9_-]{11}"))) {
-                        data
-                    } else {
-
-                        return false
-                    }
-                }
-
-                val safariHeaders = mapOf(
-                    "User-Agent" to safariUserAgent,
-                    "Accept-Language" to "en-US,en;q=0.5"
-                )
-                val watchUrl = "$mainUrl/watch?v=$videoId&hl=en"
-
-                val watchHtml = app.get(watchUrl, headers = safariHeaders).text
-
-                val ytcfgJsonString = try {
-                    val regex =
-                        Regex("""ytcfg\.set\(\s*(\{.*?\})\s*\)\s*;""", RegexOption.DOT_MATCHES_ALL)
-                    val m = regex.find(watchHtml)
-                    m?.groupValues?.getOrNull(1)
-                        ?: watchHtml.substringAfter("ytcfg.set(", "").substringBefore(");")
-                            .takeIf { it.trim().startsWith("{") }
-                } catch (e: Exception) {
-
-                    null
-                }
-
-                if (ytcfgJsonString.isNullOrBlank()) {
-
-                    return false
-                }
-
-                val apiKey = findConfig(ytcfgJsonString, "INNERTUBE_API_KEY")
-                val clientVersion =
-                    findConfig(ytcfgJsonString, "INNERTUBE_CLIENT_VERSION") ?: "2.20240725.01.00"
-                val visitorData = findConfig(ytcfgJsonString, "VISITOR_DATA")
-
-                if (apiKey.isNullOrBlank() || visitorData.isNullOrBlank()) {
-
-                    return false
-                }
-
-                val clientMap = mapOf(
-                    "hl" to "en",
-                    "gl" to "US",
-                    "clientName" to "WEB",
-                    "clientVersion" to clientVersion,
-                    "userAgent" to safariUserAgent,
-                    "visitorData" to visitorData,
-                    "platform" to "DESKTOP"
-                )
-                val finalContext = mapOf("client" to clientMap)
-                val payload = mapOf("context" to finalContext, "videoId" to videoId)
-
-                val apiUrl = "$mainUrl/youtubei/v1/player?key=$apiKey"
-
-                val postHeaders = mutableMapOf<String, String>()
-                postHeaders.putAll(safariHeaders)
-                postHeaders["Content-Type"] = "application/json"
-                postHeaders["X-Youtube-Client-Name"] = "WEB"
-                postHeaders["X-Youtube-Client-Version"] = clientVersion
-                if (!visitorData.isNullOrBlank()) postHeaders["X-Goog-Visitor-Id"] = visitorData
-
-
-
-
-                val cookieBuilder = StringBuilder()
-                val savedVis = sharedPref?.getString("VISITOR_INFO1_LIVE", null)
-                if (!savedVis.isNullOrBlank()) {
-                    cookieBuilder.append("VISITOR_INFO1_LIVE=$savedVis; ")
-                } else {
-                    cookieBuilder.append("VISITOR_INFO1_LIVE=fzYjM8PCwjw; ")
-                }
-
-                val authKeys = listOf("SID", "HSID", "SSID", "APISID", "SAPISID")
-                var sapisidVal: String? = null
-
-                authKeys.forEach { key ->
-                    val value = sharedPref?.getString(key, null)
-                    if (!value.isNullOrBlank()) {
-                        cookieBuilder.append("$key=$value; ")
-                        if (key == "SAPISID") sapisidVal = value
-                    }
-                }
-
-                cookieBuilder.append("PREF=f6=40000000&hl=en; CONSENT=YES+fx.456722336;")
-                postHeaders["Cookie"] = cookieBuilder.toString()
-
-                if (!sapisidVal.isNullOrBlank()) {
-                    try {
-                        val origin = "https://www.youtube.com"
-                        val hash = getSapisidHash(sapisidVal!!, origin)
-                        postHeaders["Authorization"] = hash
-                        postHeaders["X-Origin"] = origin
-                        postHeaders["Origin"] = origin
-                        postHeaders["X-Goog-AuthUser"] = "0"
-
-                    } catch (e: Exception) {
-
-                    }
-                }
-
-
-
-
-                val responseText = app.post(apiUrl, headers = postHeaders, json = payload).text
-                logLarge(name, "PLAYER API Response (first 55k chars):\n${responseText.take(55000)}")
-
-
-
-                try {
-                    val root = org.json.JSONObject(responseText)
-                    val captions = root.optJSONObject("captions")
-                    val tracklist = captions?.optJSONObject("playerCaptionsTracklistRenderer")
-                    val captionTracks = tracklist?.optJSONArray("captionTracks")
-
-                    if (captionTracks != null && captionTracks.length() > 0) {
-
-                        var preferredIndex = -1
-                        for (i in 0 until captionTracks.length()) {
-                            val track = captionTracks.optJSONObject(i) ?: continue
-                            val lang = track.optString("languageCode", "")
-                            if (lang.equals("en", ignoreCase = true)) {
-                                preferredIndex = i
-                                break
-                            }
-                        }
-                        if (preferredIndex == -1) preferredIndex = 0
-
-                        val baseTrack = captionTracks.optJSONObject(preferredIndex)
-                        val baseUrl = baseTrack.optString("baseUrl", "")
-                        val baseLang = baseTrack.optString("languageCode", "")
-                        val baseName = baseTrack.optJSONObject("name")?.optString("simpleText", baseLang) ?: baseLang
-
-                        val seenSubs = mutableSetOf<String>()
-
-                        val targets = ALL_LANGS.toMutableList()
-                        val trackTranslation = baseTrack.optJSONArray("translationLanguages")
-                        if (trackTranslation != null && trackTranslation.length() > 0) {
-                            targets.clear()
-                            for (i in 0 until trackTranslation.length()) {
-                                val t = trackTranslation.optJSONObject(i)
-                                val code = t?.optString("languageCode", "")
-                                if (!code.isNullOrBlank()) targets.add(code)
-                            }
-                        }
-
-                        val originals = listOf(
-                            addParamsToUrl(baseUrl, mapOf("fmt" to "vtt")),
-                            addParamsToUrl(baseUrl, mapOf("fmt" to "srt"))
-                        )
-                        for (u in originals) {
-                            if (u !in seenSubs) {
-                                seenSubs.add(u)
-                                subtitleCallback(SubtitleFile("$baseName ($baseLang)", u))
-                            }
-                        }
-
-                        for (tlang in targets) {
-                            if (tlang.equals(baseLang, ignoreCase = true)) continue
-
-                            val tvtt = addParamsToUrl(baseUrl, mapOf("fmt" to "vtt", "tlang" to tlang))
-                            val tsrt = addParamsToUrl(baseUrl, mapOf("fmt" to "srt", "tlang" to tlang))
-
-                            listOf(tvtt, tsrt).forEach { u ->
-                                if (u !in seenSubs) {
-                                    seenSubs.add(u)
-                                    subtitleCallback(SubtitleFile("$baseLang → $tlang", u))
-                                }
-                            }
-                        }
-
-                        for (i in 0 until captionTracks.length()) {
-                            if (i == preferredIndex) continue
-                            val tr = captionTracks.optJSONObject(i) ?: continue
-                            val url = tr.optString("baseUrl", "")
-                            val lang = tr.optString("languageCode", "")
-                            val name = tr.optJSONObject("name")?.optString("simpleText", lang) ?: lang
-
-                            val vtt = addParamsToUrl(url, mapOf("fmt" to "vtt"))
-                            val srt = addParamsToUrl(url, mapOf("fmt" to "srt"))
-
-                            for (u in listOf(vtt, srt)) {
-                                if (u !in seenSubs) {
-                                    seenSubs.add(u)
-                                    subtitleCallback(SubtitleFile("$name ($lang)", u))
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-
-                }
-
-
-
-
-
-                val playerResponse = try {
-                    parseJson<PlayerResponse>(responseText)
-                } catch (e: Exception) {
-
-                    null
-                }
-
-                if (playerResponse == null) {
-
-                    return false
-                }
-
-                val hlsUrl = playerResponse.streamingData?.hlsManifestUrl
-                if (!hlsUrl.isNullOrBlank()) {
-
-                    callback(
-                        newExtractorLink(this.name, "M3U AUTO", hlsUrl) {
-                            this.referer = mainUrl
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
-
-                    try {
-
-                        val masterM3u8 = app.get(hlsUrl, referer = mainUrl).text
-                        val lines = masterM3u8.lines()
-
-
-                        lines.filter { it.startsWith("#EXT-X-MEDIA") && it.contains("TYPE=SUBTITLES") }
-                            .forEach { line ->
-                                val subUri = parseM3u8Tag(line, "URI")
-                                val subName = parseM3u8Tag(line, "NAME")
-                                val subLang = parseM3u8Tag(line, "LANGUAGE")
-
-                                if (subUri != null) {
-                                    val displayName = subName ?: subLang ?: "Subtitle (HLS)"
-
-                                    subtitleCallback(SubtitleFile(displayName, subUri))
-                                }
-                            }
-
-
-                        lines.forEachIndexed { index, line ->
-                            if (line.startsWith("#EXT-X-STREAM-INF")) {
-                                val infoLine = line
-                                val urlLine =
-                                    lines.getOrNull(index + 1)?.takeIf { it.startsWith("http") }
-                                        ?: return@forEachIndexed
-
-                                val resolution = parseM3u8Tag(infoLine, "RESOLUTION")
-                                val resolutionHeight = resolution?.substringAfter("x")?.plus("p") ?: ""
-
-                                val audioId = parseM3u8Tag(infoLine, "YT-EXT-AUDIO-CONTENT-ID")
-                                val lang = audioId?.substringBefore('.')?.uppercase()
-
-                                val ytTags = parseM3u8Tag(infoLine, "YT-EXT-XTAGS")
-                                val audioType = when {
-                                    ytTags?.contains("dubbed") == true -> "Dubbed"
-                                    ytTags?.contains("original") == true -> "Original"
-                                    else -> null
-                                }
-
-                                val nameBuilder = StringBuilder()
-                                nameBuilder.append(resolutionHeight)
-                                if (lang != null) {
-                                    nameBuilder.append(" ($lang")
-                                    if (audioType != null) {
-                                        nameBuilder.append(" - $audioType")
-                                    }
-                                    nameBuilder.append(")")
-                                }
-
-                                val streamName = nameBuilder.toString().trim()
-
-                                if (streamName.isNotBlank()) {
-                                    callback(
-                                        newExtractorLink(this.name, streamName, urlLine) {
-                                            this.referer = mainUrl
-                                            this.quality = getQualityFromName(resolutionHeight)
-                                        }
-                                    )
-
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-
-                    }
-
-                    return true
-                } else {
-
-                    return false
-                }
-
-            } catch (e: Exception) {
-
-                logError(e)
-                return false
+        fun logLarge(tag: String, text: String) {
+            var i = 0
+            val max = 4000
+            while (i < text.length) {
+                val end = minOf(i + max, text.length)
+
+                i = end
             }
         }
+
+        fun addParamsToUrl(base: String, params: Map<String, String>): String {
+            val sep = if (base.contains("?")) "&" else "?"
+            return base + sep + params.map { "${it.key}=${URLEncoder.encode(it.value, "utf-8")}" }.joinToString("&")
+        }
+
+        val ALL_LANGS = listOf(
+            "aa","ab","af","ak","am","ar","as","ay","az","ba","be","bg","bho","bn","bo","br","bs","ca","ceb","co","crs",
+            "cs","cy","da","de","dv","dz","ee","el","en","eo","es","et","eu","fa","fi","fil","fj","fo","fr","fy","ga",
+            "gaa","gd","gl","gn","gu","gv","ha","haw","he","hi","hmn","hr","ht","hu","hy","id","ig","is","it","iu","iw",
+            "ja","jv","ka","kha","kk","kl","km","kn","ko","kri","ku","ky","la","lb","lg","ln","lo","lt","lua","luo","lv",
+            "mfe","mg","mi","mk","ml","mn","mr","ms","mt","my","ne","new","nl","no","nso","ny","oc","om","or","os","pa",
+            "pam","pl","ps","pt","pt-BR","pt-PT","qu","rn","ro","ru","rw","sa","sd","sg","si","sk","sl","sm","sn","so","sq",
+            "sr","ss","st","su","sv","sw","ta","te","tg","th","ti","tk","tn","to","tr","ts","tt","tum","ug","uk","ur","uz",
+            "ve","vi","war","wo","xh","yi","yo","zh-Hans","zh-Hant","zu"
+        )
+
+        try {
+
+
+            val videoId = data.extractYoutubeId() ?: run {
+                if (data.length == 11 && data.matches(Regex("[A-Za-z0-9_-]{11}"))) {
+                    data
+                } else {
+
+                    return false
+                }
+            }
+
+            val safariHeaders = mapOf(
+                "User-Agent" to safariUserAgent,
+                "Accept-Language" to "en-US,en;q=0.5"
+            )
+            val watchUrl = "$mainUrl/watch?v=$videoId&hl=en"
+
+            val watchHtml = app.get(watchUrl, headers = safariHeaders).text
+
+            val ytcfgJsonString = try {
+                val regex =
+                    Regex("""ytcfg\.set\(\s*(\{.*?\})\s*\)\s*;""", RegexOption.DOT_MATCHES_ALL)
+                val m = regex.find(watchHtml)
+                m?.groupValues?.getOrNull(1)
+                    ?: watchHtml.substringAfter("ytcfg.set(", "").substringBefore(");")
+                        .takeIf { it.trim().startsWith("{") }
+            } catch (e: Exception) {
+
+                null
+            }
+
+            if (ytcfgJsonString.isNullOrBlank()) {
+
+                return false
+            }
+
+            val apiKey = findConfig(ytcfgJsonString, "INNERTUBE_API_KEY")
+            val clientVersion =
+                findConfig(ytcfgJsonString, "INNERTUBE_CLIENT_VERSION") ?: "2.20240725.01.00"
+            val visitorData = findConfig(ytcfgJsonString, "VISITOR_DATA")
+
+            if (apiKey.isNullOrBlank() || visitorData.isNullOrBlank()) {
+
+                return false
+            }
+
+            val clientMap = mapOf(
+                "hl" to "en",
+                "gl" to "US",
+                "clientName" to "WEB",
+                "clientVersion" to clientVersion,
+                "userAgent" to safariUserAgent,
+                "visitorData" to visitorData,
+                "platform" to "DESKTOP"
+            )
+            val finalContext = mapOf("client" to clientMap)
+            val payload = mapOf("context" to finalContext, "videoId" to videoId)
+
+            val apiUrl = "$mainUrl/youtubei/v1/player?key=$apiKey"
+
+            val postHeaders = mutableMapOf<String, String>()
+            postHeaders.putAll(safariHeaders)
+            postHeaders["Content-Type"] = "application/json"
+            postHeaders["X-Youtube-Client-Name"] = "WEB"
+            postHeaders["X-Youtube-Client-Version"] = clientVersion
+            if (!visitorData.isNullOrBlank()) postHeaders["X-Goog-Visitor-Id"] = visitorData
+
+
+
+
+            val cookieBuilder = StringBuilder()
+            val savedVis = sharedPref?.getString("VISITOR_INFO1_LIVE", null)
+            if (!savedVis.isNullOrBlank()) {
+                cookieBuilder.append("VISITOR_INFO1_LIVE=$savedVis; ")
+            } else {
+                cookieBuilder.append("VISITOR_INFO1_LIVE=fzYjM8PCwjw; ")
+            }
+
+            val authKeys = listOf("SID", "HSID", "SSID", "APISID", "SAPISID")
+            var sapisidVal: String? = null
+
+            authKeys.forEach { key ->
+                val value = sharedPref?.getString(key, null)
+                if (!value.isNullOrBlank()) {
+                    cookieBuilder.append("$key=$value; ")
+                    if (key == "SAPISID") sapisidVal = value
+                }
+            }
+
+            cookieBuilder.append("PREF=f6=40000000&hl=en; CONSENT=YES+fx.456722336;")
+            postHeaders["Cookie"] = cookieBuilder.toString()
+
+            if (!sapisidVal.isNullOrBlank()) {
+                try {
+                    val origin = "https://www.youtube.com"
+                    val hash = getSapisidHash(sapisidVal!!, origin)
+                    postHeaders["Authorization"] = hash
+                    postHeaders["X-Origin"] = origin
+                    postHeaders["Origin"] = origin
+                    postHeaders["X-Goog-AuthUser"] = "0"
+
+                } catch (e: Exception) {
+
+                }
+            }
+
+
+
+
+            val responseText = app.post(apiUrl, headers = postHeaders, json = payload).text
+            logLarge(name, "PLAYER API Response (first 55k chars):\n${responseText.take(55000)}")
+
+
+
+            try {
+                val root = org.json.JSONObject(responseText)
+                val captions = root.optJSONObject("captions")
+                val tracklist = captions?.optJSONObject("playerCaptionsTracklistRenderer")
+                val captionTracks = tracklist?.optJSONArray("captionTracks")
+
+                if (captionTracks != null && captionTracks.length() > 0) {
+
+                    var preferredIndex = -1
+                    for (i in 0 until captionTracks.length()) {
+                        val track = captionTracks.optJSONObject(i) ?: continue
+                        val lang = track.optString("languageCode", "")
+                        if (lang.equals("en", ignoreCase = true)) {
+                            preferredIndex = i
+                            break
+                        }
+                    }
+                    if (preferredIndex == -1) preferredIndex = 0
+
+                    val baseTrack = captionTracks.optJSONObject(preferredIndex)
+                    val baseUrl = baseTrack.optString("baseUrl", "")
+                    val baseLang = baseTrack.optString("languageCode", "")
+                    val baseName = baseTrack.optJSONObject("name")?.optString("simpleText", baseLang) ?: baseLang
+
+                    val seenSubs = mutableSetOf<String>()
+
+                    val targets = ALL_LANGS.toMutableList()
+                    val trackTranslation = baseTrack.optJSONArray("translationLanguages")
+                    if (trackTranslation != null && trackTranslation.length() > 0) {
+                        targets.clear()
+                        for (i in 0 until trackTranslation.length()) {
+                            val t = trackTranslation.optJSONObject(i)
+                            val code = t?.optString("languageCode", "")
+                            if (!code.isNullOrBlank()) targets.add(code)
+                        }
+                    }
+
+                    val originals = listOf(
+                        addParamsToUrl(baseUrl, mapOf("fmt" to "vtt")),
+                        addParamsToUrl(baseUrl, mapOf("fmt" to "srt"))
+                    )
+                    for (u in originals) {
+                        if (u !in seenSubs) {
+                            seenSubs.add(u)
+                            subtitleCallback(SubtitleFile("$baseName ($baseLang)", u))
+                        }
+                    }
+
+                    for (tlang in targets) {
+                        if (tlang.equals(baseLang, ignoreCase = true)) continue
+
+                        val tvtt = addParamsToUrl(baseUrl, mapOf("fmt" to "vtt", "tlang" to tlang))
+                        val tsrt = addParamsToUrl(baseUrl, mapOf("fmt" to "srt", "tlang" to tlang))
+
+                        listOf(tvtt, tsrt).forEach { u ->
+                            if (u !in seenSubs) {
+                                seenSubs.add(u)
+                                subtitleCallback(SubtitleFile("$baseLang → $tlang", u))
+                            }
+                        }
+                    }
+
+                    for (i in 0 until captionTracks.length()) {
+                        if (i == preferredIndex) continue
+                        val tr = captionTracks.optJSONObject(i) ?: continue
+                        val url = tr.optString("baseUrl", "")
+                        val lang = tr.optString("languageCode", "")
+                        val name = tr.optJSONObject("name")?.optString("simpleText", lang) ?: lang
+
+                        val vtt = addParamsToUrl(url, mapOf("fmt" to "vtt"))
+                        val srt = addParamsToUrl(url, mapOf("fmt" to "srt"))
+
+                        for (u in listOf(vtt, srt)) {
+                            if (u !in seenSubs) {
+                                seenSubs.add(u)
+                                subtitleCallback(SubtitleFile("$name ($lang)", u))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+
+            }
+
+
+
+
+
+            val playerResponse = try {
+                parseJson<PlayerResponse>(responseText)
+            } catch (e: Exception) {
+
+                null
+            }
+
+            if (playerResponse == null) {
+
+                return false
+            }
+
+            val hlsUrl = playerResponse.streamingData?.hlsManifestUrl
+            if (!hlsUrl.isNullOrBlank()) {
+
+                callback(
+                    newExtractorLink(this.name, "M3U AUTO", hlsUrl) {
+                        this.referer = mainUrl
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+
+                try {
+
+                    val masterM3u8 = app.get(hlsUrl, referer = mainUrl).text
+                    val lines = masterM3u8.lines()
+
+
+                    lines.filter { it.startsWith("#EXT-X-MEDIA") && it.contains("TYPE=SUBTITLES") }
+                        .forEach { line ->
+                            val subUri = parseM3u8Tag(line, "URI")
+                            val subName = parseM3u8Tag(line, "NAME")
+                            val subLang = parseM3u8Tag(line, "LANGUAGE")
+
+                            if (subUri != null) {
+                                val displayName = subName ?: subLang ?: "Subtitle (HLS)"
+
+                                subtitleCallback(SubtitleFile(displayName, subUri))
+                            }
+                        }
+
+
+                    lines.forEachIndexed { index, line ->
+                        if (line.startsWith("#EXT-X-STREAM-INF")) {
+                            val infoLine = line
+                            val urlLine =
+                                lines.getOrNull(index + 1)?.takeIf { it.startsWith("http") }
+                                    ?: return@forEachIndexed
+
+                            val resolution = parseM3u8Tag(infoLine, "RESOLUTION")
+                            val resolutionHeight = resolution?.substringAfter("x")?.plus("p") ?: ""
+
+                            val audioId = parseM3u8Tag(infoLine, "YT-EXT-AUDIO-CONTENT-ID")
+                            val lang = audioId?.substringBefore('.')?.uppercase()
+
+                            val ytTags = parseM3u8Tag(infoLine, "YT-EXT-XTAGS")
+                            val audioType = when {
+                                ytTags?.contains("dubbed") == true -> "Dubbed"
+                                ytTags?.contains("original") == true -> "Original"
+                                else -> null
+                            }
+
+                            val nameBuilder = StringBuilder()
+                            nameBuilder.append(resolutionHeight)
+                            if (lang != null) {
+                                nameBuilder.append(" ($lang")
+                                if (audioType != null) {
+                                    nameBuilder.append(" - $audioType")
+                                }
+                                nameBuilder.append(")")
+                            }
+
+                            val streamName = nameBuilder.toString().trim()
+
+                            if (streamName.isNotBlank()) {
+                                callback(
+                                    newExtractorLink(this.name, streamName, urlLine) {
+                                        this.referer = mainUrl
+                                        this.quality = getQualityFromName(resolutionHeight)
+                                    }
+                                )
+
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+
+                }
+
+                return true
+            } else {
+
+                return false
+            }
+
+        } catch (e: Exception) {
+
+            logError(e)
+            return false
+        }
+    }
 
 
     private fun parseM3u8Tag(tag: String, key: String): String? {

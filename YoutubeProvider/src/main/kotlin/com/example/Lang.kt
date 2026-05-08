@@ -1408,7 +1408,7 @@ object Loc {
     )
 
     fun getString(sharedPref: SharedPreferences, key: String): String {
-        val langCode = sharedPref.getString("youtube_language", "ar") ?: "ar"
+        val langCode = sharedPref.getString("youtube_language", "es") ?: "es"
         return translations[langCode]?.get(key) ?: translations["en"]?.get(key) ?: key
     }
 }
