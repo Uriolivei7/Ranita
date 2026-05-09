@@ -503,7 +503,6 @@ class MhdflixProvider : MainAPI() {
             }
         }
 
-        // Process direct links immediately (no blocking)
         var found = false
         for (item in directLinks) {
             val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl ?: continue
