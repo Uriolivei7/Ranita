@@ -371,10 +371,10 @@
         "name": "LatanimeProvider"
     },
     {
-        "fileHash": "sha256-fd5b954b4d1750b856f5d67cbde5ead6b8f11c546f00dd4add6c6e5d2ac3705a",
+        "fileHash": "sha256-637880cdf41577f727568b843bd60593292bb3e612a0a485919f86e5fded92ab",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53970,
+        "fileSize": 53972,
         "status": 1,
         "language": "es",
         "authors": [
