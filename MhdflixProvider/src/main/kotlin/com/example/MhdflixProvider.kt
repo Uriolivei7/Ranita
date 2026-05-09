@@ -6,6 +6,10 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.jsoup.Jsoup
 
 class MhdflixProvider : MainAPI() {
@@ -473,7 +477,6 @@ class MhdflixProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        var found = false
         Log.d("Mhdflix-Links", "Processing ${links.size} links with referer: $referer")
 
         val extractorDomains = setOf(
@@ -485,74 +488,82 @@ class MhdflixProvider : MainAPI() {
             "cubeembed", "rpmvid", "sendvid"
         )
 
-        for ((index, item) in links.withIndex()) {
+        val directLinks = mutableListOf<ApiLink>()
+        val extractorLinks = mutableListOf<Pair<ApiLink, String>>()
+
+        for (item in links) {
             val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl
-            Log.d("Mhdflix-Links", "Link[$index]: url=$videoUrl, server=${item.server?.name}")
-
             if (videoUrl.isNullOrBlank() || videoUrl.contains("undefined")) continue
+            val hasExtractor = extractorDomains.any { domain -> videoUrl.contains(domain, ignoreCase = true) }
+            val isDirect = videoUrl.contains(".mp4", ignoreCase = true) || videoUrl.contains("streamtape", ignoreCase = true)
+            if ((isDirect && !hasExtractor) || !hasExtractor) {
+                directLinks.add(item)
+            } else {
+                extractorLinks.add(item to videoUrl)
+            }
+        }
 
+        // Process direct links immediately (no blocking)
+        var found = false
+        for (item in directLinks) {
+            val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl ?: continue
             val serverName = item.server?.name ?: item.serverName ?: "Server"
             val languageName = item.language?.name ?: item.languageName ?: "Latino"
             val qualityName = item.quality?.name ?: ""
             val linkName = "$serverName - $languageName"
 
-            val hasExtractor = extractorDomains.any { domain -> videoUrl.contains(domain, ignoreCase = true) }
-            val isDirectMp4 = videoUrl.contains(".mp4", ignoreCase = true)
-            val isStreamtape = videoUrl.contains("streamtape", ignoreCase = true)
-
-            if ((isDirectMp4 || isStreamtape) && !hasExtractor) {
-                val qualityValue = when {
-                    qualityName.contains("4k", ignoreCase = true) || qualityName.contains("2160") -> Qualities.P2160.value
-                    qualityName.contains("1080") || qualityName.contains("full hd") -> Qualities.P1080.value
-                    qualityName.contains("720") -> Qualities.P720.value
-                    qualityName.contains("480") -> Qualities.P480.value
-                    else -> Qualities.Unknown.value
-                }
-
-                callback.invoke(
-                    createExtractorLink(
-                        source = name,
-                        name = linkName,
-                        url = videoUrl,
-                        referer = referer,
-                        quality = qualityValue,
-                        type = ExtractorLinkType.VIDEO
-                    )
-                )
-                found = true
-            } else if (hasExtractor) {
-                try {
-                    @Suppress("DEPRECATION")
-                    loadExtractor(videoUrl, referer, subtitleCallback) { extractedLink ->
-                        try {
-                            if (extractedLink.url.isNotBlank()) {
-                                val nameWithLang = "${extractedLink.name} [$languageName]"
-                                Log.d("Mhdflix-Links", "Emitting: name=$nameWithLang, url=${extractedLink.url}")
-                                callback.invoke(
-                                    createExtractorLink(
-                                        source = nameWithLang,
-                                        name = linkName,
-                                        url = extractedLink.url,
-                                        referer = extractedLink.referer,
-                                        quality = extractedLink.quality,
-                                        type = extractedLink.type
-                                    )
-                                )
-                            }
-                        } catch (e: Exception) {
-                            Log.e("Mhdflix-Links", "Callback error: ${e.message}", e)
-                        }
-                    }.also { if (it) found = true }
-                } catch (e: Exception) {
-                    Log.e("Mhdflix-Links", "loadExtractor failed: ${e.message}", e)
-                }
+            val qualityValue = when {
+                qualityName.contains("4k", ignoreCase = true) || qualityName.contains("2160") -> Qualities.P2160.value
+                qualityName.contains("1080") || qualityName.contains("full hd") -> Qualities.P1080.value
+                qualityName.contains("720") -> Qualities.P720.value
+                qualityName.contains("480") -> Qualities.P480.value
+                else -> Qualities.Unknown.value
             }
+            callback.invoke(createExtractorLink(name, linkName, videoUrl, referer, qualityValue, ExtractorLinkType.VIDEO))
+            found = true
 
             item.subtitles?.forEach { sub ->
-                sub.url?.let { url ->
-                    subtitleCallback.invoke(
-                        createSubtitleFile(sub.name ?: languageName, fixUrl(url))
-                    )
+                sub.url?.let { subtitleCallback.invoke(createSubtitleFile(sub.name ?: languageName, fixUrl(it))) }
+            }
+        }
+
+        // Process extractor links in parallel, emit as each completes
+        if (extractorLinks.isNotEmpty()) {
+            coroutineScope {
+                extractorLinks.map { (item, videoUrl) ->
+                    launch {
+                        val serverName = item.server?.name ?: item.serverName ?: "Server"
+                        val languageName = item.language?.name ?: item.languageName ?: "Latino"
+                        val linkName = "$serverName - $languageName"
+                        try {
+                            val ok = withTimeout(20000L) {
+                                loadExtractor(videoUrl, referer, subtitleCallback) { link ->
+                                    if (link.url.isNotBlank()) {
+                                        @Suppress("DEPRECATION")
+                                        val videoLink = ExtractorLink(
+                                            source = linkName,
+                                            name = "${link.name} [$languageName]",
+                                            url = link.url,
+                                            referer = link.referer.ifBlank { "" },
+                                            quality = link.quality,
+                                            type = link.type
+                                        )
+                                        videoLink.headers = link.headers
+                                        callback.invoke(videoLink)
+                                        found = true
+                                    }
+                                }
+                            }
+                            item.subtitles?.forEach { sub ->
+                                sub.url?.let { subtitleCallback.invoke(createSubtitleFile(sub.name ?: languageName, fixUrl(it))) }
+                            }
+                            if (ok) Log.d("Mhdflix-Links", "Extractor OK: $serverName")
+                        } catch (e: TimeoutCancellationException) {
+                            Log.w("Mhdflix-Links", "Extractor timed out (20s): $serverName - $videoUrl")
+                        } catch (e: Exception) {
+                            Log.e("Mhdflix-Links", "Extractor failed: $serverName - ${e.message}")
+                        }
+                    }
                 }
             }
         }
