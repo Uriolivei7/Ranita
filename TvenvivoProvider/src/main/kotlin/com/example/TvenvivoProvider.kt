@@ -1,20 +1,17 @@
 package com.example
 
-import android.content.res.Configuration
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
-import kotlin.text.Charsets.UTF_8
 import kotlinx.coroutines.delay
-import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
-class TvporinternetProvider : MainAPI() {
-    override var mainUrl = "https://www.tvporinternet2.com"
-    override var name = "TvporInternet"
+class TvenvivoProvider : MainAPI() {
+    override var mainUrl = "https://www.tvenvivo2.com/"
+    override var name = "TVenVIVO"
 
     override val supportedTypes = setOf(
         TvType.Live
@@ -90,7 +87,7 @@ class TvporinternetProvider : MainAPI() {
                     return res.text
                 }
             } catch (e: Exception) {
-                Log.e("TvporInternet", "safeAppGet error: ${e.message}")
+                Log.e("Tvenvivo", "safeAppGet error: ${e.message}")
             }
             if (i < retries - 1) {
                 delay(delayMs)
@@ -101,7 +98,7 @@ class TvporinternetProvider : MainAPI() {
 
     private fun getCategory(title: String): String {
         val normalizedTitle = title.uppercase().replace(" EN VIVO", "").trim()
-
+        
         return when {
             infantilCat.any { normalizedTitle.contains(it) } -> "Infantil"
             educacionCat.any { normalizedTitle.contains(it) } -> "Educacion"
@@ -152,8 +149,6 @@ class TvporinternetProvider : MainAPI() {
                     }
                     val img = imgElement?.attr("src") ?: ""
 
-                    Log.d("TvporInternet", "Extract: link=$link, title='$titleRaw', img='$img'")
-
                     if (titleRaw.isNotBlank() && link.isNotBlank()) {
                         channels.add(Triple(titleRaw, link, img))
                     }
@@ -165,34 +160,34 @@ class TvporinternetProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        Log.d("TvporInternet", "Search: query='$query'")
+        Log.d("Tvenvivo", "Search: query='$query'")
         val html = safeAppGet(mainUrl) ?: run {
-            Log.d("TvporInternet", "Search: failed to get HTML")
+            Log.d("Tvenvivo", "Search: failed to get HTML")
             return emptyList()
         }
-
+        
         val channels = extractChannelsFromHtml(html)
-        Log.d("TvporInternet", "Search: found ${channels.size} channels")
-
+        Log.d("Tvenvivo", "Search: found ${channels.size} channels")
+        
         if (query.isBlank()) {
-            Log.d("TvporInternet", "Search: query is blank, returning empty")
+            Log.d("Tvenvivo", "Search: query is blank, returning empty")
             return emptyList()
         }
 
         val filtered = channels.filterNot { (titleRaw, _, _) ->
             val shouldFilter = nowAllowed.any { titleRaw.contains(it, ignoreCase = true) } || titleRaw.isBlank()
-            if (shouldFilter) Log.d("TvporInternet", "Search: filtering out '$titleRaw'")
+            if (shouldFilter) Log.d("Tvenvivo", "Search: filtering out '$titleRaw'")
             shouldFilter
         }
-
+        
         val matched = filtered.filter { (titleRaw, _, _) ->
             val matches = titleRaw.contains(query, ignoreCase = true)
-            Log.d("TvporInternet", "Search: '$titleRaw' matches '$query' = $matches")
+            Log.d("Tvenvivo", "Search: '$titleRaw' matches '$query' = $matches")
             matches
         }
-
-        Log.d("TvporInternet", "Search: matched ${matched.size} channels")
-
+        
+        Log.d("Tvenvivo", "Search: matched ${matched.size} channels")
+        
         return matched.mapNotNull { (titleRaw, linkRaw, imgRaw) ->
             val title = titleRaw.replace("Ver ", "").replace(" en vivo", "").trim()
             newLiveSearchResponse(
@@ -233,7 +228,7 @@ class TvporinternetProvider : MainAPI() {
         val episodes = listOf(
             newEpisode(data = url) {
                 this.name = "En Vivo"
-                this.posterUrl = fixUrl(poster)
+                this.posterUrl = fixUrlNull(poster)
             }
         )
 
@@ -243,8 +238,8 @@ class TvporinternetProvider : MainAPI() {
             type = TvType.Live,
             episodes = episodes
         ) {
-            this.posterUrl = fixUrl(poster)
-            this.backgroundPosterUrl = fixUrl(poster)
+            this.posterUrl = fixUrlNull(poster)
+            this.backgroundPosterUrl = fixUrlNull(poster)
             this.plot = description
         }
     }
@@ -256,7 +251,7 @@ class TvporinternetProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val targetUrl = fixUrl(data)
-        Log.d("TvporInternet", "Logs: Cargando URL base -> $targetUrl")
+        Log.d("Tvenvivo", "Logs: Cargando URL base -> $targetUrl")
 
         try {
             val mainHeaders = mapOf(
@@ -276,14 +271,14 @@ class TvporinternetProvider : MainAPI() {
                 .filter { it.isNotBlank() && !it.contains("facebook") }
                 .distinct()
 
-            Log.d("TvporInternet", "Logs: Opciones detectadas: ${optionLinks.size}")
+            Log.d("Tvenvivo", "Logs: Opciones detectadas: ${optionLinks.size}")
 
             var success = false
 
             for ((index, rawPlayerUrl) in optionLinks.withIndex()) {
                 val playerUrl = fixUrl(rawPlayerUrl)
                 try {
-                    Log.d("TvporInternet", "Logs: Entrando a Opción ${index + 1} -> $playerUrl")
+                    Log.d("Tvenvivo", "Logs: Entrando a Opción ${index + 1} -> $playerUrl")
 
                     val playerHeaders = mainHeaders.toMutableMap().apply {
                         put("Referer", targetUrl)
@@ -297,7 +292,7 @@ class TvporinternetProvider : MainAPI() {
 
                     val finalHtml = if (internalIframe != null) {
                         val iframeUrl = fixUrl(internalIframe)
-                        Log.d("TvporInternet", "Logs: Iframe interno hallado: $iframeUrl")
+                        Log.d("Tvenvivo", "Logs: Iframe interno hallado: $iframeUrl")
                         app.get(iframeUrl, headers = playerHeaders.apply { put("Referer", playerUrl) }).text
                     } else {
                         playerHtml
@@ -306,7 +301,7 @@ class TvporinternetProvider : MainAPI() {
                     val m3u8Url = extractM3u8FromHtml(finalHtml)
 
                     if (!m3u8Url.isNullOrEmpty()) {
-                        Log.d("TvporInternet", "Logs: ¡Éxito! M3U8: $m3u8Url")
+                        Log.d("Tvenvivo", "Logs: ¡Éxito! M3U8: $m3u8Url")
 
                         val streamingHeaders = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -327,15 +322,15 @@ class TvporinternetProvider : MainAPI() {
                         success = true
                     } else {
                         val title = Jsoup.parse(playerHtml).title()
-                        Log.w("TvporInternet", "Logs: Falló Opción ${index + 1}. Título recibido: $title")
+                        Log.w("Tvenvivo", "Logs: Falló Opción ${index + 1}. Título recibido: $title")
                     }
                 } catch (e: Exception) {
-                    Log.e("TvporInternet", "Logs: Error en opción $index: ${e.message}")
+                    Log.e("Tvenvivo", "Logs: Error en opción $index: ${e.message}")
                 }
             }
             return success
         } catch (e: Exception) {
-            Log.e("TvporInternet", "Logs: Error crítico: ${e.message}")
+            Log.e("Tvenvivo", "Logs: Error crítico: ${e.message}")
             return false
         }
     }
