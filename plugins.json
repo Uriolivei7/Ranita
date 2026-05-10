@@ -62,7 +62,7 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnizoneProvider.cs3",
-    "status": 0,
+    "status": 1,
     "version": 9,
     "apiVersion": 1,
     "name": "AniZone",
@@ -459,7 +459,7 @@
       "AsianDrama",
       "Cartoon"
     ],
-    "iconUrl": "https://img.icons8.com/?size=192&id=fnzD4E0A2n97&format=png",
+    "iconUrl": "https://cinemacity.cc/templates/cinemacity/images/favicon.png",
     "language": "en",
     "fileSize": 40000
   },
