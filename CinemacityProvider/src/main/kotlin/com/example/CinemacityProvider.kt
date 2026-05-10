@@ -29,12 +29,14 @@ import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.toNewSearchResponseList
+import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.nicehttp.NiceResponse
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -46,15 +48,31 @@ class CinemacityProvider : MainAPI() {
     override var lang = "en"
     override val hasMainPage = true
     override val hasDownloadSupport = false
-    override val hasQuickSearch = false
+    override val hasQuickSearch = true
     override val supportedTypes = setOf(
-        TvType.TvSeries, TvType.Movie, TvType.Cartoon, TvType.AsianDrama
+        TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama, TvType.Anime
     )
-    companion object
-    {
-        val headers = mapOf(
-            "Cookie" to base64Decode("ZGxlX3VzZXJfaWQ9MzI3Mjk7IGRsZV9wYXNzd29yZD04OTQxNzFjNmE4ZGFiMThlZTU5NGQ1YzY1MjAwOWEzNTs=")
-        )
+
+    private var dynamicCookies: Map<String, String> = mapOf(
+        "dle_user_id" to "32729",
+        "dle_password" to "894171c6a8dab18ee594d5c652009a35"
+    )
+
+    private val protectionHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    private suspend fun doRequest(url: String): NiceResponse {
+        return app.get(
+            url,
+            headers = protectionHeaders + ("Referer" to "$mainUrl/"),
+            cookies = dynamicCookies
+        ).also {
+            if (it.cookies.isNotEmpty()) dynamicCookies = dynamicCookies + it.cookies
+        }
+    }
+
+    companion object {
         private const val TMDBIMAGEBASEURL = "https://image.tmdb.org/t/p/original"
         private const val cinemeta_url = "https://aiometadata.elfhosted.com/stremio/b7cb164b-074b-41d5-b458-b3a834e197bb/meta"
     }
@@ -76,42 +94,65 @@ class CinemacityProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "tv-series" to "Series",
-        "xfsearch/genre/animation" to "Animación",
-        "movies" to "Movies",
-        "xfsearch/genre/documentary" to "Documentales",
+        "$mainUrl/tv-series/" to "Series",
+        "$mainUrl/movies/" to "Movies",
     )
 
     override suspend fun getMainPage(
         page: Int, request: MainPageRequest
     ): HomePageResponse {
-        val doc = if (page==1) app.get("$mainUrl/${request.data}").document
-        else app.get("$mainUrl/${request.data}/page/$page").document
-
+        val base = request.data.trimEnd('/')
+        val url = if (page > 1) "$base/page/$page/" else "$base/"
+        val doc = doRequest(url).document
         val home = doc.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
-        return newHomePageResponse(request.name, home, true)
+        val hasNext = doc.select("a[href*='/page/'], .pnext, .next").isNotEmpty()
+        return newHomePageResponse(request.name, home, hasNext)
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val title = this.children().firstOrNull { it.tagName() == "a" }?.ownText()?.substringBefore("(")?.trim().orEmpty()
-        val href = fixUrl(this.children().firstOrNull { it.tagName() == "a" }?.attr("href") ?: "")
-        val posterUrl = fixUrlNull(this.select("div.dar-short_bg a ").attr("href"))
+    private fun Element.toSearchResult(): SearchResponse? {
+        val link = this.select("a").firstOrNull {
+            val h = it.attr("href")
+            (h.contains("/movies/") || h.contains("/tv-series/")) && !h.contains(Regex("\\.(webp|jpg|png)"))
+        } ?: return null
 
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
+        val title = link.text().split(" (", " S0", " -")[0].trim()
+        val href = fixUrlNull(link.attr("href")) ?: return null
+        val poster = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        val isTv = href.contains("/tv-series/") || link.text().contains(" S0", true)
+        val score = this.selectFirst("span.rating-color")?.text()
+        val date  = this.selectFirst("span a[href*=year]")?.text()?.toIntOrNull()
+
+        return if (isTv) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = poster
+                this.score = Score.from10(score)
+                this.year = date
+            }
+        } else {
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+                this.score = Score.from10(score)
+                this.year = date
+            }
         }
     }
 
 
-    override suspend fun search(query: String,page: Int): SearchResponseList {
-        val doc = app.get("$mainUrl/index.php?do=search&subaction=search&search_start=$page&full_search=0&story=$query").document
-        val res = doc.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
-        return res.toNewSearchResponseList()
+    override suspend fun search(query: String, page: Int): SearchResponseList {
+        val doc = doRequest(
+            "$mainUrl/index.php?do=search&subaction=search&search_start=$page&full_search=0&story=$query"
+        ).document
+        val results = doc.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
+        val hasNext = doc.select(".pnext, a:contains(Next), a[href*='search_start=']").isNotEmpty()
+                || results.size >= 10
+        return newSearchResponseList(results, hasNext)
     }
+
+    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
 
     override suspend fun load(url: String): LoadResponse {
-        val page = app.get(url, headers)
+        val page = doRequest(url)
         val doc = page.document
 
         val ogTitle = doc.selectFirst("meta[property=og:title]")?.attr("content").orEmpty()
@@ -432,7 +473,7 @@ class CinemacityProvider : MainAPI() {
         if (streamUrls.isEmpty()) return false
 
         streamUrls.forEach { url ->
-            Log.d("Cinemacity", "Cargando link: $url con headers: $headers")
+            Log.d("Cinemacity", "Cargando link: $url")
             callback(
                 newExtractorLink(
                     name,
@@ -441,7 +482,6 @@ class CinemacityProvider : MainAPI() {
                     INFER_TYPE
                 ) {
                     this.referer = mainUrl
-                    this.headers = headers
                     this.quality = extractQuality(url)
                 }
             )
