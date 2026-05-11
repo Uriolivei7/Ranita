@@ -334,9 +334,11 @@ class AnizoneProvider : MainAPI() {
         val cookie = webReq.cookies
         val sourceName = web.selectFirst("span.truncate")?.text() ?: ""
         val mediaPlayer = web.selectFirst("media-player")
-        val m3U8 = mediaPlayer?.attr("src") ?: ""
+        val masterUrl = mediaPlayer?.attr("src") ?: ""
 
-        Log.d("AniZoneSub", "-> Source: $sourceName, M3U8: $m3U8")
+        Log.d("AniZoneSub", "-> Source: $sourceName, M3U8: $masterUrl")
+
+        if (masterUrl.isBlank()) return false
 
         mediaPlayer?.select("track")?.forEach {
             Log.d("AniZoneSub", "-> [AniZone] Subtítulo encontrado: ${it.attr("label")}")
@@ -348,21 +350,23 @@ class AnizoneProvider : MainAPI() {
             )
         }
 
+        val baseHeaders = mapOf(
+            "Origin" to mainUrl,
+            "Accept" to "*/*",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Cookie" to cookie.map { "${it.key}=${it.value}" }.joinToString("; ")
+        )
+
         callback.invoke(
             newExtractorLink(
                 sourceName,
                 name,
-                m3U8,
+                masterUrl,
                 type = ExtractorLinkType.M3U8
             ) {
                 this.referer = episodeUrl
                 this.quality = 0
-                this.headers = mapOf(
-                    "Origin" to mainUrl,
-                    "Accept" to "*/*",
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Cookie" to cookie.map { "${it.key}=${it.value}" }.joinToString("; ")
-                )
+                this.headers = baseHeaders
             }
         )
         return true
