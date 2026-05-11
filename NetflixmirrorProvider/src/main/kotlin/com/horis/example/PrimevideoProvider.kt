@@ -66,6 +66,7 @@ class PrimevideoProvider : MainAPI() {
             "$apiBase/newtv/post.php?id=$id",
             headers = buildNewTvHeaders(ott, mapOf("Lastep" to "", "Usertoken" to ""))
         ).parsed<NewTvPostResponse>()
+        Log.d("Primevideo", "ua=${data.ua}")
 
         Log.d("Primevideo", "Seasons count: ${data.season?.size ?: 0}")
         data.season?.forEachIndexed { i, s ->
@@ -79,7 +80,15 @@ class PrimevideoProvider : MainAPI() {
         val playbackId = data.main_id ?: id
         val cast = data.cast?.split(",")?.map { it.trim() }?.map { ActorData(Actor(it)) } ?: emptyList()
         val genre = data.genre?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
-        val rating = data.match?.replace("IMDb ", "")
+        val imdbFromDetails = data.moredetails?.find { it.k == "IMDB Rating" }?.v
+        val rating = when {
+            data.match?.startsWith("IMDb ") == true -> data.match?.replace("IMDb ", "")
+            data.match?.contains("%") == true -> {
+                val pct = data.match?.replace(Regex("[^0-9]"), "")?.toFloatOrNull()
+                if (pct != null) String.format("%.1f", pct / 10f) else null
+            }
+            else -> data.match ?: imdbFromDetails
+        }
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
         val isSeries = data.type == "t" || data.episodes?.any { it != null } == true
         val suggest = data.suggest?.map {
@@ -90,13 +99,19 @@ class PrimevideoProvider : MainAPI() {
         }
 
         if (!isSeries) {
-            return newMovieLoadResponse(title, url, TvType.Movie, NewTvLoadData(title, playbackId).toJson()) {
+            return newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                NewTvLoadData(title, playbackId).toJson()
+            ) {
                 posterUrl = pvPoster(id)
                 backgroundPosterUrl = pvBg(id)
                 posterHeaders = mapOf("Referer" to apiBase)
                 plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
                 actors = cast; this.score = Score.from10(rating); duration = runTime
                 recommendations = suggest
+                contentRating = data.ua ?: data.certification ?: data.age
             }
         }
 
@@ -189,6 +204,7 @@ class PrimevideoProvider : MainAPI() {
             plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
             actors = cast; this.score = Score.from10(rating); duration = runTime
             recommendations = suggest
+            contentRating = data.ua ?: data.certification ?: data.age
         }
     }
 
