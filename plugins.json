@@ -1,10 +1,10 @@
 [
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-aed30e9f1b51e9703e09dec423946650eb57142fe828b197cb70461f16fd524e",
+        "fileHash": "sha256-b2f4792982f1916d3afe4b3ae40103ef8c961f8281a0bb9938db07988e4e4ea5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24851,
+        "fileSize": 25368,
         "status": 1,
         "language": "es",
         "authors": [
@@ -371,10 +371,10 @@
         "name": "LatanimeProvider"
     },
     {
-        "fileHash": "sha256-637880cdf41577f727568b843bd60593292bb3e612a0a485919f86e5fded92ab",
+        "fileHash": "sha256-90a9429d878efc1742472a2246dd194655b67c7104c9c405c28a85b0ca631044",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53972,
+        "fileSize": 55599,
         "status": 1,
         "language": "es",
         "authors": [
