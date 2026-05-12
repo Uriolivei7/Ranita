@@ -170,7 +170,7 @@
     ],
     "iconUrl": "https://animeav1.com/favicon.png",
     "language": "mx",
-    "fileSize": 22000
+    "fileSize": 25000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DoramasflixProvider.cs3",
@@ -186,7 +186,7 @@
     "tvTypes": [
       "AsianDrama"
     ],
-    "iconUrl": "https://doramasflix.co/favicon.ico",
+    "iconUrl": "https://img.icons8.com/?size=100&id=111065&format=png&color=FA5252",
     "language": "mx",
     "fileSize": 42000
   },
@@ -615,9 +615,9 @@
       "AsianDrama",
       "Movie"
     ],
-    "iconUrl": "https://ww1.mhdflix.com/favicon.ico",
+    "iconUrl": "https://ww1.mhdflix.com/cdn/favicon.ico",
     "language": "mx",
-    "fileSize": 53000
+    "fileSize": 55000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DonghualifeProvider.cs3",

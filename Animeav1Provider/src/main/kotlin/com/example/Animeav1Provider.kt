@@ -27,6 +27,7 @@ import org.json.JSONObject
 import org.jsoup.nodes.Element
 import android.util.Log
 import com.lagradost.cloudstream3.DubStatus
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.ShowStatus
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.newAnimeLoadResponse
@@ -116,6 +117,9 @@ class Animeav1 : MainAPI() {
 
         val description = document.selectFirst("div.entry.line-clamp-4 p")?.text()
 
+        val score = document.selectFirst("div.ic-star-solid div.text-lead")?.text()?.toFloatOrNull()?.let { Score.from10(it) }
+        Log.d("Animeav1", "LOAD: score=$score")
+
         val infoContainer = document.selectFirst("header div.flex.flex-wrap.items-center.gap-2.text-sm")
 
         Log.d("Animeav1", "LOAD METADATA: Contenedor HTML (V4): ${infoContainer?.outerHtml()}")
@@ -195,6 +199,7 @@ class Animeav1 : MainAPI() {
                 this.showStatus = showStatus
                 this.tags = tags
                 this.recommendations = recommendations
+                this.score = score
             }
         } else {
             val href = fixUrl(document.select("div.grid > article a").attr("href"))
@@ -204,6 +209,7 @@ class Animeav1 : MainAPI() {
                 this.tags = tags
                 this.year = year
                 this.recommendations = recommendations
+                this.score = score
             }
         }
     }
