@@ -119,10 +119,10 @@
         "name": "AsialiveactionProvider"
     },
     {
-        "fileHash": "sha256-4c0163300f9e178ca28f058c89443fd0b7c8dd988246263148fe82fa22eacfbb",
+        "fileHash": "sha256-67b01b360188195fa93dab750ffddfdf1affbe3ec18a386e91f2ca5503cd64c5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 40809,
+        "fileSize": 41315,
         "status": 1,
         "language": "en",
         "authors": [
@@ -438,10 +438,10 @@
         "name": "MundodonghuaProvider"
     },
     {
-        "fileHash": "sha256-64c4ab9d603d389d1e20537127bcc7577d18c3e25c91976fcbf4c89b8c93c8b5",
+        "fileHash": "sha256-47049fd0524aaafaa81d4614bd07040dc190cb9bef78f2133904a150f1f47e51",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 83595,
+        "fileSize": 84012,
         "status": 1,
         "authors": [
             "Ranita"
