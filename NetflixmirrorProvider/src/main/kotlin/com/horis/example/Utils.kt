@@ -11,6 +11,11 @@ import kotlin.reflect.KClass
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.APIHolder
 import android.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 // ---------------------------------------------------------------------------
 // JSON / HTTP
@@ -103,22 +108,35 @@ private var resolvedApiUrl: String = ""
 
 suspend fun resolveApiUrl(): String {
     if (resolvedApiUrl.isNotBlank()) return resolvedApiUrl
-    for (encoded in newTvDomains) {
-        val base = decodeBase64(encoded).trimEnd('/')
-        try {
-            val response = app.get("$base/checknewtv.php", headers = newTvBaseHeaders)
-                .parsed<NewTvTokenResponse>()
-            val tokenHash = response.token_hash
-            if (!tokenHash.isNullOrBlank()) {
-                resolvedApiUrl = decodeBase64(tokenHash).trimEnd('/')
-                Log.d("NewTV", "Resolved API URL: $resolvedApiUrl")
-                return resolvedApiUrl
+    return withContext(Dispatchers.IO) {
+        coroutineScope {
+            val deferreds = newTvDomains.map { encoded ->
+                async {
+                    val base = decodeBase64(encoded).trimEnd('/')
+                    try {
+                        val response = app.get("$base/checknewtv.php", headers = newTvBaseHeaders)
+                            .parsed<NewTvTokenResponse>()
+                        val tokenHash = response.token_hash
+                        if (!tokenHash.isNullOrBlank()) {
+                            decodeBase64(tokenHash).trimEnd('/')
+                        } else null
+                    } catch (e: Exception) {
+                        Log.d("NewTV", "Failed $base: ${e.message}")
+                        null
+                    }
+                }
             }
-        } catch (e: Exception) {
-            Log.d("NewTV", "Failed $base: ${e.message}")
+            for (deferred in deferreds) {
+                val result = deferred.await()
+                if (result != null) {
+                    resolvedApiUrl = result
+                    Log.d("NewTV", "Resolved API URL: $resolvedApiUrl")
+                    return@coroutineScope resolvedApiUrl
+                }
+            }
+            throw Exception("Failed to resolve NewTV API base URL")
         }
     }
-    throw Exception("Failed to resolve NewTV API base URL")
 }
 
 fun buildVerticalPosterUrl(id: String, ott: String = "nf"): String {

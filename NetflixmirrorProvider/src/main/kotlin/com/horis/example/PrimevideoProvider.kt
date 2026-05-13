@@ -100,17 +100,20 @@ class PrimevideoProvider : MainAPI() {
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
         val isSeries = data.type == "t" || data.episodes?.any { it != null } == true
         val extraPlot = buildList {
-            if (!director.isNullOrBlank()) add("Director: $director")
-            if (!writer.isNullOrBlank()) add("Writer: $writer")
-            if (!studio.isNullOrBlank()) add("Studio: $studio")
+            //if (!director.isNullOrBlank()) add("Director: $director")
+            //if (!writer.isNullOrBlank()) add("Writer: $writer")
+            if (!studio.isNullOrBlank()) add(" - Studio: $studio")
         }.takeIf { it.isNotEmpty() }?.joinToString("\n")
-        val fullPlot = listOfNotNull(data.desc, extraPlot).takeIf { it.isNotEmpty() }?.joinToString("\n\n")
-        val languagesTag = if (!languages.isNullOrEmpty()) "Audio: ${languages.joinToString(", ")}" else null
+        val languagesText = if (!languages.isNullOrEmpty()) " - Audio: ${languages.joinToString(", ")}" else null
         val tags = buildList {
             if (!genre.isNullOrEmpty()) addAll(genre)
-            if (languagesTag != null) add(languagesTag)
             if (!thisMovieIs.isNullOrBlank()) add(thisMovieIs)
         }.takeIf { it.isNotEmpty() }
+        val fullPlot = buildList {
+            data.desc?.let { add(it) }
+            languagesText?.let { add(it) }
+            extraPlot?.let { add(it) }
+        }.takeIf { it.isNotEmpty() }?.joinToString("\n\n")
 
         val suggest = data.suggest?.map {
             newAnimeSearchResponse("", NewTvId(it.id).toJson()) {
@@ -137,22 +140,18 @@ class PrimevideoProvider : MainAPI() {
         }
 
         val episodes = arrayListOf<Episode>()
-        var counter = 1
 
         if (data.episodes.isNullOrEmpty()) {
             if (data.type != "t") episodes.add(newEpisode(NewTvLoadData(title, playbackId)) {
                 name = title
-                episode = counter++
             })
         } else {
             val selectedSeasonIdx = data.season?.indexOfFirst { it.selected == true }?.takeIf { it >= 0 }
             val selectedSeasonId = selectedSeasonIdx?.let { data.season?.getOrNull(it)?.id } ?: data.nextPageSeason
             val selectedSeasonNum = extractSeasonNumber(data.season?.find { it.selected == true }?.s)
 
-            // Collect all seasons with their numbers
             val allSeasons = mutableListOf<Pair<String, Int?>>()
 
-            // Main block episodes belong to selected season
             Log.d("Primevideo", "Main block episodes count: ${data.episodes?.size ?: 0}")
             data.episodes?.forEachIndexed { i, ep ->
                 Log.d("Primevideo", "  main ep[$i]: id=${ep?.id}, t=${ep?.t}, ep=${ep?.ep}")
@@ -172,7 +171,6 @@ class PrimevideoProvider : MainAPI() {
                     }
                 }
 
-            // Always add selected season to allSeasons (nextPageShow only controls if there are extra pages)
             if (!selectedSeasonId.isNullOrBlank()) {
                 val selNum = extractSeasonNumber(data.season?.find { it.id == selectedSeasonId }?.s)
                 allSeasons.add(Pair(selectedSeasonId, selNum))
@@ -185,24 +183,16 @@ class PrimevideoProvider : MainAPI() {
                 }
             }
 
-            // Sort by season number
             allSeasons.sortBy { it.second ?: 0 }
 
-            // Fetch in order, inserting main block at correct position
             allSeasons.forEach { (sid, sNum) ->
                 if (sid == selectedSeasonId) {
-                    // Add main block with sequential numbering
-                    mainBlockEpisodes.forEach { ep ->
-                        episodes.add(ep.copy(episode = counter++))
-                    }
-                    // Add remaining pages for this season
+                    episodes.addAll(mainBlockEpisodes)
                     if (data.nextPageShow == 1) {
-                        val extra = getEpisodes(title, sid, 2, sNum)
-                        extra.forEach { ep -> episodes.add(ep.copy(episode = counter++)) }
+                        episodes.addAll(getEpisodes(title, sid, 2, sNum))
                     }
                 } else {
-                    val seasonEps = getEpisodes(title, sid, 1, sNum)
-                    seasonEps.forEach { ep -> episodes.add(ep.copy(episode = counter++)) }
+                    episodes.addAll(getEpisodes(title, sid, 1, sNum))
                 }
             }
         }
@@ -211,8 +201,7 @@ class PrimevideoProvider : MainAPI() {
             val seasonsList = data.season.map { Pair(it.id, extractSeasonNumber(it.s)) }.sortedBy { it.second ?: 0 }
             seasonsList.forEach { (sid, sNum) ->
                 if (!sid.isNullOrBlank()) {
-                    val seasonEps = getEpisodes(title, sid, 1, sNum)
-                    seasonEps.forEach { ep -> episodes.add(ep.copy(episode = counter++)) }
+                    episodes.addAll(getEpisodes(title, sid, 1, sNum))
                 }
             }
         }

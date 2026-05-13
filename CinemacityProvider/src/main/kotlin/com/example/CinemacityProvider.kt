@@ -14,7 +14,6 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
@@ -22,7 +21,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.fixUrlNull
-import com.lagradost.cloudstream3.getQualityFromString
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
@@ -31,7 +29,6 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
@@ -50,7 +47,7 @@ class CinemacityProvider : MainAPI() {
     override val hasDownloadSupport = false
     override val hasQuickSearch = true
     override val supportedTypes = setOf(
-        TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama, TvType.Anime
+        TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama
     )
 
     private var dynamicCookies: Map<String, String> = mapOf(
@@ -118,7 +115,7 @@ class CinemacityProvider : MainAPI() {
         val title = link.text().split(" (", " S0", " -")[0].trim()
         val href = fixUrlNull(link.attr("href")) ?: return null
         val poster = fixUrlNull(this.selectFirst("img")?.attr("src"))
-        val isTv = href.contains("/tv-series/") || link.text().contains(" S0", true)
+        val isTv = href.contains("/tv-series/")
         val score = this.selectFirst("span.rating-color")?.text()
         val date  = this.selectFirst("span a[href*=year]")?.text()?.toIntOrNull()
 
@@ -138,14 +135,23 @@ class CinemacityProvider : MainAPI() {
     }
 
 
-    override suspend fun search(query: String, page: Int): SearchResponseList {
-        val doc = doRequest(
-            "$mainUrl/index.php?do=search&subaction=search&search_start=$page&full_search=0&story=$query"
-        ).document
-        val results = doc.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
-        val hasNext = doc.select(".pnext, a:contains(Next), a[href*='search_start=']").isNotEmpty()
-                || results.size >= 10
-        return newSearchResponseList(results, hasNext)
+    override suspend fun search(query: String): List<SearchResponse>? {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val formData = mapOf("do" to "search", "subaction" to "search", "story" to query)
+
+        val resp = app.post(
+            mainUrl,
+            headers = protectionHeaders + ("Referer" to "$mainUrl/") + ("X-Requested-With" to "XMLHttpRequest"),
+            cookies = dynamicCookies,
+            data = formData,
+            timeout = 120L
+        ).also {
+            if (it.cookies.isNotEmpty()) dynamicCookies = dynamicCookies + it.cookies
+        }
+
+        if (resp.code != 200) return null
+
+        return resp.document.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
@@ -249,50 +255,54 @@ class CinemacityProvider : MainAPI() {
                 ?.associateBy { "${it.season}:${it.episode}" }
                 ?: emptyMap()
 
-        val playerScript = doc
-            .select("script:containsData(atob)")
-            .getOrNull(1)
-            ?.data()
-            ?: error("PlayerJS not found; only torrent links available")
+        val atobScripts = doc.select("script:containsData(atob)")
+        val playerScript = atobScripts.getOrNull(1)?.data()
 
-        val decodedPlayer = base64Decode(
-            playerScript.substringAfter("atob(\"").substringBefore("\")")
-        )
+        val fileArray: JSONArray = if (playerScript != null) {
+            val b64 = playerScript.substringAfter("atob(\"").substringBefore("\")")
+            val decodedPlayer = base64Decode(b64)
 
-        val playerJson = JSONObject(
-            decodedPlayer
-                .substringAfter("new Playerjs(")
-                .substringBeforeLast(");")
-        )
+            val playerJsonStr = decodedPlayer
+                ?.substringAfter("new Playerjs(")
+                ?.substringBeforeLast(");")
 
-        val rawFile = playerJson.opt("file")
-            ?: error("PlayerJS: missing file field")
-
-        val fileArray: JSONArray = when (rawFile) {
-            is JSONArray -> rawFile
-            is String -> {
-                val value = rawFile.trim()
+            if (playerJsonStr.isNullOrBlank()) {
+                JSONArray()
+            } else {
+                val playerJson = JSONObject(playerJsonStr)
+                val rawFile = playerJson.opt("file")
 
                 when {
-                    value.startsWith("[") && value.endsWith("]") ->
-                        JSONArray(value)
-
-                    value.startsWith("{") && value.endsWith("}") ->
-                        JSONArray().apply { put(JSONObject(value)) }
-
-                    value.isNotBlank() ->
-                        JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("file", value)
-                            })
+                    rawFile is JSONArray -> rawFile
+                    rawFile is String && rawFile.isNotBlank() -> {
+                        val value = rawFile.trim()
+                        when {
+                            value.startsWith("[") && value.endsWith("]") -> JSONArray(value)
+                            value.startsWith("{") && value.endsWith("}") -> JSONArray().apply { put(JSONObject(value)) }
+                            else -> JSONArray().apply { put(JSONObject().apply { put("file", value) }) }
                         }
-
-                    else -> error("PlayerJS: empty file string")
+                    }
+                    else -> JSONArray()
                 }
             }
-            else -> error("PlayerJS: unsupported file type")
+        } else {
+            JSONArray()
         }
 
+        if (fileArray.length() == 0) {
+            doc.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank()) {
+                    fileArray.put(JSONObject().apply { put("file", src) })
+                }
+            }
+            doc.select("video source, source[src*=m3u8], source[src*=mp4]").forEach { source ->
+                val src = source.attr("src")
+                if (src.isNotBlank()) {
+                    fileArray.put(JSONObject().apply { put("file", src) })
+                }
+            }
+        }
 
         val seasonRegex = Regex("Season\\s*(\\d+)", RegexOption.IGNORE_CASE)
         val episodeRegex = Regex("Episode\\s*(\\d+)", RegexOption.IGNORE_CASE)
@@ -306,10 +316,19 @@ class CinemacityProvider : MainAPI() {
 
         val movieSubtitleTracks = parseSubtitles(
             when {
-                playerJson.opt("subtitle") is String ->
-                    playerJson.optString("subtitle")
-                fileArray.optJSONObject(0)?.opt("subtitle") is String ->
-                    fileArray.optJSONObject(0)?.optString("subtitle")
+                playerScript != null -> {
+                    val decodedPlayer = base64Decode(
+                        playerScript.substringAfter("atob(\"").substringBefore("\")")
+                    ) ?: ""
+                    val str = decodedPlayer
+                        .substringAfter("new Playerjs(")
+                        .substringBeforeLast(");")
+                    if (str.isNotBlank()) {
+                        val pj = JSONObject(str)
+                        pj.optString("subtitle").takeIf { it.isNotBlank() }
+                            ?: fileArray.optJSONObject(0)?.optString("subtitle")?.takeIf { it.isNotBlank() }
+                    } else null
+                }
                 else -> null
             }
         )
@@ -385,7 +404,6 @@ class CinemacityProvider : MainAPI() {
             ) {
                 this.backgroundPosterUrl = background ?: bgposter
                 this.posterUrl = poster
-                //try { this.logoUrl = logoPath } catch(_:Throwable){}
                 this.year = year ?: responseData?.meta?.year?.toIntOrNull()
                 this.plot = buildString {
                     append(description ?: descriptions)
@@ -404,17 +422,14 @@ class CinemacityProvider : MainAPI() {
             }
         }
 
-        responseData?.meta?.appExtras?.certification?.let { Log.d("Phisher", it) }
-
         return newMovieLoadResponse(
             responseData?.meta?.name ?: title,
             url,
             TvType.Movie,
-            moviejson
+            moviejson ?: "{}"
         ) {
             this.backgroundPosterUrl = background ?: bgposter
             this.posterUrl = poster
-            //try { this.logoUrl = logoPath } catch(_:Throwable){}
             this.year = year ?: responseData?.meta?.year?.toIntOrNull()
             this.plot = buildString {
                 append(description ?: descriptions)
@@ -439,6 +454,7 @@ class CinemacityProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        if (data.isBlank() || data == "null" || data == "{}") return false
 
         val obj = JSONObject(data)
 
