@@ -193,6 +193,11 @@ data class NewTvSearchResult(
     val t: String
 )
 
+data class NewTvLang(
+    val l: String? = null,
+    val s: String? = null
+)
+
 data class NewTvPostResponse(
     val status: String? = null,
     val title: String? = null,
@@ -215,7 +220,8 @@ data class NewTvPostResponse(
     val age: String? = null,
     val certification: String? = null,
     val ua: String? = null,
-    val moredetails: List<NewTvMoredetail>? = null
+    val moredetails: List<NewTvMoredetail>? = null,
+    val lang: List<NewTvLang>? = null
 )
 
 data class NewTvApiEpisode(
@@ -227,7 +233,8 @@ data class NewTvApiEpisode(
     val sNum: String? = null,
     val time: String? = null,
     val timeVal: String? = null,
-    val ep_desc: String? = null
+    val ep_desc: String? = null,
+    val info: List<String>? = null
 )
 
 data class NewTvSeason(

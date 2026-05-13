@@ -62,10 +62,12 @@ class PrimevideoProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val apiBase = resolveApiUrl()
         val id = parseJson<NewTvId>(url).id
-        val data = app.get(
+        val rawResponse = app.get(
             "$apiBase/newtv/post.php?id=$id",
             headers = buildNewTvHeaders(ott, mapOf("Lastep" to "", "Usertoken" to ""))
-        ).parsed<NewTvPostResponse>()
+        ).text
+        Log.d("Primevideo", "RAW post response: $rawResponse")
+        val data = JSONParser.parse(rawResponse, NewTvPostResponse::class)
         Log.d("Primevideo", "ua=${data.ua}")
 
         Log.d("Primevideo", "Seasons count: ${data.season?.size ?: 0}")
@@ -80,6 +82,12 @@ class PrimevideoProvider : MainAPI() {
         val playbackId = data.main_id ?: id
         val cast = data.cast?.split(",")?.map { it.trim() }?.map { ActorData(Actor(it)) } ?: emptyList()
         val genre = data.genre?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+        val languages = data.lang?.map { it.l.orEmpty() }?.filter { it.isNotBlank() }?.distinct()
+        val director = data.moredetails?.find { it.k == "Director" }?.v
+        val studio = data.moredetails?.find { it.k == "Studio" }?.v
+        val writer = data.moredetails?.find { it.k == "Writer" }?.v
+        val thisMovieIs = data.moredetails?.find { it.k == "This Movie Is" }?.v
+        Log.d("Primevideo", "lang=${languages} director=${director} studio=${studio} writer=${writer} thisMovieIs=${thisMovieIs}")
         val imdbFromDetails = data.moredetails?.find { it.k == "IMDB Rating" }?.v
         val rating = when {
             data.match?.startsWith("IMDb ") == true -> data.match?.replace("IMDb ", "")
@@ -91,6 +99,19 @@ class PrimevideoProvider : MainAPI() {
         }
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
         val isSeries = data.type == "t" || data.episodes?.any { it != null } == true
+        val extraPlot = buildList {
+            if (!director.isNullOrBlank()) add("Director: $director")
+            if (!writer.isNullOrBlank()) add("Writer: $writer")
+            if (!studio.isNullOrBlank()) add("Studio: $studio")
+        }.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        val fullPlot = listOfNotNull(data.desc, extraPlot).takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        val languagesTag = if (!languages.isNullOrEmpty()) "Audio: ${languages.joinToString(", ")}" else null
+        val tags = buildList {
+            if (!genre.isNullOrEmpty()) addAll(genre)
+            if (languagesTag != null) add(languagesTag)
+            if (!thisMovieIs.isNullOrBlank()) add(thisMovieIs)
+        }.takeIf { it.isNotEmpty() }
+
         val suggest = data.suggest?.map {
             newAnimeSearchResponse("", NewTvId(it.id).toJson()) {
                 posterUrl = pvPoster(it.id)
@@ -108,7 +129,7 @@ class PrimevideoProvider : MainAPI() {
                 posterUrl = pvPoster(id)
                 backgroundPosterUrl = pvBg(id)
                 posterHeaders = mapOf("Referer" to apiBase)
-                plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
+                plot = fullPlot; year = data.year?.toIntOrNull(); this.tags = tags
                 actors = cast; this.score = Score.from10(rating); duration = runTime
                 recommendations = suggest
                 contentRating = data.ua ?: data.certification ?: data.age
@@ -140,12 +161,13 @@ class PrimevideoProvider : MainAPI() {
                 .filterNotNull()
                 .distinctBy { it.id }
                 .map { ep ->
+                    Log.d("Primevideo", "main ep id=${ep.id} t=${ep.t} info=${ep.info}")
                     newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
                         name = ep.t
                         episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
                         season = selectedSeasonNum ?: extractSeasonNumber(ep.s)
                         posterUrl = pvEpPoster(ep.id.orEmpty())
-                        this.runTime = ep.timeVal?.replace("m", "").orEmpty().toIntOrNull()
+                        this.runTime = ep.info?.getOrNull(2)?.replace("m", "")?.toIntOrNull()
                         description = ep.ep_desc
                     }
                 }
@@ -201,7 +223,7 @@ class PrimevideoProvider : MainAPI() {
             posterUrl = pvPoster(id)
             backgroundPosterUrl = pvBg(id)
             posterHeaders = mapOf("Referer" to apiBase)
-            plot = data.desc; year = data.year?.toIntOrNull(); tags = genre
+            plot = fullPlot; year = data.year?.toIntOrNull(); this.tags = tags
             actors = cast; this.score = Score.from10(rating); duration = runTime
             recommendations = suggest
             contentRating = data.ua ?: data.certification ?: data.age
@@ -216,11 +238,13 @@ class PrimevideoProvider : MainAPI() {
         val seenIds = mutableSetOf<String>()
         var pg = page
         while (true) {
-            val data = app.get(
+            val rawEp = app.get(
                 "$apiBase/newtv/episodes.php",
                 params = mapOf("id" to sid, "page" to pg.toString()),
                 headers = buildNewTvHeaders(ott)
-            ).parsed<NewTvEpisodesResponse>()
+            ).text
+            Log.d("Primevideo", "RAW episodes page=$pg: $rawEp")
+            val data = JSONParser.parse(rawEp, NewTvEpisodesResponse::class)
 
             Log.d("Primevideo", "getEpisodes: sid=$sid page=$pg got=${data.episodes?.size ?: 0}")
             data.episodes?.forEach { e ->
@@ -231,12 +255,13 @@ class PrimevideoProvider : MainAPI() {
                 if (ep.id.isNullOrBlank()) return@forEach
                 if (ep.id in seenIds) return@forEach
                 seenIds.add(ep.id)
+                Log.d("Primevideo", "getEpisodes id=${ep.id} t=${ep.t} info=${ep.info}")
                 episodes.add(newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
                     name = ep.t
                     episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
                     season = seasonNumber ?: extractSeasonNumber(ep.s) ?: extractSeasonNumber(ep.sNum)
                     posterUrl = pvEpPoster(ep.id.orEmpty())
-                    this.runTime = ep.timeVal?.replace("m", "").orEmpty().toIntOrNull()
+                    this.runTime = ep.info?.getOrNull(2)?.replace("m", "")?.toIntOrNull()
                     description = ep.ep_desc
                 })
             }
