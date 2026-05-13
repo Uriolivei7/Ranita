@@ -262,20 +262,43 @@ class TvenvivoProvider : MainAPI() {
 
         try {
             val mainHeaders = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Sec-Fetch-Dest" to "document",
+                "Accept-Language" to "es-ES,es;q=0.9",
+                "Sec-Fetch-Dest" to "iframe",
                 "Sec-Fetch-Mode" to "navigate",
-                "Sec-Fetch-Site" to "none",
+                "Sec-Fetch-Site" to "same-origin",
+                "Sec-Fetch-User" to "?1",
                 "Upgrade-Insecure-Requests" to "1"
             )
 
-            val mainPageResponse = withTimeoutOrNull(15000L) { app.get(targetUrl, headers = mainHeaders) }
+            val mainPageResponse = withTimeoutOrNull(20000L) { app.get(targetUrl, headers = mainHeaders, interceptor = cfKiller) }
                 ?: run {
                     Log.w("Tvenvivo", "Logs: Timeout al cargar página principal")
                     return false
                 }
+            val mainCookies = mainPageResponse.cookies
             val doc = Jsoup.parse(mainPageResponse.text)
+
+            // Try extracting M3U8 directly from the main page first (fast path)
+            val directM3u8 = extractM3u8FromHtml(mainPageResponse.text, strict = false)
+            if (directM3u8 != null) {
+                Log.d("Tvenvivo", "Logs: M3U8 encontrado directamente en página principal: $directM3u8")
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - Directo",
+                        url = directM3u8,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                            "Referer" to targetUrl
+                        )
+                    }
+                )
+                return true
+            }
 
             var optionLinks = doc.select("a[href*=/live], iframe[name=player], iframe[src*=/live]")
                 .mapNotNull { if (it.tagName() == "iframe") it.attr("src") else it.attr("href") }
@@ -296,20 +319,12 @@ class TvenvivoProvider : MainAPI() {
             if (optionLinks.isEmpty()) return false
 
             return coroutineScope {
-                val deferreds = optionLinks.mapIndexed { displayIdx, rawUrl ->
-                    async {
-                        tryLoadOption(targetUrl, rawUrl, displayIdx, mainHeaders, callback)
+                for ((displayIdx, rawUrl) in optionLinks.withIndex()) {
+                    if (tryLoadOption(targetUrl, rawUrl, displayIdx, mainHeaders, mainCookies, callback)) {
+                        return@coroutineScope true
                     }
                 }
-                var success = false
-                for (d in deferreds) {
-                    if (d.await()) {
-                        success = true
-                        deferreds.forEach { if (!it.isCompleted) it.cancel() }
-                        break
-                    }
-                }
-                success
+                false
             }
         } catch (e: Exception) {
             Log.e("Tvenvivo", "Logs: Error crítico: ${e.message}")
@@ -322,6 +337,7 @@ class TvenvivoProvider : MainAPI() {
         rawPlayerUrl: String,
         displayIndex: Int,
         mainHeaders: Map<String, String>,
+        mainCookies: Map<String, String>,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val playerUrl = fixUrl(rawPlayerUrl)
@@ -333,9 +349,26 @@ class TvenvivoProvider : MainAPI() {
                 put("Sec-Fetch-Site", "same-origin")
             }
 
+            val isPhpUrl = playerUrl.contains(".php")
+            val requestTimeout = if (isPhpUrl) 30000L else 20000L
             try {
-                withTimeout(15000L) {
-                    val playerResponse = app.get(playerUrl, timeout = 30000L, headers = playerHeaders)
+                withTimeout(requestTimeout) {
+                    val playerResponse = if (isPhpUrl) {
+                        app.get(
+                            playerUrl,
+                            timeout = requestTimeout,
+                            headers = playerHeaders,
+                            cookies = mainCookies
+                        )
+                    } else {
+                        app.get(
+                            playerUrl,
+                            timeout = requestTimeout,
+                            headers = playerHeaders,
+                            cookies = mainCookies,
+                            interceptor = cfKiller
+                        )
+                    }
                     val playerHtml = playerResponse.text
 
                     if (playerHtml.isBlank()) return@withTimeout false
@@ -351,8 +384,14 @@ class TvenvivoProvider : MainAPI() {
                     val finalHtml = if (internalIframe != null) {
                         val iframeUrl = fixUrl(internalIframe)
                         Log.d("Tvenvivo", "Logs: Iframe interno: $iframeUrl")
-                        withTimeoutOrNull(15000L) {
-                            app.get(iframeUrl, timeout = 30000L, headers = playerHeaders.toMutableMap().apply { put("Referer", playerUrl) })
+                        withTimeoutOrNull(20000L) {
+                            app.get(
+                                iframeUrl,
+                                timeout = 20000L,
+                                headers = playerHeaders.toMutableMap().apply { put("Referer", playerUrl) },
+                                cookies = mainCookies,
+                                interceptor = cfKiller
+                            )
                         }?.text ?: return@withTimeout false
                     } else {
                         playerHtml
@@ -388,7 +427,7 @@ class TvenvivoProvider : MainAPI() {
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.w("Tvenvivo", "Logs: Opción ${displayIndex + 1} timeout - 15s")
+                Log.w("Tvenvivo", "Logs: Opción ${displayIndex + 1} timeout - ${requestTimeout}ms")
                 false
             }
         } catch (e: CancellationException) {
@@ -399,12 +438,24 @@ class TvenvivoProvider : MainAPI() {
         }
     }
 
-    private fun extractM3u8FromHtml(html: String): String? {
-        val patterns = listOf(
-            """["'](https?[:\/\/\\]+[^"']+\.m3u8[^"']*)["']""",
-            """source\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
-            """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']"""
-        )
+    private fun extractM3u8FromHtml(html: String, strict: Boolean = true): String? {
+        val patterns = if (strict) {
+            listOf(
+                """["'](https?[:\/\/\\]+[^"']+\.m3u8[^"']*)["']""",
+                """source\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
+                """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
+                """var\s+src\s*=\s*["']([^"']+\.m3u8[^"']*)["']"""
+            )
+        } else {
+            listOf(
+                """["'](https?[:\/\/\\]+[^"']+\.m3u8[^"']*)["']""",
+                """source\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
+                """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
+                """var\s+src\s*=\s*["']([^"']+\.m3u8[^"']*)["']""",
+                """(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""",
+                """['"]([^"']+\.m3u8[^"']*)['"]"""
+            )
+        }
 
         for (pattern in patterns) {
             val match = Regex(pattern, RegexOption.IGNORE_CASE).find(html)

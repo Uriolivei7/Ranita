@@ -242,7 +242,7 @@
     ],
     "iconUrl": "https://www.tvporinternet2.com/imge/favicon.png",
     "language": "mx",
-    "fileSize": 26000
+    "fileSize": 25000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvenvivoProvider.cs3",
@@ -260,7 +260,7 @@
     ],
     "iconUrl": "https://www.tvenvivo2.com/imge/favicon.png",
     "language": "mx",
-    "fileSize": 26000
+    "fileSize": 27000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NetflixmirrorProvider.cs3",

@@ -276,7 +276,7 @@ class TvporinternetProvider : MainAPI() {
             )
 
             val mainPageResponse = try {
-                withTimeout(15000L) { app.get(targetUrl, headers = mainHeaders) }
+                withTimeout(20000L) { app.get(targetUrl, timeout = 20000L, headers = mainHeaders, interceptor = cfKiller) }
             } catch (e: TimeoutCancellationException) {
                 Log.w("TvporInternet", "Logs: Timeout al cargar página principal")
                 return false
@@ -302,20 +302,12 @@ class TvporinternetProvider : MainAPI() {
             if (optionLinks.isEmpty()) return false
 
             return coroutineScope {
-                val deferreds = optionLinks.mapIndexed { displayIdx, rawUrl ->
-                    async {
-                        tryLoadOption(targetUrl, rawUrl, displayIdx, mainHeaders, callback)
+                for ((displayIdx, rawUrl) in optionLinks.withIndex()) {
+                    if (tryLoadOption(targetUrl, rawUrl, displayIdx, mainHeaders, callback)) {
+                        return@coroutineScope true
                     }
                 }
-                var success = false
-                for (d in deferreds) {
-                    if (d.await()) {
-                        success = true
-                        deferreds.forEach { if (!it.isCompleted) it.cancel() }
-                        break
-                    }
-                }
-                success
+                false
             }
         } catch (e: Exception) {
             Log.e("TvporInternet", "Logs: Error crítico: ${e.message}")
@@ -339,9 +331,11 @@ class TvporinternetProvider : MainAPI() {
                 put("Sec-Fetch-Site", "same-origin")
             }
 
+            val isPhpUrl = playerUrl.contains(".php")
+            val requestTimeout = if (isPhpUrl) 30000L else 20000L
             try {
-                withTimeout(15000L) {
-                    val playerResponse = app.get(playerUrl, timeout = 30000L, headers = playerHeaders)
+                withTimeout(requestTimeout) {
+                    val playerResponse = app.get(playerUrl, timeout = requestTimeout, headers = playerHeaders)
                     val playerHtml = playerResponse.text
 
                     if (playerHtml.isBlank()) return@withTimeout false
@@ -357,8 +351,8 @@ class TvporinternetProvider : MainAPI() {
                     val finalHtml = if (internalIframe != null) {
                         val iframeUrl = fixUrl(internalIframe)
                         Log.d("TvporInternet", "Logs: Iframe interno: $iframeUrl")
-                        withTimeoutOrNull(15000L) {
-                            app.get(iframeUrl, timeout = 30000L, headers = playerHeaders.toMutableMap().apply { put("Referer", playerUrl) })
+                        withTimeoutOrNull(requestTimeout) {
+                            app.get(iframeUrl, timeout = requestTimeout, headers = playerHeaders.toMutableMap().apply { put("Referer", playerUrl) })
                         }?.text ?: return@withTimeout false
                     } else {
                         playerHtml
@@ -394,7 +388,7 @@ class TvporinternetProvider : MainAPI() {
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.w("TvporInternet", "Logs: Opción ${displayIndex + 1} timeout - 15s")
+                Log.w("TvporInternet", "Logs: Opción ${displayIndex + 1} timeout - ${requestTimeout}ms")
                 false
             }
         } catch (e: CancellationException) {
@@ -409,7 +403,8 @@ class TvporinternetProvider : MainAPI() {
         val patterns = listOf(
             """["'](https?[:\/\/\\]+[^"']+\.m3u8[^"']*)["']""",
             """source\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
-            """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']"""
+            """file\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']""",
+            """var\s+src\s*=\s*["']([^"']+\.m3u8[^"']*)["']"""
         )
 
         for (pattern in patterns) {
