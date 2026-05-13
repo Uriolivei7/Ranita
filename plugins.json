@@ -1,10 +1,10 @@
 [
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-cf9cff488bddcb851685df1e7877451742ea66eebeb84c4b88a3d378b1b4b2e4",
+        "fileHash": "sha256-b2f4792982f1916d3afe4b3ae40103ef8c961f8281a0bb9938db07988e4e4ea5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25384,
+        "fileSize": 25368,
         "status": 1,
         "language": "es",
         "authors": [
@@ -41,10 +41,10 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "fileHash": "sha256-773e01fb9a889fe9959da5546ad2e898de0c3ffe8d5e6cf814b480069c2cedf7",
+        "fileHash": "sha256-91220be98057aa0291795cae060320c2f883e80a633db4e0d2960a43ac43e2e0",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44667,
+        "fileSize": 44651,
         "status": 1,
         "language": "en",
         "authors": [
@@ -101,10 +101,10 @@
     },
     {
         "iconUrl": "https://asialiveaction.com/favicon.ico",
-        "fileHash": "sha256-c0f11444a22b550ce7864d988c61f4157e9494b8dec0f9d74d0ecaa8bfe5181b",
+        "fileHash": "sha256-29f1eb34753386e33df2848521f9fe075e8981f383680f19ad7893f5f359a014",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 23793,
+        "fileSize": 23786,
         "status": 1,
         "language": "es",
         "authors": [
@@ -161,10 +161,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
-        "fileHash": "sha256-bfb75487543303812d051ae9e57d8e91cb334f3b114a08af87ef0de2c51558d0",
+        "fileHash": "sha256-53acb5e71653fac6cc41b6a85384d6dc2d0d022e3357987330fd3d1835080de9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 42362,
+        "fileSize": 42338,
         "status": 1,
         "language": "es",
         "authors": [
@@ -265,7 +265,7 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
-        "fileHash": "sha256-29fd283735bd23824fb1b85f3a996c8edc61bd76663a4ca14dc3d4a49539b6b9",
+        "fileHash": "sha256-85266b7fd5e84a5e1facdfbe001fcaddda4a61f8dafa8406de62d97ee3bcac2d",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 37059,
@@ -284,10 +284,10 @@
         "name": "JkanimeProvider"
     },
     {
-        "fileHash": "sha256-e55241d328a03cc14216d324a777f6bae3d559a8cc3b0ca4b9721c008cb29081",
+        "fileHash": "sha256-61f26bd73b46a8b4b58f796825de8c3f97a670f59378b325bc694494ea478a05",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 34366,
+        "fileSize": 34374,
         "status": 1,
         "language": "es",
         "authors": [
@@ -350,10 +350,10 @@
         "name": "LamovieProvider"
     },
     {
-        "fileHash": "sha256-870a5fcfa13e8d75e7c377fc8398274537687f187fd06a20eb7c92ce27e20437",
+        "fileHash": "sha256-6cbea54dec631704a61ebeae091ae9c3bccc333641bab10859d5b98fbad31ac6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 16999,
+        "fileSize": 16986,
         "status": 1,
         "language": "es",
         "authors": [
@@ -438,10 +438,10 @@
         "name": "MundodonghuaProvider"
     },
     {
-        "fileHash": "sha256-4417b0f745eed1a760effe35cd0cf179a3883940dc4a96d8e06ea15902266d4a",
+        "fileHash": "sha256-64c4ab9d603d389d1e20537127bcc7577d18c3e25c91976fcbf4c89b8c93c8b5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 73982,
+        "fileSize": 83595,
         "status": 1,
         "authors": [
             "Ranita"
@@ -460,11 +460,11 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=onetouchtv.xyz/&sz=%size%",
-        "jarFileSize": 167738,
-        "fileHash": "sha256-e54ad2c60bd38a3df507f1e448f38bd5b1f2bac3ac432efcc5efea768d0f57d5",
+        "jarFileSize": 167684,
+        "fileHash": "sha256-d83e3e780a4ddf522bc2c6d8513f6180f6c0660c1829570bb160b950b17f6365",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 37396,
+        "fileSize": 37400,
         "status": 1,
         "language": "en",
         "authors": [
@@ -480,7 +480,7 @@
         "description": "Asian Dramas",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OnetouchtvProvider.cs3",
         "name": "OnetouchtvProvider",
-        "jarHash": "sha256-ecb8b8ba44db4754adff7f0aa4669b6651f8c7d533abdad325e06cd152d5b013"
+        "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
         "fileHash": "sha256-4f9857113cbf55452afafa1c927a9d9492de0627bb1cefc0e21da35bce82d16b",
@@ -507,10 +507,10 @@
         "name": "PelisplusProvider"
     },
     {
-        "fileHash": "sha256-e9f1dc046025b6a52ca378a5d4ad8f5f76f11d6c5046f4e001b488fbe4a2abfc",
+        "fileHash": "sha256-0f44945b508aa2000eb5118e942f4176a83595e9fb8b5b2009192b4a76e2df73",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 46288,
+        "fileSize": 46257,
         "status": 1,
         "language": "es",
         "authors": [
@@ -596,10 +596,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-c45c7e6146604ab82343443ed9090572f7d147fbe113a6bd4b8a10154ea761c8",
+        "fileHash": "sha256-2580fb1f51394e0ae9b68f0e7893ccdcbebe64b2c139e270a46bdcfb20ca4ad6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35774,
+        "fileSize": 35780,
         "status": 1,
         "language": "es",
         "authors": [
@@ -700,10 +700,10 @@
         "name": "TvporinternetProvider"
     },
     {
-        "fileHash": "sha256-7e6a012d6797a375ef11ade340af8d78ff899a601662a20e80661ea8b03cb604",
+        "fileHash": "sha256-e5e233fad85e3500f74bae127fdeb0500c5c08f45131bb815299214f47c2ac85",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25083,
+        "fileSize": 25079,
         "status": 1,
         "language": "es",
         "authors": [
@@ -723,10 +723,10 @@
         "name": "VerseriesonlineProvider"
     },
     {
-        "fileHash": "sha256-f2a07daab445b7205b7cfe8151ce1dbc40b3bd53714759b658af394e23c37f7b",
+        "fileHash": "sha256-16de24230255bed00160a77f2c7b068e7de1c4743632389cf60782b3fe26fada",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38582,
+        "fileSize": 38584,
         "status": 1,
         "authors": [
             "Ranita"
@@ -741,10 +741,10 @@
         "name": "Youtube"
     },
     {
-        "fileHash": "sha256-7e6b45105eceff2a686fd763c8af475c4032a6d90d10238dd7f6f0569c8dc593",
+        "fileHash": "sha256-d71ba832243ef8594059019405fb44884b4741704787063ef59052195401023c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 146870,
+        "fileSize": 146891,
         "status": 3,
         "authors": [
             "Ranita"
