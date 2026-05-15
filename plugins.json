@@ -41,10 +41,10 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "fileHash": "sha256-91220be98057aa0291795cae060320c2f883e80a633db4e0d2960a43ac43e2e0",
+        "fileHash": "sha256-2bdebe0cbf6039f1bf183a714aa842094c59e21ff274d6b729ea8c413824d7a0",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44651,
+        "fileSize": 45994,
         "status": 1,
         "language": "en",
         "authors": [
@@ -119,10 +119,10 @@
         "name": "AsialiveactionProvider"
     },
     {
-        "fileHash": "sha256-67b01b360188195fa93dab750ffddfdf1affbe3ec18a386e91f2ca5503cd64c5",
+        "fileHash": "sha256-7ff40c2c867c243da3c7b7795ff3c137a22ab386a4f4e2d4bd7ee38dd0a3d182",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 41315,
+        "fileSize": 48526,
         "status": 1,
         "language": "en",
         "authors": [
@@ -438,10 +438,10 @@
         "name": "MundodonghuaProvider"
     },
     {
-        "fileHash": "sha256-47049fd0524aaafaa81d4614bd07040dc190cb9bef78f2133904a150f1f47e51",
+        "fileHash": "sha256-e33d2f37d420be2c443981bb9c19ce1ad4d9445fbd21abcac90e9040e30f829e",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 84012,
+        "fileSize": 84029,
         "status": 1,
         "authors": [
             "Ranita"
