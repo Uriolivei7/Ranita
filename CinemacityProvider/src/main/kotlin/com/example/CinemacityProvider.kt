@@ -2,6 +2,10 @@ package com.example
 
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
 import com.lagradost.cloudstream3.Actor
 import com.lagradost.cloudstream3.ActorData
 import com.lagradost.cloudstream3.Episode
@@ -18,6 +22,7 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.fixUrlNull
@@ -38,7 +43,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 
-
 class CinemacityProvider : MainAPI() {
     override var mainUrl = "https://cinemacity.cc"
     override var name = "CinemaCity"
@@ -47,7 +51,7 @@ class CinemacityProvider : MainAPI() {
     override val hasDownloadSupport = false
     override val hasQuickSearch = true
     override val supportedTypes = setOf(
-        TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama
+        TvType.Movie, TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama, TvType.Anime
     )
 
     private var dynamicCookies: Map<String, String> = mapOf(
@@ -59,19 +63,80 @@ class CinemacityProvider : MainAPI() {
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
+    private val cfKiller = CloudflareKiller()
+
     private suspend fun doRequest(url: String): NiceResponse {
         return app.get(
             url,
             headers = protectionHeaders + ("Referer" to "$mainUrl/"),
-            cookies = dynamicCookies
+            cookies = dynamicCookies,
+            interceptor = cfKiller
         ).also {
             if (it.cookies.isNotEmpty()) dynamicCookies = dynamicCookies + it.cookies
         }
     }
 
+    private val tmdbPosterCache = mutableMapOf<String, String>()
+
+    private suspend fun tmdbSearchCached(cleanTitle: String): String? {
+        val key = cleanTitle.lowercase().trim()
+        tmdbPosterCache[key]?.let { Log.d("Cinemacity", "tmdbCache HIT for '$key' -> ${tmdbPosterCache[key]}"); return it }
+        val result = runCatching {
+            val enc = java.net.URLEncoder.encode(cleanTitle, "UTF-8")
+            val resp = app.get(
+                "https://api.themoviedb.org/3/search/multi?api_key=1865f43a0549ca50d341dd9ab8b29f49&query=$enc",
+                timeout = 8000L
+            )
+            val tmdbArr = JSONObject(resp.text).optJSONArray("results") ?: JSONArray()
+            val limit = if (tmdbArr.length() > 3) 3 else tmdbArr.length()
+            for (i in 0 until limit) {
+                val item = tmdbArr.getJSONObject(i)
+                val tmdbTitle =
+                    (item.optString("title").takeIf { it.isNotBlank() } ?: item.optString("name")
+                    ?: "").lowercase().trim()
+                val path = item.optString("poster_path") ?: continue
+                if (path.isNotBlank() && (tmdbTitle == key || key.contains(tmdbTitle) || tmdbTitle.contains(
+                        key
+                    ))
+                ) {
+                    Log.d("Cinemacity", "tmdbSearch: '$key' matched '$tmdbTitle' -> $path")
+                    return "$TMDBIMAGEBASEURL$path".also { tmdbPosterCache[key] = it }
+                }
+            }
+            tmdbArr.optJSONObject(0)?.optString("poster_path")?.takeIf { it.isNotBlank() }
+                ?.let { "$TMDBIMAGEBASEURL$it".also { p -> Log.d("Cinemacity", "tmdbSearch: '$key' fallback -> $p"); tmdbPosterCache[key] = p } }
+        }.getOrNull()
+        if (result == null) Log.d("Cinemacity", "tmdbSearch: '$key' no result")
+        return result
+    }
+
+    private fun cleanForTmdb(name: String): String {
+        return name.split(" /", " (", " -")[0].trim()
+            .replace(
+                Regex(
+                    "\\b(extended edition|director'?s cut|uncut|unrated|theatrical cut|ultimate edition|collector'?s edition|special edition|limited edition)s?\$",
+                    RegexOption.IGNORE_CASE
+                ), ""
+            ).trim()
+            .lowercase()
+    }
+
+    private suspend fun enrichTmdbPosters(results: List<SearchResponse>) {
+        if (results.isEmpty()) return
+        val cleaned = results.map { cleanForTmdb(it.name) }.distinct()
+        coroutineScope {
+            cleaned.map { clean -> async { tmdbSearchCached(clean) } }.awaitAll()
+        }
+        results.forEach { sr ->
+            val clean = cleanForTmdb(sr.name)
+            tmdbPosterCache[clean]?.let { sr.posterUrl = it }
+        }
+    }
+
     companion object {
         private const val TMDBIMAGEBASEURL = "https://image.tmdb.org/t/p/original"
-        private const val cinemeta_url = "https://aiometadata.elfhosted.com/stremio/b7cb164b-074b-41d5-b458-b3a834e197bb/meta"
+        private const val cinemeta_url =
+            "https://aiometadata.elfhosted.com/stremio/b7cb164b-074b-41d5-b458-b3a834e197bb/meta"
     }
 
     fun parseCredits(jsonText: String?): List<ActorData> {
@@ -81,8 +146,11 @@ class CinemacityProvider : MainAPI() {
         val castArr = root.optJSONArray("cast") ?: return list
         for (i in 0 until castArr.length()) {
             val c = castArr.optJSONObject(i) ?: continue
-            val name = c.optString("name").takeIf { it.isNotBlank() } ?: c.optString("original_name").orEmpty()
-            val profile = c.optString("profile_path").takeIf { it.isNotBlank() }?.let { "$TMDBIMAGEBASEURL$it" }
+            val name =
+                c.optString("name").takeIf { it.isNotBlank() } ?: c.optString("original_name")
+                    .orEmpty()
+            val profile = c.optString("profile_path").takeIf { it.isNotBlank() }
+                ?.let { "$TMDBIMAGEBASEURL$it" }
             val character = c.optString("character").takeIf { it.isNotBlank() }
             val actor = Actor(name, profile)
             list += ActorData(actor, roleString = character)
@@ -103,6 +171,7 @@ class CinemacityProvider : MainAPI() {
         val doc = doRequest(url).document
         val home = doc.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
         val hasNext = doc.select("a[href*='/page/'], .pnext, .next").isNotEmpty()
+        enrichTmdbPosters(home)
         return newHomePageResponse(request.name, home, hasNext)
     }
 
@@ -114,10 +183,17 @@ class CinemacityProvider : MainAPI() {
 
         val title = link.text().split(" (", " S0", " -")[0].trim()
         val href = fixUrlNull(link.attr("href")) ?: return null
-        val poster = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        val img = this.selectFirst("img")
+        val imgSrc = img?.attr("src")
+        val imgDataSrc = img?.attr("data-src")
+        val poster = fixUrlNull(imgSrc) ?: fixUrlNull(imgDataSrc)
+        Log.d(
+            "Cinemacity",
+            "SearchResult: title='$title', img=$img, src='$imgSrc', data-src='$imgDataSrc', poster='$poster'"
+        )
         val isTv = href.contains("/tv-series/")
         val score = this.selectFirst("span.rating-color")?.text()
-        val date  = this.selectFirst("span a[href*=year]")?.text()?.toIntOrNull()
+        val date = this.selectFirst("span a[href*=year]")?.text()?.toIntOrNull()
 
         return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -134,27 +210,45 @@ class CinemacityProvider : MainAPI() {
         }
     }
 
-
     override suspend fun search(query: String): List<SearchResponse>? {
-        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
         val formData = mapOf("do" to "search", "subaction" to "search", "story" to query)
-
         val resp = app.post(
             mainUrl,
             headers = protectionHeaders + ("Referer" to "$mainUrl/") + ("X-Requested-With" to "XMLHttpRequest"),
             cookies = dynamicCookies,
             data = formData,
-            timeout = 120L
+            timeout = 15000L,
+            interceptor = cfKiller
         ).also {
             if (it.cookies.isNotEmpty()) dynamicCookies = dynamicCookies + it.cookies
         }
 
-        if (resp.code != 200) return null
+        if (resp.code != 200) {
+            Log.w("Cinemacity", "Search: status ${resp.code}")
+            return null
+        }
 
-        return resp.document.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
+        val results = resp.document.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
+        Log.d("Cinemacity", "Search: query='$query', total items=${results.size}")
+        enrichTmdbPosters(results)
+        return results
     }
 
-    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
+    override suspend fun quickSearch(query: String): List<SearchResponse>? {
+        val formData = mapOf("do" to "search", "subaction" to "search", "story" to query)
+        val resp = app.post(
+            mainUrl,
+            headers = protectionHeaders + ("Referer" to "$mainUrl/") + ("X-Requested-With" to "XMLHttpRequest"),
+            cookies = dynamicCookies,
+            data = formData,
+            timeout = 15000L,
+            interceptor = cfKiller
+        ).also {
+            if (it.cookies.isNotEmpty()) dynamicCookies = dynamicCookies + it.cookies
+        }
+        if (resp.code != 200) return null
+        return resp.document.select("div.dar-short_item").mapNotNull { it.toSearchResult() }
+    }
 
 
     override suspend fun load(url: String): LoadResponse {
@@ -180,16 +274,23 @@ class CinemacityProvider : MainAPI() {
 
         val descriptions = doc.selectFirst("#about div.ta-full_text1")?.text()
 
-
         val recommendation = doc.select("div.ta-rel > div.ta-rel_item").map {
             val recTitle = it.select("a").text().substringBefore("(").trim()
             val recHref = fixUrl(it.selectFirst("> div > a")?.attr("href") ?: "")
-            val recPosterUrl = it.selectFirst("div > a")?.attr("href")
+            val recImg = it.selectFirst("img")
+            val recImgSrc = recImg?.attr("src")
+            val recImgDataSrc = recImg?.attr("data-src")
+            val recPosterUrl = fixUrlNull(recImgSrc) ?: fixUrlNull(recImgDataSrc)
+            Log.d(
+                "Cinemacity",
+                "Recommendation: title='$recTitle', img=$recImg, src='$recImgSrc', data-src='$recImgDataSrc', poster='$recPosterUrl'"
+            )
 
             newMovieSearchResponse(recTitle, recHref, TvType.Movie) {
                 this.posterUrl = recPosterUrl
             }
         }
+        enrichTmdbPosters(recommendation)
 
         val year = ogTitle.substringAfter("(", "").substringBefore(")").toIntOrNull()
         val contenttype = doc.select("div.dar-full_meta > span:nth-child(5) > a").text()
@@ -217,8 +318,10 @@ class CinemacityProvider : MainAPI() {
                     ).textLarge
                 )
 
-                obj.optJSONArray("movie_results")?.optJSONObject(0)?.optInt("id")?.takeIf { it != 0 }
-                    ?: obj.optJSONArray("tv_results")?.optJSONObject(0)?.optInt("id")?.takeIf { it != 0 }
+                obj.optJSONArray("movie_results")?.optJSONObject(0)?.optInt("id")
+                    ?.takeIf { it != 0 }
+                    ?: obj.optJSONArray("tv_results")?.optJSONObject(0)?.optInt("id")
+                        ?.takeIf { it != 0 }
             }.getOrNull()?.toString()
         }
 
@@ -236,6 +339,16 @@ class CinemacityProvider : MainAPI() {
         }
 
         val castList = parseCredits(creditsJson)
+
+        val tmdbPoster = tmdbId?.let { id ->
+            runCatching {
+                val obj = JSONObject(app.get(
+                    "https://api.themoviedb.org/3/$tmdbmetatype/$id?api_key=1865f43a0549ca50d341dd9ab8b29f49"
+                ).textLarge)
+                obj.optString("poster_path").takeIf { it.isNotBlank() }
+                    ?.let { "$TMDBIMAGEBASEURL$it" }
+            }.getOrNull()
+        }
         val typeset = if (tvtype == TvType.TvSeries) "series" else "movie"
 
         val responseData = imdbId?.takeIf { it.isNotBlank() }?.let {
@@ -403,7 +516,7 @@ class CinemacityProvider : MainAPI() {
                 episodeList
             ) {
                 this.backgroundPosterUrl = background ?: bgposter
-                this.posterUrl = poster
+                this.posterUrl = tmdbPoster ?: poster
                 this.year = year ?: responseData?.meta?.year?.toIntOrNull()
                 this.plot = buildString {
                     append(description ?: descriptions)
@@ -429,7 +542,7 @@ class CinemacityProvider : MainAPI() {
             moviejson ?: "{}"
         ) {
             this.backgroundPosterUrl = background ?: bgposter
-            this.posterUrl = poster
+            this.posterUrl = tmdbPoster ?: poster
             this.year = year ?: responseData?.meta?.year?.toIntOrNull()
             this.plot = buildString {
                 append(description ?: descriptions)

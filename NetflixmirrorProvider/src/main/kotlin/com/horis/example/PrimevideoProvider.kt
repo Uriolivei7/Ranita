@@ -7,7 +7,7 @@ import java.net.URLEncoder
 import android.util.Log
 
 class PrimevideoProvider : MainAPI() {
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     override var lang = "en"
     override var mainUrl = "https://net52.cc"
     override var name = "PrimeVideo"

@@ -5,6 +5,7 @@ import androidx.coordinatorlayout.R.id.async
 import androidx.core.R.id.async
 import com.google.gson.annotations.SerializedName
 import com.lagradost.cloudstream3.*
+
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.*
@@ -179,6 +180,29 @@ class AnimeonsenProvider : MainAPI() {
         val displayTitle = details.getTitle()
         val posterImg = "https://api.animeonsen.xyz/v4/image/210x300/$contentId"
 
+        var plotText = details.mal_data?.synopsis ?: ""
+        try {
+            val subResp = app.get(
+                "$apiUrl/subtitles/$contentId/languages",
+                headers = mapOf(
+                    "Authorization" to "Bearer $token",
+                    "Accept" to "application/json, text/plain, */*",
+                    "Origin" to "https://www.animeonsen.xyz",
+                    "Referer" to "https://www.animeonsen.xyz/",
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                ),
+                timeout = 10
+            ).text
+            val subMap = AppUtils.parseJson<Map<String, String>>(subResp)
+            val subList = subMap.values.joinToString(", ")
+            if (subList.isNotBlank()) {
+                plotText += "\n\n-- Subtítulos Disponibles: $subList"
+            }
+            Log.d(TAG, "Logs: Subtitle API OK - $subList")
+        } catch (e: Exception) {
+            Log.d(TAG, "Logs: Subtitle API falló: ${e.message}")
+        }
+
         val episodesList = try {
             Log.d(TAG, "Logs: Pidiendo episodios para $contentId")
             val epResponse = app.get("$apiUrl/content/$contentId/episodes", headers = requestHeaders, timeout = 25).text
@@ -198,7 +222,8 @@ class AnimeonsenProvider : MainAPI() {
 
         return newAnimeLoadResponse(displayTitle, url, TvType.Anime) {
             this.posterUrl = posterImg
-            this.plot = details.mal_data?.synopsis
+            this.plot = plotText.takeIf { it.isNotBlank() }
+
             this.score = Score.from10(details.mal_data?.mean_score)
             this.year = details.content_year
 
