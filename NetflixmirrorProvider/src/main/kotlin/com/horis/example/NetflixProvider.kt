@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
 
 class NetflixProvider : MainAPI() {
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
     override var lang = "en"
     override var mainUrl = "https://net52.cc"
     override var name = "Netflix"
@@ -94,10 +94,10 @@ class NetflixProvider : MainAPI() {
             //if (!writer.isNullOrBlank()) add("Writer: $writer")
             if (!studio.isNullOrBlank()) add(" - Studio: $studio")
         }.takeIf { it.isNotEmpty() }?.joinToString("\n")
-        val languagesText = if (!languages.isNullOrEmpty()) " - Audio: ${languages.joinToString(", ")}" else null
+        val languagesText = if (!languages.isNullOrEmpty()) " -- Audio: ${languages.joinToString(", ")}" else null
         val tags = buildList {
             if (!genre.isNullOrEmpty()) addAll(genre)
-            if (!thisMovieIs.isNullOrBlank()) add(thisMovieIs)
+            if (!thisMovieIs.isNullOrBlank()) addAll(thisMovieIs.split(",").map { it.trim() }.filter { it.isNotEmpty() })
         }.takeIf { it.isNotEmpty() }
         val fullPlot = buildList {
             data.desc?.let { add(it) }
