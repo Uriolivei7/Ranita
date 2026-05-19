@@ -438,10 +438,10 @@
         "name": "MundodonghuaProvider"
     },
     {
-        "fileHash": "sha256-f741ea9231b3848ea4a0fda3775b23c8d7607fd9386a4aee30a5dde17a04ec0b",
+        "fileHash": "sha256-3e5aa030a4f5fb5ef91467859096a0fc4615e7933a8499f28cd49397326bc5c6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 84709,
+        "fileSize": 84732,
         "status": 1,
         "authors": [
             "Ranita"
@@ -596,10 +596,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-2580fb1f51394e0ae9b68f0e7893ccdcbebe64b2c139e270a46bdcfb20ca4ad6",
+        "fileHash": "sha256-eb00b4fa58ec6496b29f372037e9c8585edbc1930e039ebd711eabc5e5f380a9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35780,
+        "fileSize": 41870,
         "status": 1,
         "language": "es",
         "authors": [
