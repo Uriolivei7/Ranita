@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
 
 class NetflixProvider : MainAPI() {
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     override var lang = "en"
     override var mainUrl = "https://net52.cc"
     override var name = "Netflix"
