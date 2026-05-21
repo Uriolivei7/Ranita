@@ -310,9 +310,42 @@ class SoloLatinoProvider : MainAPI() {
         val html = safeAppGet(targetUrl) ?: return false
         val doc = Jsoup.parse(html)
 
-        val serverButtons = doc.select("button[data-server-url], .server-btn")
+        val csrfToken = doc.selectFirst("meta[name=csrf-token]")?.attr("content") ?: ""
+        val apiHeaders = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            "Accept" to "application/json",
+            "X-CSRF-TOKEN" to csrfToken,
+            "X-Requested-With" to "XMLHttpRequest",
+            "Referer" to targetUrl,
+        )
 
-        val serverUrls = serverButtons.mapNotNull { it.attr("data-server-url") }.toMutableList()
+        val serverUrls = mutableListOf<String>()
+
+        val playerButtons = doc.select("button[data-player-id]")
+        if (playerButtons.isNotEmpty()) {
+            playerButtons.forEach { btn ->
+                val playerModel = btn.attr("data-player-model").ifBlank { "episode" }
+                val playerId = btn.attr("data-player-id").ifBlank { null }
+                if (playerId != null) {
+                    try {
+                        val apiUrl = "$mainUrl/api/player-url/$playerModel/$playerId"
+                        val apiResp = app.get(apiUrl, headers = apiHeaders, timeout = 15000L)
+                        val playerData = tryParseJson<PlayerUrlResponse>(apiResp.text)
+                        val embedUrl = playerData?.url
+                        if (!embedUrl.isNullOrBlank()) {
+                            serverUrls.add(embedUrl)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SoloLatino", "Error fetching player URL for $playerId: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        if (serverUrls.isEmpty()) {
+            val legacyButtons = doc.select("button[data-server-url], .server-btn")
+            serverUrls.addAll(legacyButtons.mapNotNull { it.attr("data-server-url").ifBlank { null } })
+        }
 
         if (serverUrls.isEmpty()) {
             doc.selectFirst("div#player-frame iframe, iframe")?.attr("src")?.let {
@@ -547,6 +580,11 @@ fun fixHostsLinks(url: String): String {
         .replaceFirst("https://doodstream.com", "https://dood.la")
         .replaceFirst("https://streamtape.com", "https://streamtape.cc")
 }
+
+data class PlayerUrlResponse(
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("type") val type: String? = null,
+)
 
 data class Server(
     @JsonProperty("servername") val servername: String? = null,
