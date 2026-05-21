@@ -18,7 +18,6 @@ class PelisplusProvider : MainAPI() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
         TvType.Cartoon,
     )
 

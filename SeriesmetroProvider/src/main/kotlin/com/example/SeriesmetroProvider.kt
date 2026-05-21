@@ -18,7 +18,6 @@ class SeriesmetroProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val supportedTypes = setOf(
         TvType.TvSeries,
-        TvType.Anime,
         TvType.Cartoon,
         TvType.Movie
     )

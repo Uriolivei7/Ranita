@@ -15,7 +15,7 @@ class GnulaProvider : MainAPI() {
     override var name = "GNULA"
     override val hasMainPage = true
     override var lang = "mx"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Cartoon)
 
     private val TAG = "GNULA"
 

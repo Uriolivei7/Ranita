@@ -12,7 +12,7 @@ import java.net.URI
 class PlayhubProvider : MainAPI() {
     override var mainUrl = "https://www.playhubmax.com"
     override var name = "PlayHUB"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Cartoon)
     override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
