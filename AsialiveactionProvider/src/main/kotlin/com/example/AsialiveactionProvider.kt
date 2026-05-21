@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,34 @@ class AsialiveactionProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.AsianDrama)
 
     private fun getNumberFromEpsString(epsStr: String): String = epsStr.filter { it.isDigit() }.take(4)
+
+    private fun parseDuration(text: String): Int? {
+        val clean = text.trim().lowercase()
+        var maxSeconds = 0
+
+        Regex("""(\d+)\s*h\s*(\d+)\s*min""").findAll(clean).forEach {
+            val secs = it.groupValues[1].toInt() * 3600 + it.groupValues[2].toInt() * 60
+            if (secs > maxSeconds) maxSeconds = secs
+        }
+        if (maxSeconds > 0) return maxSeconds.coerceAtMost(5 * 3600)
+
+        Regex("""(\d+)\s*min""").findAll(clean).forEach {
+            val secs = it.groupValues[1].toInt() * 60
+            if (secs > maxSeconds) maxSeconds = secs
+        }
+        if (maxSeconds > 0) return maxSeconds.coerceAtMost(5 * 3600)
+
+        Regex("""más\s*de\s*(\d+)\s*min""").find(clean)?.let {
+            return it.groupValues[1].toInt() * 60
+        }
+        Regex("""menos\s*de\s*(\d+)\s*min""").find(clean)?.let {
+            return (it.groupValues[1].toInt() * 0.66).toInt() * 60
+        }
+        Regex("""(\d+)\s*h""").find(clean)?.let {
+            return (it.groupValues[1].toInt() * 3600).coerceAtMost(5 * 3600)
+        }
+        return null
+    }
 
     private fun fetchUrls(text: String?): List<String> {
         if (text.isNullOrEmpty()) return listOf()
@@ -58,8 +87,9 @@ class AsialiveactionProvider : MainAPI() {
                 ?: return@forEach
 
             val poster = element.selectFirst("img:not(.hover-img)")?.attr("src")
+                ?: element.selectFirst("img:not(.hover-img)")?.attr("data-src")
 
-            if (title.isNotEmpty() && poster != null && poster.contains("tmdb")) {
+            if (title.isNotEmpty() && poster != null) {
                 seriesItems.add(
                     newAnimeSearchResponse(title, link, TvType.AsianDrama) {
                         this.posterUrl = poster
@@ -83,8 +113,9 @@ class AsialiveactionProvider : MainAPI() {
                 ?: return@forEach
 
             val poster = element.selectFirst("img:not(.hover-img)")?.attr("src")
+                ?: element.selectFirst("img:not(.hover-img)")?.attr("data-src")
 
-            if (title.isNotEmpty() && poster != null && poster.contains("tmdb")) {
+            if (title.isNotEmpty() && poster != null) {
                 peliculasItems.add(
                     newMovieSearchResponse(title, link) {
                         this.posterUrl = poster
@@ -143,18 +174,19 @@ class AsialiveactionProvider : MainAPI() {
         val title = document.selectFirst("h2.Title, h1.Title")?.text() ?: ""
         Log.d(TAG, "load: Title=$title")
 
-        val posterStyle = document.selectFirst(".Poster")?.attr("style") ?: ""
-        val poster = if (posterStyle.isNotEmpty()) {
-            Regex("""url\(['"]?(.*?)['"]?\)""").find(posterStyle)?.groupValues?.get(1)
-        } else {
-            document.selectFirst("article img")?.attr("src")
-        }
+        val poster = document.selectFirst(".Poster")?.attr("style")?.let { style ->
+            Regex("""url\(['"]?(.*?)['"]?\)""").find(style)?.groupValues?.get(1)
+        } ?: document.selectFirst("article img")?.attr("src")
+        ?: document.selectFirst("article img")?.attr("data-src")
         Log.d(TAG, "load: Poster=$poster")
 
         val description = document.selectFirst("article p")?.text() ?: ""
 
         val yearText = document.selectFirst(".estreno")?.text() ?: ""
         val year = yearText.filter { it.isDigit() }.take(4).toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+
+        val durationText = document.selectFirst(".duraciones .duracion")?.text()?.trim()
+        val durationSeconds = durationText?.let { parseDuration(it) }
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
         val status = when {
             year < currentYear -> ShowStatus.Completed
@@ -166,23 +198,52 @@ class AsialiveactionProvider : MainAPI() {
         val isMovie = url.contains("/pelicula/")
 
         if (!isMovie) {
-            document.select(".lista-episodios .episodio-unico a").forEach { element ->
-                val epUrl = element.attr("href")
+            document.select(".lista-episodios > .episodio-unico > a").forEach { element ->
+                val epUrl = element.attr("abs:href")
                 if (epUrl.isNotEmpty()) {
-                    val rawName = element.selectFirst(".numero-episodio")?.text()?.trim() ?: element.text().trim()
+                    val rawName = element.selectFirst(".numero-episodio")?.text()?.trim() ?: return@forEach
+                    val subtitleText = element.selectFirst(".numero-episodio > .subtitulo")?.text()?.trim()
 
-                    val cleanName = rawName.replace(Regex("(?i)^(Episodio|Ep)\\s*\\d+\\s*[:\\-]\\s*"), "").trim()
+                    val cleanName = if (subtitleText != null) {
+                        subtitleText
+                    } else {
+                        val cleaned = rawName
+                            .replace(Regex("(?i)^(Episodio|Ep)\\s*\\d+\\s*[:\\-]\\s*"), "")
+                            .trim()
+                        if (cleaned.isNotEmpty() && cleaned != rawName) cleaned else null
+                    }
 
                     val epNum = getNumberFromEpsString(rawName)
+                    val publishedText = element.selectFirst(".publicado")?.text()?.trim()
 
-                    Log.d(TAG, "load: Episodio original=$rawName -> Limpio=$cleanName, Num=$epNum")
+                    Log.d(TAG, "load: Episodio=$rawName -> Nombre=$cleanName, Num=$epNum, Publicado=$publishedText")
 
                     episodes.add(newEpisode(epUrl) {
                         this.name = cleanName
                         this.episode = epNum.toIntOrNull() ?: 1
+                        this.posterUrl = poster
+                        if (publishedText != null) this.description = publishedText
                     })
                 }
             }
+
+            document.select(".lista-episodios > .episodio-group").forEach { group ->
+                val groupEpName = group.selectFirst(".toggle-acordeon .numero-episodio")?.text()?.trim() ?: return@forEach
+                val groupEpNum = getNumberFromEpsString(groupEpName)
+                val groupPublishedText = group.selectFirst(".toggle-acordeon .publicado")?.text()?.trim()
+
+                val firstLink = group.selectFirst(".contenido-acordeon ul li a") ?: return@forEach
+                val epUrl = firstLink.attr("abs:href")
+                if (epUrl.isNotEmpty()) {
+                    episodes.add(newEpisode(epUrl) {
+                        this.name = groupEpName
+                        this.episode = groupEpNum.toIntOrNull() ?: 1
+                        this.posterUrl = poster
+                        if (groupPublishedText != null) this.description = groupPublishedText
+                    })
+                }
+            }
+
             Log.d(TAG, "load: ${episodes.size} episodios encontrados")
         }
 
@@ -213,16 +274,24 @@ class AsialiveactionProvider : MainAPI() {
 
         Log.d(TAG, "load: ${recommendations.size} recomendaciones encontradas")
 
+        Log.d(TAG, "load: DurationText=$durationText, DurationSeconds=$durationSeconds")
+
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
+                if (durationSeconds != null) {
+                    Log.d(TAG, "load: Setting movie duration=${durationSeconds / 60} min")
+                    this.duration = durationSeconds / 60
+                }
                 this.recommendations = recommendations
             }
         } else {
             newTvSeriesLoadResponse(title, url, TvType.AsianDrama, episodes) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
                 this.showStatus = status
                 this.recommendations = recommendations
             }
@@ -236,7 +305,6 @@ class AsialiveactionProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d(TAG, "loadLinks: Extrayendo de URL=$data")
-        var urlToProcess = data
 
         val response = app.get(data)
         val htmlContent = response.text
@@ -245,16 +313,15 @@ class AsialiveactionProvider : MainAPI() {
         var allVideosMatch = allVideosPattern.find(htmlContent)
 
         if (allVideosMatch == null) {
-            Log.d(TAG, "loadLinks: allVideos no encontrado en página actual, buscando enlace a episodio")
+            Log.d(TAG, "loadLinks: allVideos no encontrado, buscando enlace a episodio")
             val episodeLink = Regex("""href="(https://asialiveaction\.com/f/[^"]+)"""").find(htmlContent)
             if (episodeLink != null) {
-                val episodeUrl = episodeLink.groupValues[1]
-                Log.d(TAG, "loadLinks: Encontrado enlace a episodio: $episodeUrl")
-                urlToProcess = episodeUrl
-                val episodeResponse = app.get(episodeUrl)
+                val episodeResponse = app.get(episodeLink.groupValues[1])
                 allVideosMatch = allVideosPattern.find(episodeResponse.text)
             }
         }
+
+        var linkCount = 0
 
         if (allVideosMatch != null) {
             val allVideosJson = allVideosMatch.groupValues[1]
@@ -276,23 +343,27 @@ class AsialiveactionProvider : MainAPI() {
                             val encodedUrl = serverData[1]
                             val decodedUrl = encodedUrl
                                 .replace("\\/", "/")
-                                .replace("\\\\", "")
-                                .replace("\\", "")
                                 .removeSurrounding("\"")
 
-                            Log.d(TAG, "loadLinks: [$langName] Server=$serverCode, URL=$decodedUrl")
+                            val serverName = when (serverCode) {
+                                "YM" -> "Yui"
+                                "MK" -> "Moa"
+                                "MM" -> "Momo"
+                                "FM" -> "Byse"
+                                else -> serverCode
+                            }
+                            val fullName = "$serverName [$langName]"
 
                             if (decodedUrl.startsWith("http")) {
-                                val serverName = when (serverCode) {
-                                    "YM" -> "Yui"
-                                    "MK" -> "Moa"
-                                    "MM" -> "Momo"
-                                    "FM" -> "Byse"
-                                    else -> serverCode
-                                }
+                                Log.d(TAG, "loadLinks: [$langName] Server=$serverCode, URL=$decodedUrl")
+                                val fixedUrl = fixHostsLinks(decodedUrl)
 
-                                val fullName = "$serverName [$langName]"
-                                loadSourceNameExtractor(fullName, decodedUrl, urlToProcess, subtitleCallback, callback)
+                                if (fixedUrl.contains("vk.com")) {
+                                    linkCount += extractVKVideo(fullName, fixedUrl, subtitleCallback, callback)
+                                } else {
+                                    loadSourceNameExtractor(fullName, fixedUrl, data, subtitleCallback, callback)
+                                    linkCount++
+                                }
                             }
                         }
                     }
@@ -301,10 +372,68 @@ class AsialiveactionProvider : MainAPI() {
                 Log.e(TAG, "loadLinks: Error parseando allVideos: ${e.message}")
             }
         } else {
-            Log.d(TAG, "loadLinks: No se encontró allVideos ni enlace a episodio")
+            Log.d(TAG, "loadLinks: No se encontró allVideos")
         }
 
+        Log.d(TAG, "loadLinks: $linkCount enlaces producidos")
         return true
+    }
+
+    private fun fixHostsLinks(url: String): String {
+        return url
+            .replace("vkvideo.ru", "vk.com")
+            .replace("bysejikuar.com", "filemoon.sx")
+            .replace("bysedikamoum.com", "filemoon.sx")
+    }
+
+    private suspend fun extractVKVideo(
+        source: String,
+        url: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Int {
+        var count = 0
+        try {
+            val page = app.get(url, referer = "https://vk.com/", timeout = 60L).text
+            Log.d(TAG, "extractVKVideo: page len=${page.length}")
+
+            val mp4Match = Regex("\"mp4_720\"\\s*:\\s*\"([^\"]+)\"").find(page)
+            if (mp4Match != null) {
+                val videoUrl = mp4Match.groupValues[1].replace("\\/", "/")
+                callback(newExtractorLink(source, "$source 720p", videoUrl) {
+                    this.referer = "https://vk.com/"
+                    this.quality = 720
+                })
+                count++
+            }
+
+            val hlsMatch = Regex("\"hls_ondemand\"\\s*:\\s*\"([^\"]+)\"").find(page)
+            if (hlsMatch != null) {
+                val hlsUrl = hlsMatch.groupValues[1].replace("\\/", "/")
+                callback(newExtractorLink(source, "$source HLS", hlsUrl) {
+                    this.referer = "https://vk.com/"
+                    this.quality = 1080
+                    this.type = ExtractorLinkType.M3U8
+                })
+                count++
+            }
+
+            val dashMatch = Regex("\"dash_ondemand\"\\s*:\\s*\"([^\"]+)\"").find(page)
+            if (dashMatch != null) {
+                val dashUrl = dashMatch.groupValues[1].replace("\\/", "/")
+                callback(newExtractorLink(source, "$source DASH", dashUrl) {
+                    this.referer = "https://vk.com/"
+                    this.quality = 1080
+                    this.type = ExtractorLinkType.DASH
+                })
+                count++
+            }
+
+            if (count == 0) Log.e(TAG, "extractVKVideo: no video URLs found in page")
+        } catch (e: Exception) {
+            Log.e(TAG, "extractVKVideo: ${e.message}")
+        }
+        return count
     }
 }
 
