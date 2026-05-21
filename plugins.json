@@ -219,10 +219,10 @@
         "name": "ExampleProvider"
     },
     {
-        "fileHash": "sha256-f895e794f67a8698d64e1ab97648184b567f5a961de7c5e287284b1f834d53b6",
+        "fileHash": "sha256-207e0a28af8b397153a74cfc033e252da5fda672106e00e776fd6377b89ce42e",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53913,
+        "fileSize": 53891,
         "status": 1,
         "language": "es",
         "authors": [
@@ -483,10 +483,10 @@
         "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
-        "fileHash": "sha256-4f9857113cbf55452afafa1c927a9d9492de0627bb1cefc0e21da35bce82d16b",
+        "fileHash": "sha256-1e7926283f4e5235b697a062f2c040429641725438dbf5a65fac19318882efb8",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 31907,
+        "fileSize": 31883,
         "status": 1,
         "language": "es",
         "authors": [
@@ -507,10 +507,10 @@
         "name": "PelisplusProvider"
     },
     {
-        "fileHash": "sha256-0f44945b508aa2000eb5118e942f4176a83595e9fb8b5b2009192b4a76e2df73",
+        "fileHash": "sha256-59ad9c136f56200ad05aab15c4595a57f424bbc9451999388089b8e8f910a58c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 46257,
+        "fileSize": 46242,
         "status": 1,
         "language": "es",
         "authors": [
@@ -577,10 +577,10 @@
         "name": "RetrotveProvider"
     },
     {
-        "fileHash": "sha256-7800e3ce67097d6d3f2464620894665a927fe9b273c3e6e32c4babd5b6417eeb",
+        "fileHash": "sha256-973e0fcd7c241368462a2b7dfc6891ed81d2fe4b2062219d93680170e0d79fc5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 22843,
+        "fileSize": 22834,
         "status": 1,
         "language": "es",
         "authors": [
@@ -596,10 +596,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-0d39b226c8e870055bbd526f3f7edab8ba5d0d54b417ced32c8cba897e2fa53a",
+        "fileHash": "sha256-3861eb45e1f29b51532eeb269bb2426e3d7cc98e63d72ebc615d294d87beabca",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44581,
+        "fileSize": 44585,
         "status": 1,
         "language": "es",
         "authors": [
