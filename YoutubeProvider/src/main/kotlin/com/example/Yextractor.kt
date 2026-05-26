@@ -1,5 +1,6 @@
 package com.example
 
+import android.util.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -77,6 +78,17 @@ open class YoutubeExtractor : ExtractorApi() {
                 val s = object : YoutubeStreamExtractor(ServiceList.YouTube, link) {}
                 s.fetchPage()
 
+                // Reintentar si NewPipe no encontró streams video-only (fallo intermitente de fetchPage)
+                if ((s.videoOnlyStreams ?: emptyList()).isEmpty()) {
+                    try {
+                        Thread.sleep(1500)
+                        s.fetchPage()
+                        Log.w("YtExtractor", "Video $videoId: Retry fetchPage() - videoOnlyStreams=${(s.videoOnlyStreams ?: emptyList()).size}, videoStreams=${(s.videoStreams ?: emptyList()).size}")
+                    } catch (e: Exception) {
+                        Log.e("YtExtractor", "Video $videoId: Retry fetchPage() failed: ${e.message}")
+                    }
+                }
+
                 val durationSeconds = if (s.length > 0) s.length else 3600L
                 val builtLinks = mutableListOf<ExtractorLink>()
                 val seenUrls = mutableSetOf<String>()
@@ -99,6 +111,9 @@ open class YoutubeExtractor : ExtractorApi() {
                     } catch (e: Exception) { null }
                 }.distinctBy { it.height }
 
+                val videoOnlyHeights = videoOnlyList.map { it.height }
+                Log.i("YtExtractor", "Video $videoId: videoOnlyStreams=${videoOnlyList.size}, heights=$videoOnlyHeights")
+
                 val audioInfoList = (s.audioStreams ?: emptyList()).mapNotNull { asr ->
                     try {
                         val aUrl = asr.content ?: return@mapNotNull null
@@ -116,6 +131,9 @@ open class YoutubeExtractor : ExtractorApi() {
                     } catch (e: Exception) { null }
                 }.distinctBy { it.url }
 
+                val audioLangs = audioInfoList.map { it.language }.distinct()
+                Log.i("YtExtractor", "Video $videoId: audioStreams=${audioInfoList.size}, languages=$audioLangs")
+
                 val audiosByLanguage = audioInfoList.groupBy { it.language }
 
                 try {
@@ -124,8 +142,9 @@ open class YoutubeExtractor : ExtractorApi() {
 
                 startServerIfNeeded()
 
-                for (video in videoOnlyList) {
-                    if (audiosByLanguage.isNotEmpty()) {
+                if (audiosByLanguage.isNotEmpty()) {
+                    Log.i("YtExtractor", "Video $videoId: Building DASH manifests with audio")
+                    for (video in videoOnlyList) {
                         for ((lang, audios) in audiosByLanguage) {
 
                             val bestAudioForLang = if (video.mimeType.contains("webm")) {
@@ -158,17 +177,22 @@ open class YoutubeExtractor : ExtractorApi() {
                             }
                         }
                     }
+                } else {
+                    Log.w("YtExtractor", "Video $videoId: NO audio streams found! Skipping video-only DASH streams. Relying only on muxed (progressive) streams.")
                 }
 
+                val muxedSeenUrls = mutableSetOf<String>()
                 val muxedList = (s.videoStreams ?: emptyList()).mapNotNull { vs ->
                     try {
                         val mUrl = vs.content ?: return@mapNotNull null
-                        if (!seenUrls.add(mUrl)) return@mapNotNull null
+                        if (!muxedSeenUrls.add(mUrl)) return@mapNotNull null
                         val label = buildVideoLabelNumber(vs)
                         val height = runCatching { vs.height ?: 0 }.getOrNull() ?: 0
                         Triple(mUrl, label, height)
                     } catch (e: Exception) { null }
                 }
+                val muxedHeights = muxedList.map { it.third }
+                Log.i("YtExtractor", "Video $videoId: muxedStreams=${muxedList.size}, heights=$muxedHeights")
                 for ((mUrl, mLabel, mHeight) in muxedList) {
                     builtLinks.add(
                         newExtractorLink(this.name, "${this.name} $mLabel", mUrl, type = INFER_TYPE) {
@@ -178,6 +202,8 @@ open class YoutubeExtractor : ExtractorApi() {
                     )
                 }
 
+                val totalLinks = builtLinks.size
+                Log.i("YtExtractor", "Video $videoId: TOTAL links=$totalLinks")
                 ytVideos[videoId] = builtLinks.toList()
 
             } catch (e: Exception) { logError(e) }
