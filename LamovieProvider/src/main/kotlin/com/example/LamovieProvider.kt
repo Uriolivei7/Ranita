@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.Score
 
 class LamovieProvider : MainAPI() {
-    override var mainUrl = "https://la.movie"
+    override var mainUrl = "https://lamovie.org"
     override var name = "La.Movie"
     override var lang = "mx"
     override val hasMainPage = true
