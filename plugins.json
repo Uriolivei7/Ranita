@@ -331,10 +331,10 @@
     },
     {
         "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
-        "fileHash": "sha256-06a097024681354ced6fdebc0c50fe1bd6b6f8617027d5d5ae4ba8001b2f1c7a",
+        "fileHash": "sha256-3f9d140ac9d71afc93763d2b153d460669c7f15edff53dc61e885ef5452cd09c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 39652,
+        "fileSize": 39654,
         "status": 1,
         "language": "mx",
         "authors": [
