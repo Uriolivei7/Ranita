@@ -620,28 +620,6 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-c5742ad95067f3df4e6353cef8c27024a65929940cb217f5566b696ab2b30ec1",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 23884,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Phisher98"
-        ],
-        "tvTypes": [
-            "Movie",
-            "Anime",
-            "AnimeMovie"
-        ],
-        "version": 1,
-        "internalName": "SudatchiProvider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SudatchiProvider.cs3",
-        "name": "SudatchiProvider"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=tioanime.com&sz=%size%",
         "fileHash": "sha256-1fd67fbdf564c3ed45e2db3c17d228d7acfc564576048ab20329d61a7cdbd7c1",
         "apiVersion": 1,
@@ -721,37 +699,5 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VerseriesonlineProvider.cs3",
         "name": "VerseriesonlineProvider"
-    },
-    {
-        "fileHash": "sha256-16de24230255bed00160a77f2c7b068e7de1c4743632389cf60782b3fe26fada",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38584,
-        "status": 1,
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "Others"
-        ],
-        "version": 12,
-        "internalName": "Youtube",
-        "description": "Videos, playlists and channels from YouTube",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Youtube.cs3",
-        "name": "Youtube"
-    },
-    {
-        "fileHash": "sha256-dad375cdb19361dff952709da174b784f561fcdbaea8e0ddfc8b4e96049a90df",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 148205,
-        "status": 3,
-        "authors": [
-            "Ranita"
-        ],
-        "version": -1,
-        "internalName": "YoutubeProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/YoutubeProvider.cs3",
-        "name": "YoutubeProvider"
     }
 ]
