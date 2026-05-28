@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
-    "version": 15,
+    "version": 16,
     "apiVersion": 1,
     "name": "SoloLatino",
     "internalName": "SoloLatinoProvider",
@@ -18,7 +18,7 @@
     ],
     "iconUrl": "https://sololatino.net/images/logo.png",
     "language": "mx",
-    "fileSize": 44000
+    "fileSize": 47000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",

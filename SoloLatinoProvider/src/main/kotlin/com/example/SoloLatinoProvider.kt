@@ -24,14 +24,15 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+//yeji
 class SoloLatinoProvider : MainAPI() {
     override var mainUrl = "https://sololatino.net"
     override var name = "SoloLatino"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
+        TvType.Anime,
         TvType.Cartoon,
-        TvType.AsianDrama
     )
 
     override var lang = "mx"
@@ -306,49 +307,96 @@ class SoloLatinoProvider : MainAPI() {
 
         if (targetUrl.isBlank()) return false
 
-        val html = safeAppGet(targetUrl) ?: return false
-        val doc = Jsoup.parse(html)
+        var sessionCookies = mapOf<String, String>()
 
-        val csrfToken = doc.selectFirst("meta[name=csrf-token]")?.attr("content") ?: ""
+        try {
+            app.get("$mainUrl/sanctum/csrf-cookie", headers = baseHeaders, timeout = 15000L).also {
+                Log.d("SoloLatino", "loadLinks - Sanctum GET HTTP ${it.code}, cookies=${it.cookies}")
+                if (it.cookies.isNotEmpty()) sessionCookies = sessionCookies + it.cookies
+            }
+        } catch (_: Exception) { }
+
+        val pageResp = app.get(targetUrl, headers = baseHeaders, cookies = sessionCookies, timeout = 30000L)
+        Log.d("SoloLatino", "loadLinks - Page GET HTTP ${pageResp.code}, cookies=${pageResp.cookies}")
+        if (!pageResp.isSuccessful) return false
+        if (pageResp.cookies.isNotEmpty()) sessionCookies = sessionCookies + pageResp.cookies
+        Log.d("SoloLatino", "loadLinks - sessionCookies final=${sessionCookies}")
+        val html = pageResp.text
+        val doc = pageResp.document
+
+        val xsrfToken = java.net.URLDecoder.decode(
+            sessionCookies["XSRF-TOKEN"] ?: "", "UTF-8"
+        )
         val apiHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Accept" to "application/json",
-            "X-CSRF-TOKEN" to csrfToken,
+            "Content-Type" to "application/json",
+            "X-XSRF-TOKEN" to xsrfToken,
             "X-Requested-With" to "XMLHttpRequest",
             "Referer" to targetUrl,
         )
+        Log.d("SoloLatino", "loadLinks - X-XSRF-TOKEN header=${xsrfToken.take(80)}")
 
         val serverUrls = mutableListOf<String>()
+        val tokens = mutableSetOf<String>()
 
-        val playerButtons = doc.select("button[data-player-id]")
-        if (playerButtons.isNotEmpty()) {
-            playerButtons.forEach { btn ->
-                val playerModel = btn.attr("data-player-model").ifBlank { "episode" }
-                val playerId = btn.attr("data-player-id").ifBlank { null }
-                if (playerId != null) {
-                    try {
-                        val apiUrl = "$mainUrl/api/player-url/$playerModel/$playerId"
-                        val apiResp = app.get(apiUrl, headers = apiHeaders, timeout = 15000L)
-                        val playerData = tryParseJson<PlayerUrlResponse>(apiResp.text)
-                        val embedUrl = playerData?.url
-                        if (!embedUrl.isNullOrBlank()) {
-                            serverUrls.add(embedUrl)
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SoloLatino", "Error fetching player URL for $playerId: ${e.message}")
+        doc.select("[data-server-btn]").forEach { btn ->
+            btn.attr("data-player-token").ifBlank { null }?.let { tokens.add(it) }
+        }
+
+        if (tokens.isEmpty()) {
+            Regex("""data-player-token="([^"]+)""").findAll(html).forEach {
+                tokens.add(it.groupValues[1])
+            }
+        }
+
+        if (tokens.isEmpty()) {
+            Regex("""eyJpdiI6I[A-Za-z0-9+/]{1,}={0,2}""").findAll(html).forEach {
+                tokens.add(it.value)
+            }
+        }
+
+        if (tokens.isNotEmpty()) {
+            Log.d("SoloLatino", "loadLinks - ${tokens.size} tokens encontrados")
+            tokens.forEach { token ->
+                try {
+                    val apiResp = app.post(
+                        "$mainUrl/api/player-url",
+                        json = mapOf("t" to token),
+                        headers = apiHeaders,
+                        cookies = sessionCookies,
+                        timeout = 15000L
+                    )
+                    Log.d("SoloLatino", "loadLinks - POST /api/player-url HTTP ${apiResp.code}, body=${apiResp.text.take(200)}")
+                    val playerData = tryParseJson<PlayerUrlResponse>(apiResp.text)
+                    if (playerData == null) {
+                        Log.e("SoloLatino", "loadLinks - No se pudo parsear respuesta JSON")
+                    } else {
+                        Log.d("SoloLatino", "loadLinks - Respuesta parseada: url=${playerData.url}, type=${playerData.type}")
+                        if (!playerData.url.isNullOrBlank()) serverUrls.add(playerData.url)
                     }
+                } catch (e: Exception) {
+                    Log.e("SoloLatino", "loadLinks - Error con token: ${e.message}")
                 }
             }
         }
 
         if (serverUrls.isEmpty()) {
-            val legacyButtons = doc.select("button[data-server-url], .server-btn")
-            serverUrls.addAll(legacyButtons.mapNotNull { it.attr("data-server-url").ifBlank { null } })
-        }
-
-        if (serverUrls.isEmpty()) {
-            doc.selectFirst("div#player-frame iframe, iframe")?.attr("src")?.let {
-                if (it.isNotBlank()) serverUrls.add(it)
+            doc.selectFirst("#player-frame[data-lazy-embed]")?.attr("data-lazy-embed")?.let { lazyToken ->
+                try {
+                    val apiResp = app.post(
+                        "$mainUrl/api/player-embed",
+                        json = mapOf("t" to lazyToken),
+                        headers = apiHeaders,
+                        cookies = sessionCookies,
+                        timeout = 15000L
+                    )
+                    tryParseJson<PlayerUrlResponse>(apiResp.text)?.let { data ->
+                        if (!data.url.isNullOrBlank()) serverUrls.add(data.url)
+                    }
+                } catch (e: Exception) {
+                    Log.e("SoloLatino", "loadLinks - Error con lazy embed: ${e.message}")
+                }
             }
         }
 
@@ -413,7 +461,7 @@ class SoloLatinoProvider : MainAPI() {
                             val langTag = when (lang.videoLanguage?.uppercase()) {
                                 "LAT" -> "LATINO"
                                 "SUB", "ENGLISH" -> "SUBTITULADO"
-                                "CAST", "SPANISH" -> "CASTELLANO"
+                                "ESP", "SPANISH" -> "CASTELLANO"
                                 "ENG", "VOSE" -> "VOSE"
                                 "JAP", "JAPANESE" -> "JAPONES"
                                 else -> lang.videoLanguage ?: "??"
@@ -562,8 +610,7 @@ suspend fun loadSourceNameExtractor(
 
 fun fixHostsLinks(url: String): String {
     return url
-        .replaceFirst("https://hglink.to", "https://streamwish.to")
-        .replaceFirst("https://bysedikamoum.com", "https://filemoon.sx")
+        .replaceFirst("https://minochinos.com", "https://vidhidepro.com")
         .replaceFirst("https://hglink.to", "https://streamwish.to")
         .replaceFirst("https://swdyu.com", "https://streamwish.to")
         .replaceFirst("https://cybervynx.com", "https://streamwish.to")
