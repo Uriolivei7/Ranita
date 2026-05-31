@@ -219,10 +219,10 @@
         "name": "ExampleProvider"
     },
     {
-        "fileHash": "sha256-207e0a28af8b397153a74cfc033e252da5fda672106e00e776fd6377b89ce42e",
+        "fileHash": "sha256-d71e659859119cd24e7581337a6d7724635d8ce17c2df84f03aa34f1b59a84b7",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 53891,
+        "fileSize": 63898,
         "status": 1,
         "language": "es",
         "authors": [
@@ -641,10 +641,10 @@
     },
     {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-36d38c7911cdad391e11aa3d63d714f6d7d162e118e060428338a6f2322f8f9f",
+        "fileHash": "sha256-9d2d8be0a2eea6ce90185224597b2e7587fa712dfad3acf0572b58715be9089b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 26774,
+        "fileSize": 26757,
         "status": 1,
         "language": "mx",
         "authors": [
