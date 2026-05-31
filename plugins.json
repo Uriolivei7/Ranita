@@ -247,7 +247,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvenvivoProvider.cs3",
     "status": 1,
-    "version": 8,
+    "version": 9,
     "apiVersion": 1,
     "name": "TVenVIVO",
     "internalName": "TvenvivoProvider",
@@ -423,7 +423,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GnulaProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 1,
     "name": "GNULA",
     "internalName": "GnulaProvider",
@@ -439,7 +439,7 @@
     ],
     "iconUrl": "https://gnula.life/favicon.ico",
     "language": "mx",
-    "fileSize": 53000
+    "fileSize": 63000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/CinemacityProvider.cs3",
