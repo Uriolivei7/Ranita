@@ -56,9 +56,9 @@ class SoloLatinoProvider : MainAPI() {
 
     private suspend fun safeAppGet(
         url: String,
-        retries: Int = 5,
-        delayMs: Long = 5000L,
-        timeoutMs: Long = 30000L
+        retries: Int = 3,
+        delayMs: Long = 2000L,
+        timeoutMs: Long = 20000L
     ): String? {
         for (i in 0 until retries) {
             try {
@@ -157,7 +157,6 @@ class SoloLatinoProvider : MainAPI() {
 
 
     override suspend fun load(url: String): LoadResponse? {
-        delay(1000L)
         Log.d("SoloLatino", "load - URL: $url")
 
         var cleanUrl = url
@@ -358,7 +357,7 @@ class SoloLatinoProvider : MainAPI() {
 
         if (tokens.isNotEmpty()) {
             Log.d("SoloLatino", "loadLinks - ${tokens.size} tokens encontrados")
-            tokens.forEach { token ->
+            tokens.toList().amap { token ->
                 try {
                     val apiResp = app.post(
                         "$mainUrl/api/player-url",
@@ -407,7 +406,7 @@ class SoloLatinoProvider : MainAPI() {
 
         Log.d("SoloLatino", "loadLinks - Total servidores detectados: ${serverUrls.size}")
 
-        serverUrls.distinct().forEach { rawUrl ->
+        serverUrls.distinct().amap { rawUrl ->
             val fixedSrc = fixUrl(rawUrl)
             Log.d("SoloLatino", "loadLinks - Procesando: $fixedSrc")
 
@@ -443,7 +442,7 @@ class SoloLatinoProvider : MainAPI() {
                         val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
                         if (embedChallenge == null || embedSalt == null) {
                             Log.e("SoloLatino", "embed69 - No se pudo extraer POW_CHALLENGE/SALT de la página")
-                            return@forEach
+                            return@amap
                         }
                         Log.d("SoloLatino", "embed69 - challenge=$embedChallenge salt=$embedSalt")
 
@@ -538,7 +537,6 @@ private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray?
                 .digest("$challenge$nonce$salt".toByteArray(Charsets.UTF_8))
         }
         nonce++
-        if (nonce % 10000 == 0L) delay(1)
     }
     Log.e("SoloLatino", "embed69 PoW - no solution found after $maxAttempts attempts")
     return null
