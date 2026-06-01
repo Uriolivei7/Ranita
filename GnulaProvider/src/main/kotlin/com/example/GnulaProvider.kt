@@ -320,7 +320,8 @@ class GnulaProvider : MainAPI() {
                         this.posterUrl = ep.image ?: fixImageUrl(ep.images.poster) ?: mainPoster
                     }
                 }
-            }
+            }.toList()
+
             Log.d(TAG, "load: Total ${episodes.size} episodios generados")
 
             newTvSeriesLoadResponse(title, actualUrl, TvType.TvSeries, episodes.reversed()) {
