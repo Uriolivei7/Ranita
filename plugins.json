@@ -482,12 +482,12 @@
     "fileSize": 27000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PelisplusProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SerieskaoProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 1,
     "apiVersion": 1,
-    "name": "PelisPlus",
-    "internalName": "PelisplusProvider",
+    "name": "SeriesKao",
+    "internalName": "SerieskaoProvider",
     "authors": [
       "Ranita"
     ],
@@ -495,13 +495,11 @@
     "tvTypes": [
       "TvSeries",
       "Movie",
-      "Anime",
-      "AsianDrama",
       "Cartoon"
     ],
-    "iconUrl": "https://pelisplushd.bz/images/logo/favicon.png",
+    "iconUrl": "https://serieskao.top/themes/serieskao/alphabet-k.png",
     "language": "mx",
-    "fileSize": 32000
+    "fileSize": 30000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MonoschinosProvider.cs3",

@@ -5,8 +5,8 @@ cloudstream {
     language = "es"
     // All of these properties are optional, you can safely remove them
 
-    description = "Contenido en Latino"
-    authors = listOf("Ranita", "Yeji", "Mina")
+    description = "Adaptación SeriesKao"
+    authors = listOf("SeriesKao")
 
     /**
      * Status int as the following:
