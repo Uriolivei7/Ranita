@@ -17,20 +17,16 @@ import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
-import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.util.Log
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
 import com.lagradost.cloudstream3.newSubtitleFile
 
 class AnizoneProvider : MainAPI() {
@@ -123,14 +119,9 @@ class AnizoneProvider : MainAPI() {
             )
         )
 
-        val jsonString = payload.toJson()
-
-        val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
-        val requestBody = jsonString.toRequestBody(mediaType)
-
         val req = app.post(
             url = "$mainUrl/livewire/update",
-            requestBody = requestBody,
+            json = payload,
             headers = mapOf(
                 "X-CSRF-TOKEN" to wireCreds["token"]!!
             ),
@@ -192,7 +183,7 @@ class AnizoneProvider : MainAPI() {
             val home: List<Element> = doc.select("div[wire:key]")
 
             return newHomePageResponse(
-                HomePageList(request.name, home.map { toResult(it) }, isHorizontalImages = false),
+                HomePageList(request.name, home.mapNotNull { toResult(it) }, isHorizontalImages = false),
                 hasNext = (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null)
             )
         } catch (e: Exception) {
@@ -204,39 +195,68 @@ class AnizoneProvider : MainAPI() {
         }
     }
 
-    private fun toResult(post: Element): SearchResponse {
-        val title = post.selectFirst("img")?.attr("alt") ?: ""
-        val url = post.selectFirst("a")?.attr("href") ?: ""
+    private fun extractTitle(xData: String): String {
+        Log.d("AniZone", "extractTitle: xData starts with: ${xData.take(100)}")
+        val jsonStr = Regex("JSON\\.parse\\('([^']+)'\\)").find(xData)?.groupValues?.getOrNull(1)
+            ?.replace("\\u0022", "\"")?.replace("\\u0027", "'") ?: ""
+        Log.d("AniZone", "extractTitle: jsonStr from regex: ${jsonStr.take(100)}")
+        val title = if (jsonStr.isNotBlank()) {
+            try {
+                val json = JSONObject(jsonStr)
+                val t = json.optString("5", json.optString("1", ""))
+                Log.d("AniZone", "extractTitle: parsed JSON, title='$t'")
+                t
+            } catch (e: Exception) {
+                Log.e("AniZone", "extractTitle: JSON parse error: ${e.message}")
+                ""
+            }
+        } else ""
+        if (title.isBlank()) {
+            val fallback = Regex("window\\.getTitle\\(this\\.anmTitles,\\s*'([^']+)'\\)")
+                .find(xData)?.groupValues?.getOrNull(1) ?: ""
+            Log.d("AniZone", "extractTitle: fallback='$fallback'")
+            return fallback
+        }
+        return title
+    }
 
+    private fun toResult(post: Element): SearchResponse? {
+        val xData = post.attr("x-data")
+        Log.d("AniZone", "toResult: x-data empty=${xData.isBlank()}, wire:key=${post.attr("wire:key")}")
+        val title = extractTitle(xData)
+        val url = post.selectFirst("a")?.attr("href") ?: ""
+        Log.d("AniZone", "toResult: title='$title' url='$url'")
+        if (title.isBlank() || url.isBlank()) return null
         return newMovieSearchResponse(title, url, TvType.Movie) {
             this.posterUrl = post.selectFirst("img")
                 ?.attr("src")
-
         }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-
-        initializeLiveWire()
-
-        val doc = getHtmlFromWire(liveWireBuilder(mapOf("search" to query),mutableListOf(), this.cookies,
-            this.wireData,false))
-        return doc.select("div[wire:key]").mapNotNull { toResult(it) }
+        Log.d("AniZone", "search: query='$query'")
+        val doc = app.get("$mainUrl/anime?search=$query").document
+        val items = doc.select("div[wire:key]")
+        Log.d("AniZone", "search: found ${items.size} div[wire:key] elements via URL")
+        return items.mapNotNull { toResult(it) }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val r = Jsoup.connect(url)
-            .method(Connection.Method.GET).execute()
-        val doc = Jsoup.parse(r.body())
-        val cookie = r.cookies()
+        Log.d("AniZone", "load: url='$url'")
+        val req = app.get(url)
+        val doc = req.document
+        val cookie = req.cookies.toMutableMap()
+        Log.d("AniZone", "load: HTTP ${req.code}, doc title='${doc.title()}'")
         val wireData = mutableMapOf(
-            "wireSnapshot" to getSnapshot(doc=r.parse()),
+            "wireSnapshot" to getSnapshot(doc),
             "token" to doc.select("script[data-csrf]").attr("data-csrf")
         )
-        val title = doc.selectFirst("h1")?.text()
-            ?: throw NotImplementedError("Unable to find title")
+        val title = doc.title()
+            .substringBefore(" — ")
+            .ifBlank { doc.title() }
+        Log.d("AniZone", "load: extracted title='$title'")
         val bgImage = doc.selectFirst("main img")?.attr("src")
         val synopsis = doc.selectFirst(".sr-only + div")?.text() ?: ""
         val rowLines = doc.select("span.inline-block").map { it.text() }
