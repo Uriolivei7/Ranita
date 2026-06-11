@@ -48,17 +48,27 @@ class LamovieProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}&page=$page&postsPerPage=12&orderBy=latest&order=DESC"
-        val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).text
-        val json = try { parseJson<ApiResponse>(res) } catch (e: Exception) { null }
-        val home = json?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
-        return newHomePageResponse(HomePageList(request.name, home), home.isNotEmpty())
+        try {
+            val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT), timeout = 30L).text
+            val json = try { parseJson<ApiResponse>(res) } catch (e: Exception) { null }
+            val home = json?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
+            return newHomePageResponse(HomePageList(request.name, home), home.isNotEmpty())
+        } catch (e: Exception) {
+            Log.e(TAG, "getMainPage error: ${e.message}")
+            return newHomePageResponse(HomePageList(request.name, emptyList()), false)
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiBase/search?postType=any&q=${query.replace(" ", "+")}&postsPerPage=26"
-        val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).text
-        val json = try { parseJson<ApiResponse>(res) } catch (e: Exception) { null }
-        return json?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
+        try {
+            val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT), timeout = 30L).text
+            val json = try { parseJson<ApiResponse>(res) } catch (e: Exception) { null }
+            return json?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "search error: ${e.message}")
+            return emptyList()
+        }
     }
 
     private fun Post.toSearchResult(): SearchResponse {
@@ -90,112 +100,170 @@ class LamovieProvider : MainAPI() {
 
         Log.d(TAG, "Logs: Iniciando carga de $type con slug: $slug")
 
-        val apiRes = app.get("$apiBase/single/$type?slug=$slug&postType=$type", headers = mapOf("User-Agent" to USER_AGENT)).text
-        val responseObj = try { parseJson<SinglePostResponse>(apiRes) } catch (e: Exception) { null }
-
-        val postData = responseObj?.data ?: return null
-        val id = postData.id ?: return null
-
-        val galleryImgs = postData.gallery?.split("\n")?.filter { it.isNotBlank() }
-        val posterImg = fixImg(postData.images?.poster ?: postData.poster)
-        val bigImg = fixImg(
-            galleryImgs?.firstOrNull()?.trim() ?: postData.images?.backdrop ?: postData.backdrop
-        )
-
-        val movieRuntime = postData.runtime?.toDoubleOrNull()?.toInt()
-
-        val cleanTitle = postData.title?.replace(Regex("\\(\\d{4}\\)$"), "")?.trim() ?: ""
-        val realYear = postData.release_date?.split("-")?.firstOrNull()?.toIntOrNull()
-        val trailerUrl = postData.trailer?.let { "https://www.youtube.com/watch?v=$it" }
-
-        val response = if (type == "movies") {
-            newMovieLoadResponse(cleanTitle, url, TvType.Movie, id.toString()) {
-                this.posterUrl = posterImg
-                this.backgroundPosterUrl = bigImg
-                this.plot = postData.overview
-                this.year = realYear
-                this.score = Score.from10(postData.imdb_rating)
-                this.duration = movieRuntime
-                this.addTrailer(trailerUrl)
-                this.tags = listOfNotNull("Película", postData.certification)
-            }
-        } else {
-            val episodesList = mutableListOf<Episode>()
-            try {
-                val firstSeasonRes = app.get("$apiBase/single/episodes/list?_id=$id&season=1&postsPerPage=50", headers = mapOf("User-Agent" to USER_AGENT)).text
-                val firstSeasonData = try { parseJson<EpisodeListResponse>(firstSeasonRes) } catch (e: Exception) { null }
-
-                val finalSeasons = firstSeasonData?.data?.seasons ?: listOf("1")
-                finalSeasons.forEach { sNumStr ->
-                    val sNum = sNumStr.toIntOrNull() ?: return@forEach
-                    val epRes = if (sNum == 1) firstSeasonRes else {
-                        app.get("$apiBase/single/episodes/list?_id=$id&season=$sNum&postsPerPage=50", headers = mapOf("User-Agent" to USER_AGENT)).text
-                    }
-                    val epData = try { parseJson<EpisodeListResponse>(epRes) } catch (e: Exception) { null }
-
-                    epData?.data?.posts?.forEach { epItem ->
-                        val rawId = epItem.id.toString()
-                        val cleanId = Regex("""\d+""").find(rawId)?.value ?: rawId
-                        val epNum = epItem.episode_number
-
-                        episodesList.add(newEpisode(cleanId) {
-                            val apiTitle = epItem.title ?: ""
-
-                            this.name = if (apiTitle.contains(Regex("Temporada|Episodio", RegexOption.IGNORE_CASE))) {
-                                "Episodio $epNum"
-                            } else if (apiTitle.isNullOrBlank()) {
-                                "Episodio $epNum"
-                            } else {
-                                apiTitle
-                            }
-
-                            this.season = sNum
-                            this.episode = epNum
-                            this.posterUrl = fixImg(epItem.still_path) ?: bigImg ?: posterImg
-                            this.description = epItem.overview
-                            this.runTime = epItem.runtime?.toDoubleOrNull()?.toInt()
-                        })
-                    }
-                }
+        try {
+            val apiRes = app.get(
+                "$apiBase/single/$type?slug=$slug&postType=$type",
+                headers = mapOf("User-Agent" to USER_AGENT),
+                timeout = 60L
+            ).text
+            val responseObj = try {
+                parseJson<SinglePostResponse>(apiRes)
             } catch (e: Exception) {
-                Log.e(TAG, "Logs Error: Falló carga de episodios: ${e.message}")
+                null
             }
 
-            newTvSeriesLoadResponse(cleanTitle, url, if (type == "animes") TvType.Anime else TvType.TvSeries, episodesList) {
-                this.posterUrl = posterImg
-                this.backgroundPosterUrl = bigImg
-                this.plot = postData.overview
-                this.year = realYear
-                this.score = Score.from10(postData.imdb_rating)
-                this.addTrailer(trailerUrl)
-                this.tags = listOfNotNull(if (type == "animes") "Anime" else "Serie", postData.certification)
+            val postData = responseObj?.data ?: run {
+                Log.e(TAG, "Logs: No se pudo parsear respuesta")
+                return null
             }
-        }
+            val id = postData.id ?: run {
+                Log.e(TAG, "Logs: No hay ID")
+                return null
+            }
 
-        return response.apply {
-            try {
-                var relatedRes = app.get(
-                    "$apiBase/single/related?postId=$id&page=1&tab=connections&postsPerPage=12",
-                    headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
-                ).text
-                var relatedData = try { parseJson<ApiResponse>(relatedRes) } catch (e: Exception) { null }
+            val galleryImgs = postData.gallery?.split("\n")?.filter { it.isNotBlank() }
+            val posterImg = fixImg(postData.images?.poster ?: postData.poster)
+            val bigImg = fixImg(
+                galleryImgs?.firstOrNull()?.trim() ?: postData.images?.backdrop ?: postData.backdrop
+            )
 
-                if (relatedData?.data?.posts.isNullOrEmpty()) {
-                    Log.d(TAG, "Logs: Conexiones vacías, intentando búsqueda general de recomendados")
-                    relatedRes = app.get(
-                        "$apiBase/single/related?postId=$id&page=1&postsPerPage=12",
+            val movieRuntime = postData.runtime?.toDoubleOrNull()?.toInt()
+
+            val cleanTitle = postData.title?.replace(Regex("\\(\\d{4}\\)$"), "")?.trim() ?: ""
+            val realYear = postData.release_date?.split("-")?.firstOrNull()?.toIntOrNull()
+            val trailerUrl = postData.trailer?.let { "https://www.youtube.com/watch?v=$it" }
+
+            val response = if (type == "movies") {
+                newMovieLoadResponse(cleanTitle, url, TvType.Movie, id.toString()) {
+                    this.posterUrl = posterImg
+                    this.backgroundPosterUrl = bigImg
+                    this.plot = postData.overview
+                    this.year = realYear
+                    this.score = Score.from10(postData.imdb_rating)
+                    this.duration = movieRuntime
+                    this.addTrailer(trailerUrl)
+                    this.tags = listOfNotNull("Película", postData.certification)
+                }
+            } else {
+                val episodesList = mutableListOf<Episode>()
+                try {
+                    val firstSeasonRes = app.get(
+                        "$apiBase/single/episodes/list?_id=$id&season=1&postsPerPage=50",
+                        headers = mapOf("User-Agent" to USER_AGENT)
+                    ).text
+                    val firstSeasonData = try {
+                        parseJson<EpisodeListResponse>(firstSeasonRes)
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    val finalSeasons = firstSeasonData?.data?.seasons ?: listOf("1")
+                    finalSeasons.forEach { sNumStr ->
+                        val sNum = sNumStr.toIntOrNull() ?: return@forEach
+                        val epRes = if (sNum == 1) firstSeasonRes else {
+                            app.get(
+                                "$apiBase/single/episodes/list?_id=$id&season=$sNum&postsPerPage=50",
+                                headers = mapOf("User-Agent" to USER_AGENT)
+                            ).text
+                        }
+                        val epData = try {
+                            parseJson<EpisodeListResponse>(epRes)
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        epData?.data?.posts?.forEach { epItem ->
+                            val rawId = epItem.id.toString()
+                            val cleanId = Regex("""\d+""").find(rawId)?.value ?: rawId
+                            val epNum = epItem.episode_number
+
+                            episodesList.add(newEpisode(cleanId) {
+                                val apiTitle = epItem.title ?: ""
+
+                                this.name = if (apiTitle.contains(
+                                        Regex(
+                                            "Temporada|Episodio",
+                                            RegexOption.IGNORE_CASE
+                                        )
+                                    )
+                                ) {
+                                    "Episodio $epNum"
+                                } else if (apiTitle.isNullOrBlank()) {
+                                    "Episodio $epNum"
+                                } else {
+                                    apiTitle
+                                }
+
+                                this.season = sNum
+                                this.episode = epNum
+                                this.posterUrl = fixImg(epItem.still_path) ?: bigImg ?: posterImg
+                                this.description = epItem.overview
+                                this.runTime = epItem.runtime?.toDoubleOrNull()?.toInt()
+                            })
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Logs Error: Falló carga de episodios: ${e.message}")
+                }
+
+                newTvSeriesLoadResponse(
+                    cleanTitle,
+                    url,
+                    if (type == "animes") TvType.Anime else TvType.TvSeries,
+                    episodesList
+                ) {
+                    this.posterUrl = posterImg
+                    this.backgroundPosterUrl = bigImg
+                    this.plot = postData.overview
+                    this.year = realYear
+                    this.score = Score.from10(postData.imdb_rating)
+                    this.addTrailer(trailerUrl)
+                    this.tags = listOfNotNull(
+                        if (type == "animes") "Anime" else "Serie",
+                        postData.certification
+                    )
+                }
+            }
+
+            return response.apply {
+                try {
+                    var relatedRes = app.get(
+                        "$apiBase/single/related?postId=$id&page=1&tab=connections&postsPerPage=12",
                         headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
                     ).text
-                    relatedData = try { parseJson<ApiResponse>(relatedRes) } catch (e: Exception) { null }
+                    var relatedData = try {
+                        parseJson<ApiResponse>(relatedRes)
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    if (relatedData?.data?.posts.isNullOrEmpty()) {
+                        Log.d(
+                            TAG,
+                            "Logs: Conexiones vacías, intentando búsqueda general de recomendados"
+                        )
+                        relatedRes = app.get(
+                            "$apiBase/single/related?postId=$id&page=1&postsPerPage=12",
+                            headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                        ).text
+                        relatedData = try {
+                            parseJson<ApiResponse>(relatedRes)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+
+                    val recs = relatedData?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
+                    this.recommendations = recs
+                    Log.d(TAG, "Logs: Recomendaciones finales cargadas: ${recs.size}")
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Logs Error Crítico en Recomendados: ${e.message}")
                 }
-
-                val recs = relatedData?.data?.posts?.map { it.toSearchResult() } ?: emptyList()
-                this.recommendations = recs
-                Log.d(TAG, "Logs: Recomendaciones finales cargadas: ${recs.size}")
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Logs Error Crítico en Recomendados: ${e.message}")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Logs Error en load: ${e.message}")
+            return null
         }
     }
 
@@ -222,6 +290,14 @@ class LamovieProvider : MainAPI() {
         val response = try { parseJson<PlayerResponse>(res) } catch (e: Exception) { null }
         val embeds = response?.data?.embeds ?: emptyList()
 
+        val safeSubCallback: (SubtitleFile) -> Unit = { sub ->
+            if (sub.lang.isBlank()) {
+                subtitleCallback.invoke(SubtitleFile("Subtitle", sub.url))
+            } else {
+                subtitleCallback.invoke(sub)
+            }
+        }
+
         embeds.forEach { embed ->
             val rawUrl = embed.url ?: return@forEach
 
@@ -235,13 +311,13 @@ class LamovieProvider : MainAPI() {
 
                     if (realUrl.isNotBlank()) {
                         Log.d(TAG, "Logs: Iframe interno encontrado: $realUrl")
-                        loadExtractor(realUrl, "$mainUrl/", subtitleCallback, callback)
+                        loadExtractor(realUrl, "$mainUrl/", safeSubCallback, callback)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Logs Error: Fallo en el iframe -> ${e.message}")
                 }
             } else {
-                loadExtractor(embedUrl, "$mainUrl/", subtitleCallback, callback)
+                loadExtractor(embedUrl, "$mainUrl/", safeSubCallback, callback)
             }
         }
         return true

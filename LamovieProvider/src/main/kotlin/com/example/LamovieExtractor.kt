@@ -50,9 +50,10 @@ class Vimeos : ExtractorApi() {
             Log.d("LaMovie", "Logs: VTT encontrado en JS desempaquetado -> $rawUrl")
 
             val label = when {
-                rawUrl.endsWith("_spa.vtt") -> "Spanish"
-                rawUrl.endsWith("_sli.vtt") -> "Spanish (Subtitles)"
+                rawUrl.endsWith("_spa.vtt") || rawUrl.endsWith("_lat.vtt") -> "Latino"
+                rawUrl.endsWith("_sli.vtt") -> "Spanish"
                 rawUrl.endsWith("_eng.vtt") -> "English"
+                rawUrl.endsWith("_und.vtt") -> "Subtitle"
                 else -> "Subtitle"
             }
 
