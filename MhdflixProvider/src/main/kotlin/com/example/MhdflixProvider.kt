@@ -30,8 +30,19 @@ class MhdflixProvider : MainAPI() {
 
     private fun fixUrlPath(path: String?): String {
         if (path.isNullOrBlank() || path.contains("undefined")) return ""
-        return if (path.startsWith("http")) path
-        else "https://image.tmdb.org/t/p/w500$path"
+        val actualPath = if (path.startsWith("/_next/image")) {
+            try {
+                val query = path.substringAfter("?")
+                val params = query.split("&").associate {
+                    val parts = it.split("=", limit = 2)
+                    if (parts.size == 2) parts[0] to java.net.URLDecoder.decode(parts[1], "UTF-8")
+                    else parts[0] to ""
+                }
+                params["url"] ?: path
+            } catch (_: Exception) { path }
+        } else path
+        return if (actualPath.startsWith("http")) actualPath
+        else "https://image.tmdb.org/t/p/w500$actualPath"
     }
 
     override val mainPage = mainPageOf(
