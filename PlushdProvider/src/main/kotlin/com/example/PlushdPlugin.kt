@@ -11,6 +11,6 @@ class PlushdPlugin: Plugin() {
         registerExtractorAPI(PelisplusUpnsPro())
         registerExtractorAPI(PelisplusUpnsPro2())
         registerExtractorAPI(PelisplusUpnsPro3())
-        registerExtractorAPI(EmturbovidCom())
+        registerExtractorAPI(PelisplusRpmstreamLive())
     }
 }
