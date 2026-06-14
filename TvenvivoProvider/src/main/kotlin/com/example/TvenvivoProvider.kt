@@ -5,8 +5,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
@@ -73,9 +71,7 @@ class TvenvivoProvider : MainAPI() {
 
     private suspend fun safeAppGet(
         url: String,
-        retries: Int = 3,
-        delayMs: Long = 2000L,
-        timeoutMs: Long = 15000L,
+        timeoutMs: Long = 10000L,
         additionalHeaders: Map<String, String>? = null,
         referer: String? = null
     ): String? {
@@ -87,20 +83,13 @@ class TvenvivoProvider : MainAPI() {
             requestHeaders["Referer"] = referer
         }
 
-        for (i in 0 until retries) {
-            try {
-                val res = app.get(url, interceptor = cfKiller, timeout = timeoutMs, headers = requestHeaders)
-                if (res.isSuccessful) {
-                    return res.text
-                }
-            } catch (e: Exception) {
-                Log.e("Tvenvivo", "safeAppGet error: ${e.message}")
-            }
-            if (i < retries - 1) {
-                delay(delayMs)
-            }
+        return try {
+            val res = app.get(url, timeout = timeoutMs, headers = requestHeaders)
+            if (res.isSuccessful) res.text else null
+        } catch (e: Exception) {
+            Log.e("Tvenvivo", "safeAppGet error: ${e.message}")
+            null
         }
-        return null
     }
 
     private fun getCategory(title: String): String {
@@ -467,5 +456,4 @@ class TvenvivoProvider : MainAPI() {
         }
         return null
     }
-
 }

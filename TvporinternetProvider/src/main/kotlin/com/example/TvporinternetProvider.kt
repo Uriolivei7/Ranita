@@ -1,20 +1,15 @@
 package com.example
 
-import android.content.res.Configuration
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
-import kotlin.text.Charsets.UTF_8
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.TimeoutCancellationException
-import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
@@ -76,9 +71,7 @@ class TvporinternetProvider : MainAPI() {
 
     private suspend fun safeAppGet(
         url: String,
-        retries: Int = 3,
-        delayMs: Long = 2000L,
-        timeoutMs: Long = 15000L,
+        timeoutMs: Long = 10000L,
         additionalHeaders: Map<String, String>? = null,
         referer: String? = null
     ): String? {
@@ -90,20 +83,13 @@ class TvporinternetProvider : MainAPI() {
             requestHeaders["Referer"] = referer
         }
 
-        for (i in 0 until retries) {
-            try {
-                val res = app.get(url, interceptor = cfKiller, timeout = timeoutMs, headers = requestHeaders)
-                if (res.isSuccessful) {
-                    return res.text
-                }
-            } catch (e: Exception) {
-                Log.e("TvporInternet", "safeAppGet error: ${e.message}")
-            }
-            if (i < retries - 1) {
-                delay(delayMs)
-            }
+        return try {
+            val res = app.get(url, timeout = timeoutMs, headers = requestHeaders)
+            if (res.isSuccessful) res.text else null
+        } catch (e: Exception) {
+            Log.e("TvporInternet", "safeAppGet error: ${e.message}")
+            null
         }
-        return null
     }
 
     private fun getCategory(title: String): String {
@@ -450,5 +436,4 @@ class TvporinternetProvider : MainAPI() {
         }
         return null
     }
-
 }
