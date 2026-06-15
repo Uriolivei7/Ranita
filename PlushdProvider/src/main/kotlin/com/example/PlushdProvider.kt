@@ -3,14 +3,11 @@ package com.example
 import android.util.Base64
 import android.util.Log
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 import java.net.URL
 import java.util.regex.Pattern
-import kotlinx.coroutines.delay
-import kotlin.random.Random
 
 class PlushdProvider : MainAPI() {
     override var mainUrl = "https://tioplus.app"
@@ -249,17 +246,18 @@ class PlushdProvider : MainAPI() {
             subtitleCallback.invoke(file)
         }
 
-        serverItems.toList().forEachIndexed { index, serverLi ->
+        serverItems.toList().amap { serverLi ->
+            if (linksFound) return@amap
             val tag = "PlushdProvider-Server"
             try {
                 val serverData = serverLi.attr("data-server")
                 if (serverData.isNullOrEmpty()) {
-                    Log.w(tag, "[#$index] data-server vacío, saltando")
-                    return@forEachIndexed
+                    Log.w(tag, "data-server vacío, saltando")
+                    return@amap
                 }
 
                 val decoded = String(Base64.decode(serverData, Base64.DEFAULT))
-                Log.d(tag, "[#$index] decoded: ${decoded.take(120)}")
+                Log.d(tag, "decoded: ${decoded.take(120)}")
 
                 val isPlayerPath = !REGEX_LINK.matcher(decoded).matches()
                 val url = if (isPlayerPath) {
@@ -267,36 +265,36 @@ class PlushdProvider : MainAPI() {
                 } else {
                     decoded
                 }
-                Log.d(tag, "[#$index] usará ${if (isPlayerPath) "PLAYER" else "DIRECT"}: ${url.take(120)}")
+                Log.d(tag, "usará ${if (isPlayerPath) "PLAYER" else "DIRECT"}: ${url.take(120)}")
 
                 val videoUrl = if (url.contains("/player/")) {
                     val playerHeaders = headers + mapOf("Referer" to data)
-                    Log.d(tag, "[#$index] fetcheando player page: $url")
+                    Log.d(tag, "fetcheando player page: $url")
                     val playerDoc = app.get(url, headers = playerHeaders).document
-                    Log.d(tag, "[#$index] HTML player page: ${playerDoc.html().length} chars")
-                    extractUrlFromPlayerPage(playerDoc, index)
+                    Log.d(tag, "HTML player page: ${playerDoc.html().length} chars")
+                    extractUrlFromPlayerPage(playerDoc)
                 } else {
                     url
                 }
 
                 if (videoUrl.isBlank()) {
-                    Log.w(tag, "[#$index] videoUrl en blanco después de extracción")
-                    return@forEachIndexed
+                    Log.w(tag, "videoUrl en blanco después de extracción")
+                    return@amap
                 }
-                Log.d(tag, "[#$index] videoUrl raw: ${videoUrl.take(120)}")
+                Log.d(tag, "videoUrl raw: ${videoUrl.take(120)}")
 
                 val fixedLink = fixPelisplusHostsLinks(videoUrl)
                     .replace(Regex("""([a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)=https://ww3.pelisplus.to.*"""), "")
-                Log.d(tag, "[#$index] fixedLink: ${fixedLink.take(120)}")
+                Log.d(tag, "fixedLink: ${fixedLink.take(120)}")
 
                 if (fixedLink.isBlank()) {
-                    Log.w(tag, "[#$index] fixedLink en blanco después de fixPelisplusHostsLinks")
-                    return@forEachIndexed
+                    Log.w(tag, "fixedLink en blanco después de fixPelisplusHostsLinks")
+                    return@amap
                 }
 
                 if (fixedLink.contains("turbovidhls.com")) {
-                    Log.w(tag, "[#$index] turbovid (error 3003), saltando")
-                    return@forEachIndexed
+                    Log.w(tag, "turbovid (error 3003), saltando")
+                    return@amap
                 }
                 if (fixedLink.contains("#") && (
                             fixedLink.contains("upns.pro") ||
@@ -305,18 +303,18 @@ class PlushdProvider : MainAPI() {
                                     fixedLink.contains("4meplayer.pro") ||
                                     fixedLink.contains("pelisplusto")
                             )) {
-                    Log.w(tag, "[#$index] SPA hash (error 2001), saltando")
-                    return@forEachIndexed
+                    Log.w(tag, "SPA hash (error 2001), saltando")
+                    return@amap
                 }
 
                 val extractorReferer = try {
                     val urlObject = URL(fixedLink)
                     urlObject.protocol + "://" + urlObject.host + "/"
                 } catch (e: Exception) {
-                    Log.e(tag, "[#$index] Error al parsear URL para Referer: ${e.message}")
+                    Log.e(tag, "Error al parsear URL para Referer: ${e.message}")
                     url
                 }
-                Log.d(tag, "[#$index] extractorReferer: $extractorReferer")
+                Log.d(tag, "extractorReferer: $extractorReferer")
 
                 val found = loadExtractor(
                     url = fixedLink,
@@ -326,24 +324,22 @@ class PlushdProvider : MainAPI() {
                 )
                 if (found) {
                     linksFound = true
-                    Log.d(tag, "[#$index] OK (loadExtractor)")
+                    Log.d(tag, "OK (loadExtractor)")
                 } else {
-                    Log.w(tag, "[#$index] loadExtractor no encontró extractor")
+                    Log.w(tag, "loadExtractor no encontró extractor")
                 }
             } catch (e: Exception) {
-                Log.e(tag, "[#$index] Error: ${e.message}")
+                Log.e(tag, "Error: ${e.message}")
             }
-
-            delay(Random.nextLong(800L, 2500L))
         }
 
         Log.d("PlushdProvider", "=== loadLinks FIN: linksFound=$linksFound ===")
         return linksFound
     }
 
-    private suspend fun extractUrlFromPlayerPage(playerDoc: org.jsoup.nodes.Document, index: Int = -1): String {
+    private suspend fun extractUrlFromPlayerPage(playerDoc: org.jsoup.nodes.Document): String {
         val tag = "PlushdProvider-Player"
-        Log.d(tag, "[#$index] HTML total: ${playerDoc.html().length} chars")
+        Log.d(tag, "HTML total: ${playerDoc.html().length} chars")
 
         val strategies = listOf(
             "window.onload" to { doc: org.jsoup.nodes.Document ->
@@ -372,14 +368,14 @@ class PlushdProvider : MainAPI() {
         for ((name, extract) in strategies) {
             val url = extract(playerDoc)
             if (url.isNotBlank()) {
-                Log.d(tag, "[#$index] Estrategia '$name' OK: ${url.take(100)}")
+                Log.d(tag, "Estrategia '$name' OK: ${url.take(100)}")
                 return url
             } else {
-                Log.d(tag, "[#$index] Estrategia '$name' no encontró URL")
+                Log.d(tag, "Estrategia '$name' no encontró URL")
             }
         }
 
-        Log.w(tag, "[#$index] Ninguna estrategia encontró URL")
+        Log.w(tag, "Ninguna estrategia encontró URL")
         return ""
     }
 }
