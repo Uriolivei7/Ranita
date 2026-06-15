@@ -83,13 +83,18 @@ class TvenvivoProvider : MainAPI() {
             requestHeaders["Referer"] = referer
         }
 
-        return try {
-            val res = app.get(url, timeout = timeoutMs, headers = requestHeaders)
-            if (res.isSuccessful) res.text else null
-        } catch (e: Exception) {
-            Log.e("Tvenvivo", "safeAppGet error: ${e.message}")
-            null
+        for (attempt in 1..2) {
+            try {
+                val interceptor = if (attempt > 1) cfKiller else null
+                val res = app.get(url, timeout = timeoutMs * attempt, headers = requestHeaders, interceptor = interceptor)
+                if (res.isSuccessful) return res.text
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("Tvenvivo", "safeAppGet error (intento $attempt): ${e::class.simpleName} - ${e.message}")
+            }
         }
+        return null
     }
 
     private fun getCategory(title: String): String {
@@ -456,4 +461,5 @@ class TvenvivoProvider : MainAPI() {
         }
         return null
     }
+
 }
