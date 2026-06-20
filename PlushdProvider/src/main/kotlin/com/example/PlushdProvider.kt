@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.jsoup.nodes.Element
 import java.net.URL
 import java.util.regex.Pattern
@@ -315,14 +316,19 @@ class PlushdProvider : MainAPI() {
                             url
                         }
                         Log.d(tag, "extractorReferer: $extractorReferer")
-                        Log.d(tag, "llamando loadExtractor...")
-                        loadExtractor(
-                            url = fixedLink,
-                            referer = extractorReferer,
-                            subtitleCallback = loggingSubtitleCallback,
-                            callback = callback
-                        )
-                        Log.d(tag, "OK (loadExtractor)")
+
+                        withTimeout(7000) {
+                            Log.d(tag, "llamando loadExtractor...")
+                            loadExtractor(
+                                url = fixedLink,
+                                referer = extractorReferer,
+                                subtitleCallback = loggingSubtitleCallback,
+                                callback = callback
+                            )
+                            Log.d(tag, "OK (loadExtractor)")
+                        }
+                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                        Log.w(tag, "loadExtractor timed out (>7s)")
                     } catch (e: Exception) {
                         Log.e(tag, "Error: ${e.message}")
                     }
