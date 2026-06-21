@@ -507,10 +507,10 @@
         "name": "PlayhubProvider"
     },
     {
-        "fileHash": "sha256-592be647df96b38fac6327400f52e0a1bdc2bdfe81a39ec4722f992f336e2858",
+        "fileHash": "sha256-e8827ea831a0baf75a21c68b20d42f2fb00420b1c4038620008d45536155f82f",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 26129,
+        "fileSize": 27292,
         "status": 1,
         "language": "es",
         "authors": [
