@@ -5,6 +5,8 @@ import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -232,7 +234,7 @@ class PlushdProvider : MainAPI() {
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
-            "Referer" to "$mainUrl/",
+            "Referer" to data,
             "Cache-Control" to "no-cache, no-store, must-revalidate",
             "Pragma" to "no-cache"
         )
@@ -244,6 +246,22 @@ class PlushdProvider : MainAPI() {
         val loggingSubtitleCallback: (SubtitleFile) -> Unit = { file ->
             Log.d("PlushdProvider", "Subtítulo encontrado. URL: ${file.url}")
             subtitleCallback.invoke(file)
+        }
+
+        val wrappedCallback: (ExtractorLink) -> Unit = { link ->
+            val extraHeaders = mapOf(
+                "Referer" to data,
+                "Origin" to "$mainUrl",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept" to "*/*"
+            )
+            CoroutineScope(Dispatchers.IO).launch {
+                callback(newExtractorLink(link.source, link.name, link.url) {
+                    this.referer = data
+                    this.quality = link.quality
+                    this.headers = link.headers + extraHeaders
+                })
+            }
         }
 
         var hasValidServer = false
@@ -308,22 +326,13 @@ class PlushdProvider : MainAPI() {
 
                         hasValidServer = true
 
-                        val extractorReferer = try {
-                            val urlObject = URL(fixedLink)
-                            urlObject.protocol + "://" + urlObject.host + "/"
-                        } catch (e: Exception) {
-                            Log.e(tag, "Error al parsear URL para Referer: ${e.message}")
-                            url
-                        }
-                        Log.d(tag, "extractorReferer: $extractorReferer")
-
                         withTimeout(7000) {
                             Log.d(tag, "llamando loadExtractor...")
                             loadExtractor(
                                 url = fixedLink,
-                                referer = extractorReferer,
+                                referer = data,
                                 subtitleCallback = loggingSubtitleCallback,
-                                callback = callback
+                                callback = wrappedCallback
                             )
                             Log.d(tag, "OK (loadExtractor)")
                         }
