@@ -530,7 +530,7 @@ class AnimeflvnetProvider : MainAPI() {
         }
     }
 
-    private inline fun <reified T> tryParseJson(json: String): T? {
+    private inline fun <reified T : Any> tryParseJson(json: String): T? {
         return try {
             parseJson<T>(json)
         } catch (_: Exception) {
