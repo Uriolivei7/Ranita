@@ -2,13 +2,12 @@ package com.example
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import java.util.*
 import android.util.Log
-import com.lagradost.cloudstream3.amap
 import kotlinx.coroutines.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 class AnimeflvnetProvider : MainAPI() {
     companion object {
@@ -25,7 +24,7 @@ class AnimeflvnetProvider : MainAPI() {
         }
     }
 
-    override var mainUrl = "https://www3.animeflv.net"
+    override var mainUrl = "https://www4.animeflv.net/"
     override var name = "AnimeFLV"
     override var lang = "mx"
     override val hasMainPage = true
@@ -214,12 +213,59 @@ class AnimeflvnetProvider : MainAPI() {
     }
 
     data class MainServers(
-            @JsonProperty("SUB")
-            val sub: List<Sub>,
+        @JsonProperty("SUB")
+        val sub: List<Sub> = emptyList(),
+        @JsonProperty("LAT")
+        val lat: List<Sub> = emptyList(),
+        @JsonProperty("ENG")
+        val eng: List<Sub> = emptyList(),
+        @JsonProperty("VOSE")
+        val vose: List<Sub> = emptyList(),
     )
 
     data class Sub(
-            val code: String,
+        val code: String,
+    )
+
+    data class EpisodeResponse(
+        @JsonProperty("anime_id")
+        val animeId: String = "",
+        @JsonProperty("episode_id")
+        val episodeId: String = "",
+        @JsonProperty("anime")
+        val anime: String = "",
+        @JsonProperty("episode")
+        val episode: String = "",
+        @JsonProperty("date")
+        val date: String = "",
+    )
+
+    data class EpisodeSourcesResponse(
+        @JsonProperty("anime_id")
+        val animeId: String = "",
+        @JsonProperty("episode_id")
+        val episodeId: String = "",
+        @JsonProperty("sources")
+        val sources: Sources = Sources(),
+    )
+
+    data class Sources(
+        @JsonProperty("SUB")
+        val sub: List<SourceEntry> = emptyList(),
+        @JsonProperty("LAT")
+        val lat: List<SourceEntry> = emptyList(),
+        @JsonProperty("ENG")
+        val eng: List<SourceEntry> = emptyList(),
+        @JsonProperty("VOSE")
+        val vose: List<SourceEntry> = emptyList(),
+    )
+
+    data class SourceEntry(
+        val code: String,
+        @JsonProperty("title")
+        val title: String? = null,
+        @JsonProperty("type")
+        val type: String? = null,
     )
 
 
@@ -229,50 +275,266 @@ class AnimeflvnetProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        val tag = "AnimeFlvProvider"
+        Log.d(tag, "=== loadLinks: $data ===")
+        var linksFound = false
+
         try {
-            val doc = app.get(data).document
-            var linksFound = false
+            // Try fetching from multiple possible base domains
+            val domains = listOf("www4.animeflv.net", "www3.animeflv.net", "animeflv.net")
+            val pagePath = data.substringAfter("//").substringAfter("/")
+            var mainDoc: org.jsoup.nodes.Document? = null
+            var rawHtml: String? = null
 
-            doc.select("script").forEach { script ->
-                if (script.data().contains("var videos = {") || script.data()
-                        .contains("var anime_id =") || script.data().contains("server")
-                ) {
-                    println("Script encontrado: ${script.data().substring(0, minOf(script.data().length, 500))}")
+            for (domain in domains) {
+                try {
+                    val altUrl = "https://$domain/$pagePath".replace("//", "/").replace(":/", "://")
+                    Log.d(tag, "Intentando fetch: $altUrl")
+                    val resp = app.get(altUrl)
+                    mainDoc = resp.document
+                    rawHtml = resp.text
+                    Log.d(tag, "Fetch OK desde $domain (${rawHtml.length} chars)")
+                    break
+                } catch (e: Exception) {
+                    Log.w(tag, "Fetch falló para $domain: ${e.message}")
+                }
+            }
 
-                    val serversRegex = Regex("var videos = (\\{\"SUB\":\\[\\{.*?\\}\\]\\});")
-                    val serversplain = serversRegex.find(script.data())?.destructured?.component1() ?: ""
+            if (mainDoc == null || rawHtml == null) {
+                Log.e(tag, "No se pudo obtener la página desde ningún dominio")
+                return false
+            }
 
-                    if (serversplain.isBlank()) {
-                        println("No se encontró JSON válido en el script")
-                        return@forEach
+            val scripts = mainDoc.select("script")
+            Log.d(tag, "Scripts encontrados: ${scripts.size}")
+
+            var animeId: String? = null
+            var episodeId: String? = null
+            var inlineVideosJson: String? = null
+
+            scripts.forEachIndexed { i, scriptElement ->
+                val src = scriptElement.attr("src")
+                if (src.isNotBlank()) {
+                    Log.d(tag, "Script[$i] src: $src")
+                } else {
+                    val sd = scriptElement.data().trim()
+                    if (sd.length in 10..500) {
+                        Log.d(tag, "Script[$i] inline: ${sd.take(300)}")
                     }
+                }
 
-                    try {
-                        val json = parseJson<MainServers>(serversplain)
+                val scriptData = scriptElement.data()
+                val animeIdMatch = Regex("""var anime_id\s*=\s*(\d+);""").find(scriptData)
+                if (animeIdMatch != null) animeId = animeIdMatch.groupValues[1]
+                val episodeIdMatch = Regex("""var episode_id\s*=\s*(\d+);""").find(scriptData)
+                if (episodeIdMatch != null) episodeId = episodeIdMatch.groupValues[1]
+                val videosMatch = Regex("""var videos\s*=\s*(\{.*?\});""", RegexOption.DOT_MATCHES_ALL).find(scriptData)
+                if (videosMatch != null) inlineVideosJson = videosMatch.groupValues[1]
+            }
 
-                        val serverJobs = coroutineScope {
-                            json.sub.map { sub ->
-                                async {
-                                    val code = sub.code
-                                    println("Procesando servidor con código: $code")
-                                    loadExtractor(code, data, subtitleCallback, callback)
+            Log.d(tag, "animeId=$animeId episodeId=$episodeId inlineVideosJson=${inlineVideosJson?.take(100) ?: "null"}")
+
+            // Try #1: inline JSON (if found and not empty)
+            if (!inlineVideosJson.isNullOrBlank() && inlineVideosJson != "[]") {
+                Log.d(tag, "Intentando inline JSON")
+                try {
+                    val serversJson = parseJson<MainServers>(inlineVideosJson)
+                    val allServers = serversJson.sub + serversJson.lat + serversJson.eng + serversJson.vose
+                    Log.d(tag, "Servidores inline: ${allServers.size}")
+                    for (server in allServers) {
+                        if (processServerCode(server.code, data, subtitleCallback, callback, tag)) {
+                            linksFound = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(tag, "Fallo inline JSON: ${e.message}")
+                }
+            }
+
+            // Try #2: Look for <table class="RTbl"> with download links
+            if (!linksFound) {
+                val table = mainDoc.selectFirst("table.RTbl")
+                if (table != null) {
+                    Log.d(tag, "Tabla RTbl encontrada!")
+                    val rows = table.select("tr")
+                    Log.d(tag, "Filas en tabla: ${rows.size}")
+                    for (row in rows) {
+                        val links = row.select("a[href]")
+                        for (link in links) {
+                            val href = link.attr("href")
+                            val serverName = row.selectFirst("td")?.text() ?: ""
+                            Log.d(tag, "RTbl link: server=$serverName href=${href.take(100)}")
+                            if (href.isNotBlank() && !href.contains("ouo.io")) {
+                                if (processServerCode(href, data, subtitleCallback, callback, tag)) {
+                                    linksFound = true
                                 }
                             }
                         }
+                    }
+                } else {
+                    Log.d(tag, "No se encontró tabla RTbl")
+                }
+            }
 
-                        if (serverJobs.awaitAll().any { it }) {
+            // Try #3: Look for any <iframe> with video source
+            if (!linksFound) {
+                val iframes = mainDoc.select("iframe[src]")
+                Log.d(tag, "Iframes encontrados: ${iframes.size}")
+                for (iframe in iframes) {
+                    val src = iframe.attr("src")
+                    if (src.isNotBlank() && !src.contains("google") && !src.contains("facebook")) {
+                        Log.d(tag, "Iframe src: ${src.take(100)}")
+                        if (processServerCode(src, data, subtitleCallback, callback, tag)) {
                             linksFound = true
                         }
-
-                    } catch (e: Exception) {
-                        println("Error al analizar JSON: ${e.message}, JSON: $serversplain")
                     }
                 }
             }
+
+            // Try #4: API endpoints
+            if (!linksFound && animeId != null && episodeId != null) {
+                val postData = mapOf("anime_id" to animeId!!, "episode_id" to episodeId!!)
+                val apiHeaders = mapOf(
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Accept" to "application/json, text/javascript, */*; q=0.01",
+                )
+
+                val apiAttempts = mutableListOf<Pair<String, suspend () -> String>>()
+                for (domain in listOf("www3.animeflv.net", "animeflv.net")) {
+                    apiAttempts.add("POST $domain/api/animes/episode" to {
+                        app.post("https://$domain/api/animes/episode",
+                            data = postData, referer = data, headers = apiHeaders).text
+                    })
+                    apiAttempts.add("POST $domain/api/episode" to {
+                        app.post("https://$domain/api/episode",
+                            data = postData, referer = data, headers = apiHeaders).text
+                    })
+                    apiAttempts.add("GET $domain/api/episode/$episodeId" to {
+                        app.get("https://$domain/api/episode/$episodeId",
+                            referer = data, headers = apiHeaders).text
+                    })
+                    apiAttempts.add("GET $domain/api/animes/episode?anime_id=$animeId&episode_id=$episodeId" to {
+                        app.get("https://$domain/api/animes/episode?anime_id=$animeId&episode_id=$episodeId",
+                            referer = data, headers = apiHeaders).text
+                    })
+                }
+
+                for ((apiName, attempt) in apiAttempts) {
+                    if (linksFound) break
+                    try {
+                        val response = attempt()
+                        if (response.isBlank() || response.startsWith("<!") || response in listOf("[]", "{}")) {
+                            Log.w(tag, "API $apiName: respuesta inválida")
+                            continue
+                        }
+                        Log.d(tag, "API $apiName OK: ${response.take(300)}")
+
+                        var sourcesFound = false
+                        tryParseJson<EpisodeSourcesResponse>(response)?.let { epResponse ->
+                            val allSources = epResponse.sources.sub + epResponse.sources.lat +
+                                    epResponse.sources.eng + epResponse.sources.vose
+                            if (allSources.isNotEmpty()) {
+                                Log.d(tag, "EpisodeSourcesResponse: ${allSources.size} fuentes")
+                                for (source in allSources) {
+                                    if (processServerCode(source.code, data, subtitleCallback, callback, tag)) {
+                                        linksFound = true; sourcesFound = true
+                                    }
+                                }
+                            }
+                        }
+                        if (!sourcesFound) {
+                            tryParseJson<MainServers>(response)?.let { servers ->
+                                val allServers = servers.sub + servers.lat + servers.eng + servers.vose
+                                if (allServers.isNotEmpty()) {
+                                    Log.d(tag, "MainServers: ${allServers.size} servidores")
+                                    for (server in allServers) {
+                                        if (processServerCode(server.code, data, subtitleCallback, callback, tag)) {
+                                            linksFound = true; sourcesFound = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!sourcesFound) {
+                            try {
+                                val rawCodes = parseJson<List<String>>(response)
+                                Log.d(tag, "Lista de ${rawCodes.size} códigos")
+                                for (code in rawCodes) {
+                                    if (processServerCode(code, data, subtitleCallback, callback, tag)) linksFound = true
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    } catch (e: Exception) {
+                        Log.w(tag, "API $apiName error: ${e.message}")
+                    }
+                }
+            }
+
+            // Try #5: Search raw HTML for any video URLs or JSON data
+            if (!linksFound) {
+                Log.d(tag, "Busqueda exhaustiva en HTML (${rawHtml.length} chars)")
+                val patterns = listOf(
+                    Regex("""["']code["']\s*:\s*["']([^"']+)["']"""),
+                    Regex("""["']url["']\s*:\s*["']([^"']+)["']"""),
+                    Regex("""["']src["']\s*:\s*["']([^"']+)["']"""),
+                    Regex("""https?://[^\s"'<>]+\.(?:m3u8|mp4)"""),
+                    Regex("""https?://[^\s"'<>]*(?:vidhide|mega|ok\.ru|yourupload|streamlare|streamtape|mixdrop|doodstream)[^\s"'<>]*"""),
+                    Regex("""<iframe[^>]+src=["']([^"']+)["']"""),
+                )
+                for ((pi, pattern) in patterns.withIndex()) {
+                    val matches = pattern.findAll(rawHtml)
+                    val count = matches.count()
+                    if (count > 0) {
+                        Log.d(tag, "Patrón[$pi] ('${pattern.pattern.take(40)}'): $count match(es)")
+                        for (match in matches) {
+                            val value = if (match.groupValues.size > 1) match.groupValues[1] else match.value
+                            Log.d(tag, "  → ${value.take(120)}")
+                            if (processServerCode(value, data, subtitleCallback, callback, tag)) {
+                                linksFound = true
+                            }
+                        }
+                    }
+                }
+            }
+
+            Log.d(tag, "=== loadLinks FIN: linksFound=$linksFound ===")
             return linksFound
         } catch (e: Exception) {
-            println("Error general en loadLinks: ${e.message}")
+            Log.e(tag, "Error general en loadLinks: ${e.message}")
             return false
+        }
+    }
+
+    private suspend fun processServerCode(
+        code: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+        tag: String
+    ): Boolean {
+        if (code.isBlank()) return false
+        Log.d(tag, "Procesando: ${code.take(100)}")
+        return try {
+            withTimeout(7000) {
+                val success = loadExtractor(code, referer, subtitleCallback, callback)
+                if (success) Log.d(tag, "OK: ${code.take(60)}")
+                else Log.d(tag, "loadExtractor devolvió false: ${code.take(60)}")
+                success
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            Log.w(tag, "Timeout: ${code.take(60)}")
+            false
+        } catch (e: Exception) {
+            Log.e(tag, "Error: ${code.take(60)} - ${e.message}")
+            false
+        }
+    }
+
+    private inline fun <reified T> tryParseJson(json: String): T? {
+        return try {
+            parseJson<T>(json)
+        } catch (_: Exception) {
+            null
         }
     }
 }

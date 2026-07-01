@@ -9,7 +9,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Latino, Castellano y Subtitulado",
+    "description": "https://sololatino.net/",
     "tvTypes": [
       "TvSeries",
       "Anime",
@@ -30,7 +30,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Animes y Películas en Latino",
+    "description": "https://tioplus.app/",
     "tvTypes": [
       "TvSeries",
       "Anime",
@@ -52,7 +52,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes en Latino y Castellano",
+    "description": "https://latanime.org/",
     "tvTypes": [
       "Anime"
     ],
@@ -70,11 +70,11 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados y con Doblajes",
+    "description": "https://anizone.to/",
     "tvTypes": [
       "Anime"
     ],
-    "iconUrl": "https://img.icons8.com/?size=200&id=fztMk7eF9g8D&format=png",
+    "iconUrl": "https://anizone.to/favicon-32x32.png",
     "language": "en",
     "fileSize": 23000
   },
@@ -88,13 +88,13 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados",
+    "description": "https://www4.animeflv.net/",
     "tvTypes": [
       "Anime"
     ],
-    "iconUrl": "https://www3.animeflv.net/favicon.ico",
+    "iconUrl": "https://www4.animeflv.net/favicon.ico",
     "language": "mx",
-    "fileSize": 22000
+    "fileSize": 45000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VerseriesonlineProvider.cs3",
@@ -106,7 +106,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series en General",
+    "description": "https://www.veronline.tax/",
     "tvTypes": [
       "TvSeries",
       "Cartoon"
@@ -125,7 +125,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series animadas clásicas",
+    "description": "https://www.lacartoons.com/",
     "tvTypes": [
       "Cartoons",
       "TvSeries"
@@ -136,22 +136,22 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",
-    "status": 0,
-    "version": 4,
+    "status": 1,
+    "version": 5,
     "apiVersion": 1,
     "name": "TioAnime",
     "internalName": "TioanimeProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados",
+    "description": "https://tioanime.com/",
     "tvTypes": [
       "Anime",
       "Ova"
     ],
     "iconUrl": "https://tioanime.com/assets/img/icon-32x32.png",
     "language": "mx",
-    "fileSize": 21000
+    "fileSize": 24000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Animeav1Provider.cs3",
@@ -163,7 +163,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para anime Subtitulado y con Doblaje Latino",
+    "description": "https://animeav1.com/",
     "tvTypes": [
       "Anime",
       "OVA"
@@ -182,7 +182,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para K-Dramas, C-Dramas y J-Dramas",
+    "description": "https://doramasflix.co/",
     "tvTypes": [
       "AsianDrama"
     ],
@@ -200,7 +200,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Donghuas",
+    "description": "https://www.mundodonghua.com/",
     "tvTypes": [
       "Anime"
     ],
@@ -210,7 +210,7 @@
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/JkanimeProvider.cs3",
-    "status": 0,
+    "status": 1,
     "version": 2,
     "apiVersion": 1,
     "name": "JKAnime",
@@ -218,13 +218,13 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados",
+    "description": "https://jkanime.net/",
     "tvTypes": [
       "Anime"
     ],
     "iconUrl": "https://cdn.jkdesa.com/assets3/css/img/favicon.ico?v=2.0.179",
     "language": "mx",
-    "fileSize": 33000
+    "fileSize": 37000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvporinternetProvider.cs3",
@@ -236,7 +236,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para TV en Vivo",
+    "description": "https://www.televisiongratishd3.com/",
     "tvTypes": [
       "Live"
     ],
@@ -254,7 +254,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin 2 para TV en Vivo",
+    "description": "https://www.tvenvivo2.com/",
     "tvTypes": [
       "Live"
     ],
@@ -272,7 +272,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Mirrors de Netflix y PrimeVideo con Subtitulos y Doblajes",
+    "description": "https://net11.cc/",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -293,7 +293,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados y con algunos Doblajes en Latino",
+    "description": "https://ww1.henaojara.net/",
     "tvTypes": [
       "Anime",
       "AnimeMovie",
@@ -313,7 +313,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados en múltiples idiomas",
+    "description": "https://www.animeonsen.xyz/",
     "tvTypes": [
       "Anime",
       "OVA"
@@ -351,7 +351,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Doramas",
+    "description": "https://www.doramasyt.com/",
     "tvTypes": [
       "AsianDrama"
     ],
@@ -369,7 +369,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Contenido en Latino, Castellabo y Subtitulado",
+    "description": "https://www3.seriesmetro.net/",
     "tvTypes": [
       "TvSeries",
       "Anime",
@@ -390,7 +390,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Animes y Películas en Latino y Subtitulado",
+    "description": "https://lamovie.org/",
     "tvTypes": [
       "Anime",
       "TvSeries",
@@ -411,7 +411,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes subtitulados en varios idiomas",
+    "description": "https://www.animeparadise.moe/",
     "tvTypes": [
       "Anime",
       "AnimeMovie"
@@ -430,7 +430,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Películas y Animes en Latino",
+    "description": "https://gnula.life/",
     "tvTypes": [
       "TvSeries",
       "Anime",
@@ -442,28 +442,6 @@
     "fileSize": 63000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/CinemacityProvider.cs3",
-    "status": 0,
-    "version": 4,
-    "apiVersion": 1,
-    "name": "CinemaCity",
-    "internalName": "CinemacityProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para Series, Animes, Doramas y  Películas en varios Idiomas y con varios Subtítulos",
-    "tvTypes": [
-      "TvSeries",
-      "Movie",
-      "Anime",
-      "AsianDrama",
-      "Cartoon"
-    ],
-    "iconUrl": "https://cinemacity.cc/templates/cinemacity/images/favicon.png",
-    "language": "en",
-    "fileSize": 48000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/KatanimeProvider.cs3",
     "status": 1,
     "version": 1,
@@ -473,7 +451,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados",
+    "description": "https://katanime.net/",
     "tvTypes": [
       "Anime"
     ],
@@ -491,7 +469,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Series, Animes, Doramas y  Películas en Latino",
+    "description": "https://serieskao.top/",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -511,7 +489,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Animes Subtitulados y con algunos Doblajes",
+    "description": "https://monoschinos.st/",
     "tvTypes": [
       "Anime",
       "AnimeMovie",
@@ -531,7 +509,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Doramas",
+    "description": "https://asialiveaction.com/",
     "tvTypes": [
       "AsianDrama"
     ],
@@ -549,7 +527,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ver series y películas en Latino",
+    "description": "https://www.playhubmax.com/",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -569,7 +547,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para ver Series, Animes, Doramas y Películas en Latino, Subtitulado y Castellano",
+    "description": "https://ww1.mhdflix.com/",
     "tvTypes": [
       "TvSeries",
       "Anime",
@@ -591,7 +569,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Donghuas Subtitulados al Español",
+    "description": "https://donghualife.com/",
     "tvTypes": [
       "Anime",
       "AnimeMovie"
@@ -610,7 +588,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para Contenido Retro en Español Latino",
+    "description": "https://retrotve.com/",
     "tvTypes": [
       "Cartoon",
       "TvSeries",

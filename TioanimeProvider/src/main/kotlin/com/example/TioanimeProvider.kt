@@ -92,7 +92,7 @@ class TioanimeProvider:MainAPI() {
                     newAnimeSearchResponse(title, fixUrl(link)) {
                         this.type = TvType.Anime
                         this.posterUrl = fixUrl(poster)
-                        this.dubStatus = dubStatusSet
+                        dubStatusSet.forEach { addDubStatus(it) }
                     }
                 } catch (e: Exception) {
                     Log.e("TioanimeProvider", "Error procesando anime: ${e.message}")
@@ -128,7 +128,7 @@ class TioanimeProvider:MainAPI() {
                         newAnimeSearchResponse(title, fixUrl(link)) {
                             this.type = TvType.Anime
                             this.posterUrl = fixUrl(poster)
-                            this.dubStatus = dubStatusSet
+                            dubStatusSet.forEach { addDubStatus(it) }
                         }
                     }
 
@@ -192,7 +192,7 @@ class TioanimeProvider:MainAPI() {
             newAnimeSearchResponse(title, fixUrl(href)) {
                 this.type = inferredType
                 this.posterUrl = fixUrl(image)
-                this.dubStatus = dubStatusSet
+                dubStatusSet.forEach { addDubStatus(it) }
             }
         }
     }
