@@ -597,5 +597,26 @@
     "iconUrl": "https://retrotve.com/wp-content/uploads/2024/11/cropped-android-chrome-512x512-1-32x32.png",
     "language": "mx",
     "fileSize": 38000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlutotvProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "PlutoTV",
+    "internalName": "PlutotvProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin de PlutoTV",
+    "tvTypes": [
+      "Cartoon",
+      "TvSeries",
+      "Anime",
+      "Movie"
+    ],
+    "iconUrl": "https://pluto.tv/assets/images/favicon/large-9423670b9efa0f1ba821b3729ad1e94e.png",
+    "language": "mx",
+    "fileSize": 44000
   }
 ]
