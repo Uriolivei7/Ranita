@@ -601,7 +601,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlutotvProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "PlutoTV",
     "internalName": "PlutotvProvider",
@@ -617,6 +617,6 @@
     ],
     "iconUrl": "https://pluto.tv/assets/images/favicon/large-9423670b9efa0f1ba821b3729ad1e94e.png",
     "language": "mx",
-    "fileSize": 44000
+    "fileSize": 47000
   }
 ]
