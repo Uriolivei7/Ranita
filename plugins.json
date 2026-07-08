@@ -531,10 +531,10 @@
         "name": "PlushdProvider"
     },
     {
-        "fileHash": "sha256-fdd395e210cf7c708993626ffd47a7d62bfc4ac073eaf541469af72c73048a26",
+        "fileHash": "sha256-88bd9bcc9e20476ad5701c152afa5ce4eb2d3a7e3dcdc9ad4055e5c6646bc386",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 45802,
+        "fileSize": 48423,
         "status": 1,
         "language": "mx",
         "authors": [
