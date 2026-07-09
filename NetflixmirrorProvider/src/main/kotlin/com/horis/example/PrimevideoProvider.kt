@@ -1,10 +1,12 @@
 package com.horis.example
 
+import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
-import android.util.Log
+import okhttp3.Interceptor
+import okhttp3.Response
 
 class PrimevideoProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
@@ -15,244 +17,180 @@ class PrimevideoProvider : MainAPI() {
 
     private val ott = "pv"
 
+    init {
+        Log.e("Netmirror", "PrimevideoProvider init called")
+    }
+
     private fun pvPoster(id: String): String = "https://imgcdn.kim/pv/v/$id.jpg"
     private fun pvBg(id: String): String = "https://imgcdn.kim/pv/h/$id.jpg"
     private fun pvEpPoster(id: String): String = "https://imgcdn.kim/pvepimg/150/$id.jpg"
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val apiBase = resolveApiUrl()
-        val response = app.get(
-            "$apiBase/newtv/main.php",
-            headers = buildNewTvHeaders(ott, mapOf("Page" to "all", "Recentplay" to "", "Watchlist" to "", "Usertoken" to ""))
-        ).parsed<NewTvMainResponse>()
-        val imgReferer = response.img_referer ?: apiBase
-        val items = response.post.orEmpty().map { category ->
-            val ids = category.ids?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
-            val results = ids.mapNotNull { id ->
-                newAnimeSearchResponse("", NewTvId(id).toJson()) {
-                    posterUrl = pvPoster(id)
-                    posterHeaders = mapOf("Referer" to imgReferer)
+        val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
+        if (cookie.length <= 10) { Log.e("Netmirror", "getMainPage: bypass failed"); return null }
+        Log.e("Netmirror", "getMainPage cookie=${cookie.take(40)}...")
+
+        val cookies = mobileCookies(cookie, ott)
+        val mHeaders = mobileHeaders(ott, cookie, mapOf("Referer" to "$mainUrl/mobile/home?app=1"))
+
+        try {
+            val doc = app.get(
+                "$mainUrl/mobile/home?app=1",
+                headers = mHeaders,
+                cookies = cookies,
+                referer = "$mainUrl/mobile/home?app=1"
+            ).document
+
+            val items = doc.select(".tray-container, #top10").mapNotNull { tray ->
+                val name = tray.select("h2, span").text().ifBlank { return@mapNotNull null }
+                val results = tray.select("article, .top10-post").mapNotNull { el ->
+                    val id = el.selectFirst("a")?.attr("data-post")?.ifBlank { null } ?: el.attr("data-post").ifBlank { null } ?: return@mapNotNull null
+                    newAnimeSearchResponse("", NewTvId(id).toJson()) {
+                        posterUrl = pvPoster(id)
+                        posterHeaders = mapOf("Referer" to "$mainUrl/home")
+                    }
                 }
+                if (results.isEmpty()) return@mapNotNull null
+                HomePageList(name, results, isHorizontalImages = false)
             }
-            HomePageList(category.cate.orEmpty(), results, isHorizontalImages = false)
+            Log.e("Netmirror", "getMainPage: ${items.size} categories")
+            return newHomePageResponse(items, hasNext = false)
+        } catch (e: Exception) {
+            Log.e("Netmirror", "getMainPage failed: ${e.message}")
+            return null
         }
-        return newHomePageResponse(items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val apiBase = resolveApiUrl()
-        val data = app.get(
-            "$apiBase/newtv/search.php?s=${URLEncoder.encode(query, "UTF-8")}",
-            headers = buildNewTvHeaders(ott)
-        ).parsed<NewTvSearchResponse>()
-        val imgReferer = data.img_referer ?: apiBase
-        return data.searchResult.orEmpty().map { item ->
-            newAnimeSearchResponse(item.t, NewTvId(item.id).toJson()) {
-                posterUrl = pvPoster(item.id)
-                posterHeaders = mapOf("Referer" to imgReferer)
-            }
-        }
-    }
+        Log.e("Netmirror", "search called query=$query")
+        val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
+        if (cookie.length <= 10) { Log.e("Netmirror", "search: bypass failed"); return emptyList() }
 
-    private fun extractSeasonNumber(s: String?): Int? {
-        if (s.isNullOrBlank()) return null
-        return Regex("(\\d+)").find(s)?.groupValues?.get(1)?.toIntOrNull()
+        val cookies = mobileCookies(cookie, ott)
+        val mHeaders = mobileHeaders(ott, cookie, mapOf("Referer" to "$mainUrl/home"))
+
+        try {
+            val url = "$mainUrl/mobile/pv/search.php?s=${URLEncoder.encode(query, "UTF-8")}&t=${System.currentTimeMillis()}"
+            val data = app.get(url, headers = mHeaders, cookies = cookies, referer = "$mainUrl/home")
+                .parsed<MobileSearchData>()
+            return data.searchResult.orEmpty().map { item ->
+                newAnimeSearchResponse(item.t, NewTvId(item.id).toJson()) {
+                    posterUrl = pvPoster(item.id)
+                    posterHeaders = mapOf("Referer" to "$mainUrl/home")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("Netmirror", "search failed: ${e.message}")
+            return emptyList()
+        }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val apiBase = resolveApiUrl()
         val id = parseJson<NewTvId>(url).id
-        val rawResponse = app.get(
-            "$apiBase/newtv/post.php?id=$id",
-            headers = buildNewTvHeaders(ott, mapOf("Lastep" to "", "Usertoken" to ""))
-        ).text
-        Log.d("Primevideo", "RAW post response: $rawResponse")
-        val data = JSONParser.parse(rawResponse, NewTvPostResponse::class)
-        Log.d("Primevideo", "ua=${data.ua}")
+        val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
+        if (cookie.length <= 10) { Log.e("Netmirror", "load: bypass failed"); return null }
 
-        Log.d("Primevideo", "Seasons count: ${data.season?.size ?: 0}")
-        data.season?.forEachIndexed { i, s ->
-            Log.d("Primevideo", "Season[$i]: id=${s.id}, s=${s.s}, selected=${s.selected}")
-        }
-        Log.d("Primevideo", "Episodes count: ${data.episodes?.size ?: 0}")
-        Log.d("Primevideo", "nextPageSeason: ${data.nextPageSeason}")
-        Log.d("Primevideo", "type: ${data.type}")
+        val cookies = mobileCookies(cookie, ott)
+        val mHeaders = mobileHeaders(ott, cookie, mapOf("Referer" to "$mainUrl/home"))
+
+        val rawResponse = app.get(
+            "$mainUrl/mobile/pv/post.php?id=$id&t=${System.currentTimeMillis()}",
+            headers = mHeaders,
+            cookies = cookies,
+            referer = "$mainUrl/home"
+        ).text
+        Log.d("Netmirror", "RAW mobile post response: $rawResponse")
+        val data = fromJson<MobilePostData>(rawResponse)
 
         val title = data.title ?: id
-        val playbackId = data.main_id ?: id
         val cast = data.cast?.split(",")?.map { it.trim() }?.map { ActorData(Actor(it)) } ?: emptyList()
         val genre = data.genre?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
-        val languages = data.lang?.map { it.l.orEmpty() }?.filter { it.isNotBlank() }?.distinct()
-        val director = data.moredetails?.find { it.k == "Director" }?.v
-        val studio = data.moredetails?.find { it.k == "Studio" }?.v
-        val writer = data.moredetails?.find { it.k == "Writer" }?.v
-        val thisMovieIs = data.moredetails?.find { it.k == "This Movie Is" }?.v
-        Log.d("Primevideo", "lang=${languages} director=${director} studio=${studio} writer=${writer} thisMovieIs=${thisMovieIs}")
-        val imdbFromDetails = data.moredetails?.find { it.k == "IMDB Rating" }?.v
-        val rating = when {
-            data.match?.startsWith("IMDb ") == true -> data.match?.replace("IMDb ", "")
-            data.match?.contains("%") == true -> {
-                val pct = data.match?.replace(Regex("[^0-9]"), "")?.toFloatOrNull()
-                if (pct != null) String.format("%.1f", pct / 10f) else null
-            }
-            else -> data.match ?: imdbFromDetails
-        }
+        val rating = data.match?.replace("IMDb ", "")
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
-        val isSeries = data.type == "t" || data.episodes?.any { it != null } == true
-        val extraPlot = buildList {
-            //if (!director.isNullOrBlank()) add("Director: $director")
-            //if (!writer.isNullOrBlank()) add("Writer: $writer")
-            if (!studio.isNullOrBlank()) add(" - Studio: $studio")
-        }.takeIf { it.isNotEmpty() }?.joinToString("\n")
-        val languagesText = if (!languages.isNullOrEmpty()) " -- Audio: ${languages.joinToString(", ")}" else null
-        val tags = buildList {
-            if (!genre.isNullOrEmpty()) addAll(genre)
-            if (!thisMovieIs.isNullOrBlank()) addAll(thisMovieIs.split(",").map { it.trim() }.filter { it.isNotEmpty() })
-        }.takeIf { it.isNotEmpty() }
-        val fullPlot = buildList {
-            data.desc?.let { add(it) }
-            languagesText?.let { add(it) }
-            extraPlot?.let { add(it) }
-        }.takeIf { it.isNotEmpty() }?.joinToString("\n\n")
+        val isSeries = data.episodes?.any { it != null } == true
+
+        val audioNames = data.lang?.mapNotNull { lang -> lang.l?.takeIf { it.isNotBlank() } }
+        val audioInfo = if (audioNames.isNullOrEmpty()) null else audioNames.joinToString(", ")
+        val enhancedPlot = buildString {
+            append(data.desc ?: "")
+            if (audioInfo != null) {
+                append("\n\nAudio: $audioInfo")
+            }
+        }
 
         val suggest = data.suggest?.map {
             newAnimeSearchResponse("", NewTvId(it.id).toJson()) {
                 posterUrl = pvPoster(it.id)
-                posterHeaders = mapOf("Referer" to apiBase)
             }
         }
 
         if (!isSeries) {
-            return newMovieLoadResponse(
-                title,
-                url,
-                TvType.Movie,
-                NewTvLoadData(title, playbackId).toJson()
-            ) {
+            return newMovieLoadResponse(title, url, TvType.Movie, NewTvLoadData(title, id).toJson()) {
                 posterUrl = pvPoster(id)
                 backgroundPosterUrl = pvBg(id)
-                posterHeaders = mapOf("Referer" to apiBase)
-                plot = fullPlot; year = data.year?.toIntOrNull(); this.tags = tags
+                plot = enhancedPlot; year = data.year?.toIntOrNull(); this.tags = genre
                 actors = cast; this.score = Score.from10(rating); duration = runTime
                 recommendations = suggest
-                contentRating = data.ua ?: data.certification ?: data.age
+                contentRating = data.ua
             }
         }
 
         val episodes = arrayListOf<Episode>()
 
-        if (data.episodes.isNullOrEmpty()) {
-            if (data.type != "t") episodes.add(newEpisode(NewTvLoadData(title, playbackId)) {
-                name = title
-            })
-        } else {
-            val selectedSeasonIdx = data.season?.indexOfFirst { it.selected == true }?.takeIf { it >= 0 }
-            val selectedSeasonId = selectedSeasonIdx?.let { data.season?.getOrNull(it)?.id } ?: data.nextPageSeason
-            val selectedSeasonNum = extractSeasonNumber(data.season?.find { it.selected == true }?.s)
+        data.season?.forEach { season ->
+            if (!season.id.isNullOrBlank())
+                episodes.addAll(getEpisodes(title, season.id, 1))
+        }
 
-            val allSeasons = mutableListOf<Pair<String, Int?>>()
-
-            Log.d("Primevideo", "Main block episodes count: ${data.episodes?.size ?: 0}")
-            data.episodes?.forEachIndexed { i, ep ->
-                Log.d("Primevideo", "  main ep[$i]: id=${ep?.id}, t=${ep?.t}, ep=${ep?.ep}")
-            }
-            val mainBlockEpisodes = data.episodes
-                .filterNotNull()
-                .distinctBy { it.id }
-                .map { ep ->
-                    Log.d("Primevideo", "main ep id=${ep.id} t=${ep.t} info=${ep.info}")
-                    newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
-                        name = ep.t
-                        episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
-                        season = selectedSeasonNum ?: extractSeasonNumber(ep.s)
-                        posterUrl = pvEpPoster(ep.id.orEmpty())
-                        this.runTime = ep.info?.getOrNull(2)?.replace("m", "")?.toIntOrNull()
-                        description = ep.ep_desc
-                    }
-                }
-
-            if (!selectedSeasonId.isNullOrBlank()) {
-                val selNum = extractSeasonNumber(data.season?.find { it.id == selectedSeasonId }?.s)
-                allSeasons.add(Pair(selectedSeasonId, selNum))
-            }
-            Log.d("Primevideo", "selectedSeasonId=$selectedSeasonId, nextPageShow=${data.nextPageShow}, allSeasons before loop=${allSeasons.size}")
-
-            data.season?.forEach { season ->
-                if (season.id != selectedSeasonId && !season.id.isNullOrBlank()) {
-                    allSeasons.add(Pair(season.id, extractSeasonNumber(season.s)))
-                }
-            }
-
-            allSeasons.sortBy { it.second ?: 0 }
-
-            allSeasons.forEach { (sid, sNum) ->
-                if (sid == selectedSeasonId) {
-                    episodes.addAll(mainBlockEpisodes)
-                    if (data.nextPageShow == 1) {
-                        episodes.addAll(getEpisodes(title, sid, 2, sNum))
-                    }
-                } else {
-                    episodes.addAll(getEpisodes(title, sid, 1, sNum))
+        if (episodes.isEmpty() && !data.episodes.isNullOrEmpty()) {
+            data.episodes.filterNotNull().mapTo(episodes) {
+                newEpisode(NewTvLoadData(title, it.id)) {
+                    name = it.t
+                    episode = it.ep.replace("E", "").toIntOrNull()
+                    season = it.s.replace("S", "").toIntOrNull()
+                    posterUrl = pvEpPoster(it.id)
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
                 }
             }
         }
-
-        if (data.type == "t" && episodes.isEmpty() && !data.season.isNullOrEmpty()) {
-            val seasonsList = data.season.map { Pair(it.id, extractSeasonNumber(it.s)) }.sortedBy { it.second ?: 0 }
-            seasonsList.forEach { (sid, sNum) ->
-                if (!sid.isNullOrBlank()) {
-                    episodes.addAll(getEpisodes(title, sid, 1, sNum))
-                }
-            }
-        }
-
-        Log.d("Primevideo", "Total episodes returned: ${episodes.size}")
 
         return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
             posterUrl = pvPoster(id)
             backgroundPosterUrl = pvBg(id)
-            posterHeaders = mapOf("Referer" to apiBase)
-            plot = fullPlot; year = data.year?.toIntOrNull(); this.tags = tags
+            plot = enhancedPlot; year = data.year?.toIntOrNull(); this.tags = genre
             actors = cast; this.score = Score.from10(rating); duration = runTime
             recommendations = suggest
-            contentRating = data.ua ?: data.certification ?: data.age
+            contentRating = data.ua
         }
     }
 
     private suspend fun getEpisodes(
-        title: String, sid: String, page: Int, seasonNumber: Int? = null
+        title: String, sid: String, page: Int
     ): List<Episode> {
-        val apiBase = resolveApiUrl()
         val episodes = arrayListOf<Episode>()
-        val seenIds = mutableSetOf<String>()
+        val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
+        if (cookie.length <= 10) return episodes
+        val cookies = mobileCookies(cookie, ott)
+        val mHeaders = mobileHeaders(ott, cookie, mapOf("Referer" to "$mainUrl/home"))
         var pg = page
         while (true) {
             val rawEp = app.get(
-                "$apiBase/newtv/episodes.php",
-                params = mapOf("id" to sid, "page" to pg.toString()),
-                headers = buildNewTvHeaders(ott)
+                "$mainUrl/mobile/pv/episodes.php?s=$sid&series=$title&t=${System.currentTimeMillis()}&page=$pg",
+                headers = mHeaders,
+                cookies = cookies,
+                referer = "$mainUrl/home"
             ).text
-            Log.d("Primevideo", "RAW episodes page=$pg: $rawEp")
-            val data = JSONParser.parse(rawEp, NewTvEpisodesResponse::class)
+            Log.d("Netmirror", "RAW episodes page=$pg: $rawEp")
+            val data = fromJson<MobileEpisodesData>(rawEp)
 
-            Log.d("Primevideo", "getEpisodes: sid=$sid page=$pg got=${data.episodes?.size ?: 0}")
-            data.episodes?.forEach { e ->
-                Log.d("Primevideo", "  ep: id=${e.id}, t=${e.t}, s=${e.s}, ep=${e.ep}")
-            }
-
-            data.episodes.orEmpty().forEach { ep ->
-                if (ep.id.isNullOrBlank()) return@forEach
-                if (ep.id in seenIds) return@forEach
-                seenIds.add(ep.id)
-                Log.d("Primevideo", "getEpisodes id=${ep.id} t=${ep.t} info=${ep.info}")
-                episodes.add(newEpisode(NewTvLoadData(title, ep.id.orEmpty())) {
-                    name = ep.t
-                    episode = ep.ep?.toIntOrNull() ?: ep.epNum?.replace("E", "").orEmpty().toIntOrNull()
-                    season = seasonNumber ?: extractSeasonNumber(ep.s) ?: extractSeasonNumber(ep.sNum)
-                    posterUrl = pvEpPoster(ep.id.orEmpty())
-                    this.runTime = ep.info?.getOrNull(2)?.replace("m", "")?.toIntOrNull()
-                    description = ep.ep_desc
-                })
+            data.episodes.orEmpty().mapTo(episodes) {
+                newEpisode(NewTvLoadData(title, it.id)) {
+                    name = it.t
+                    episode = it.ep.replace("E", "").toIntOrNull()
+                    season = it.s.replace("S", "").toIntOrNull()
+                    posterUrl = pvEpPoster(it.id)
+                    this.runTime = it.time.replace("m", "").toIntOrNull()
+                }
             }
 
             if (data.nextPageShow != 1) break
@@ -261,25 +199,73 @@ class PrimevideoProvider : MainAPI() {
         return episodes
     }
 
+    private var lastBypassCookie = ""
+
+    @Suppress("ObjectLiteralToLambda")
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request()
+                val rawCookie = try {
+                    java.net.URLDecoder.decode(lastBypassCookie, "UTF-8")
+                } catch (_: Exception) {
+                    lastBypassCookie.replace("%3A%3A", "::")
+                }
+                val newRequest = request.newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+                    .header("Referer", "https://net52.cc/")
+                    .header("Cookie", "t_hash_t=$rawCookie; hd=on; ott=pv")
+                    .build()
+                return chain.proceed(newRequest)
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String, isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val apiBase = resolveApiUrl()
-        val load = parseJson<NewTvLoadData>(data)
-        Log.d("Primevideo", "loadLinks: playbackId=${load.id}")
-        val result = app.get(
-            "$apiBase/newtv/player.php?id=${load.id}",
-            headers = buildNewTvHeaders(ott, mapOf("Usertoken" to ""))
-        ).parsed<NewTvPlayerResponse>()
-        Log.d("Primevideo", "loadLinks result=${result}")
-        if (result.status != "ok" || result.video_link.isNullOrBlank()) {
-            Log.e("Primevideo", "loadLinks FAILED: status=${result.status}, video_link=${result.video_link}")
-            return false
+        val id = parseJson<NewTvLoadData>(data).id
+        val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
+        lastBypassCookie = cookie
+        Log.d("Netmirror", "loadLinks id=$id cookie=$cookie")
+
+        for (domain in listOf("https://net52.cc", "https://net22.cc")) {
+            try {
+                val resp = app.get("$domain/mobile/pv/playlist.php?id=$id", headers = mobileHeaders(ott, cookie))
+                val text = resp.text
+                Log.d("Netmirror", "playlist $domain raw=${text.take(200)}")
+                val items = tryParseJsonList<PlaylistItem>(text)
+                val src = items?.firstOrNull()?.sources?.firstOrNull()?.file
+                if (!src.isNullOrBlank()) {
+                    val fixedSrc = src
+                        .replace("in=unknown::ep", "in=$cookie")
+                        .replace("in=unknown%3A%3Aep", "in=$cookie")
+                        .replace("::ep::99", "::ep::m")
+                        .replace("%3A%3Aep%3A%3A99", "%3A%3Aep%3A%3Am")
+
+                    val m3u8 = if (fixedSrc.startsWith("http")) fixedSrc else "$domain$fixedSrc"
+                    Log.e("Netmirror", "URL M3U8 Base Enviada: $m3u8")
+
+                    items.firstOrNull()?.tracks.orEmpty().forEach { t ->
+                        if (t.kind == "captions" && !t.file.isNullOrBlank()) {
+                            val subLang = t.label?.substringBefore(" [")?.lowercase() ?: "und"
+                            val subUrl = if (t.file.startsWith("//")) "https:${t.file}" else t.file
+                            Log.d("Netmirror", "subtitle lang=$subLang url=$subUrl")
+                            subtitleCallback(newSubtitleFile(subLang, subUrl))
+                        }
+                    }
+
+                    callback(newExtractorLink(name, name, m3u8, type = ExtractorLinkType.M3U8) {
+                        referer = "$domain/"
+                    })
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.e("Netmirror", "$domain exception en loadLinks: ${e.message}")
+            }
         }
-        callback.invoke(newExtractorLink(name, name, result.video_link, type = ExtractorLinkType.M3U8) {
-            this.referer = result.referer ?: apiBase
-        })
-        return true
+        return false
     }
+
 }
