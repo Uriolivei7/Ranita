@@ -138,7 +138,7 @@ class  NetflixProvider : MainAPI() {
         val enhancedPlot = buildString {
             append(data.desc ?: "")
             if (audioInfo != null) {
-                append("\n\n--Audio: $audioInfo")
+                append("\n\n -- Audio: $audioInfo")
             }
         }
 

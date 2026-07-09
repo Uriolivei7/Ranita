@@ -265,7 +265,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NetflixmirrorProvider.cs3",
     "status": 1,
-    "version": 10,
+    "version": 11,
     "apiVersion": 1,
     "name": "NetMirror",
     "internalName": "NetflixmirrorProvider",
