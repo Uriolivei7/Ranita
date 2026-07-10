@@ -438,10 +438,10 @@
         "name": "MundodonghuaProvider"
     },
     {
-        "fileHash": "sha256-9edbc608431cd5c9d8d998c8a3eecfa4c4f0290a5473eb1220dc0a91d218a850",
+        "fileHash": "sha256-2e9d7bcd9ac70a261420a1bc65dcffa04a6fb6ff2d0409782a0c2c41f47ce9fe",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 113190,
+        "fileSize": 117992,
         "status": 1,
         "authors": [
             "Ranita"
