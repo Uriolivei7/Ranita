@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import java.net.URLEncoder
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -85,21 +86,38 @@ class MonoschinosProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get("$mainUrl/buscar?q=$query", timeout = 120).document.select("li.col article").map {
-            val title = it.selectFirst("h3")!!.text()
-            val href = fixUrl(it.selectFirst("a")!!.attr("href"))
-            val image = it.selectFirst("img")!!.attr("data-src")
-            newAnimeSearchResponse(
-                title,
-                href,
-                TvType.Anime,
-            ){
-                this.posterUrl = fixUrl(image)
-                this.dubStatus = if (title.contains("Latino") || title.contains("Castellano")) EnumSet.of(
-                    DubStatus.Dubbed
-                ) else EnumSet.of(DubStatus.Subbed)
+        try {
+            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            Log.d(TAG, "search: query='$query' encoded='$encodedQuery'")
+            val resp = app.get("$mainUrl/buscar?q=$encodedQuery",
+                timeout = 120,
+                headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
+            )
+            Log.d(TAG, "search: HTTP ${resp.code}, len=${resp.text.length}")
+            val doc = resp.document
+            val items = doc.select("li.col")
+            Log.d(TAG, "search: found ${items.size} items")
 
+            val results = items.mapNotNull { el ->
+                try {
+                    val title = el.selectFirst("h3")?.text() ?: el.selectFirst("h2")?.text() ?: return@mapNotNull null
+                    val href = el.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                    val image = el.selectFirst("img")?.attr("data-src") ?: el.selectFirst("img")?.attr("src") ?: ""
+                    Log.d(TAG, "search: item title='$title' href=$href")
+                    newAnimeSearchResponse(title, fixUrl(href), TvType.Anime) {
+                        this.posterUrl = fixUrl(image)
+                        addDubStatus(if (title.contains("Latino") || title.contains("Castellano")) DubStatus.Dubbed else DubStatus.Subbed)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "search: item error: ${e.message}")
+                    null
+                }
             }
+            Log.d(TAG, "search: returning ${results.size} results")
+            return results
+        } catch (e: Exception) {
+            Log.e(TAG, "search: failed: ${e.message}")
+            return emptyList()
         }
     }
 
