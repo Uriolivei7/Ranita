@@ -3,12 +3,10 @@ package com.example
 import android.util.Log
 import androidx.coordinatorlayout.R.id.async
 import androidx.core.R.id.async
-import com.google.gson.annotations.SerializedName
 import com.lagradost.cloudstream3.*
-
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
@@ -347,26 +345,22 @@ class AnimeonsenProvider : MainAPI() {
         }
     }
 
-    @Serializable
     data class TokenResponse(
         val access_token: String,
         val token_type: String? = null,
         val expires_in: Int? = null
     )
 
-    @Serializable
     data class SearchResponseDto(val result: List<AnimeListItem>? = null)
 
-    @Serializable
     data class AnimeListResponse(
         val content: List<AnimeListItem>? = null,
         val result: List<AnimeListItem>? = null
     )
 
-    @Serializable
     data class AnimeListItem(
         val content_id: String,
-        val content_title: @Contextual Any? = null,
+        val content_title: Any? = null,
         val content_title_en: String? = null,
         val total_episodes: Int? = null
     )
@@ -391,16 +385,14 @@ class AnimeonsenProvider : MainAPI() {
         }
     }
 
-    @Serializable
     data class EpisodeDto(
         val contentTitle_episode_en: String? = null,
         val contentTitle_episode_jp: String? = null
     )
 
-    @Serializable
     data class AnimeDetailsDto(
         val content_id: String,
-        val content_title: @Contextual Any? = null,
+        val content_title: Any? = null,
         val content_title_en: String? = null,
         val content_year: Int? = null,
         val previous_season: String? = null,
@@ -408,7 +400,6 @@ class AnimeonsenProvider : MainAPI() {
         val mal_data: MalDataDto? = null
     )
 
-    @Serializable
     data class MalDataDto(
         val synopsis: String? = null,
         val status: String? = null,
@@ -417,22 +408,18 @@ class AnimeonsenProvider : MainAPI() {
         val genres: List<Genre>? = null
     )
 
-    @Serializable
     data class Genre(val name: String)
 
-    @Serializable
     data class VideoDataDto(
         val metadata: MetaDataDto,
         val uri: StreamDataDto
     )
 
-    @Serializable
     data class MetaDataDto(
-        val content_title: @Contextual Any? = null,
+        val content_title: Any? = null,
         val subtitles: Map<String, String>? = null
     )
 
-    @Serializable
     data class StreamDataDto(
         val stream: String,
         val subtitles: Map<String, String>? = null

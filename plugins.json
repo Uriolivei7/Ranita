@@ -272,7 +272,7 @@
     "authors": [
       "Ranita"
     ],
-    "description": "https://net11.cc/",
+    "description": "Basado en la API de la aplicación móvil de Netmirror",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -306,7 +306,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/AnimeonsenProvider.cs3",
     "status": 1,
-    "version": 8,
+    "version": 9,
     "apiVersion": 1,
     "name": "AnimeOnsen",
     "internalName": "AnimeonsenProvider",
@@ -320,7 +320,7 @@
     ],
     "iconUrl": "https://www.animeonsen.xyz/favicon.ico",
     "language": "en",
-    "fileSize": 45000
+    "fileSize": 33000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OnetouchtvProvider.cs3",
