@@ -41,10 +41,10 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "fileHash": "sha256-c90948a036d6c02e48842ac280bb91c75a0f129cc92480902ee1f65b495eb399",
+        "fileHash": "sha256-c1a9f09e885f3ca045723bc9d2523d665a1bfecc9774a5820da693ccd6f71b6c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 47770,
+        "fileSize": 35532,
         "status": 1,
         "language": "en",
         "authors": [
