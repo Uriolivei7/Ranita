@@ -19,7 +19,8 @@ class  NetflixProvider : MainAPI() {
     override val hasMainPage = true
 
     private val ott = "nf"
-    private var lastBypassCookie = ""
+    @Volatile private var lastBypassCookie = ""
+    private var lastLoadedId = ""
     private fun nfEpPoster(id: String) = "https://imgcdn.kim/epimg/150/$id.jpg"
 
     init {
@@ -31,16 +32,23 @@ class  NetflixProvider : MainAPI() {
         return object : Interceptor {
             override fun intercept(chain: Interceptor.Chain): Response {
                 val request = chain.request()
+                // Try lastBypassCookie first, fall back to SharedPreferences storage
+                var cookie = lastBypassCookie
+                if (cookie.isBlank()) {
+                    cookie = NetflixMirrorStorage.getCookie().first ?: ""
+                }
                 val rawCookie = try {
-                    java.net.URLDecoder.decode(lastBypassCookie, "UTF-8")
+                    java.net.URLDecoder.decode(cookie, "UTF-8")
                 } catch (_: Exception) {
-                    lastBypassCookie.replace("%3A%3A", "::")
+                    cookie.replace("%3A%3A", "::")
                 }
 
                 val newRequest = request.newBuilder()
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
                     .header("Referer", "https://net52.cc/")
                     .header("Cookie", "t_hash_t=$rawCookie; hd=on; ott=nf")
+                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                    .header("Pragma", "no-cache")
                     .build()
 
                 return chain.proceed(newRequest)
@@ -133,12 +141,13 @@ class  NetflixProvider : MainAPI() {
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
         val isSeries = data.episodes?.any { it != null } == true
 
+        // Build audio language list
         val audioNames = data.lang?.mapNotNull { lang -> lang.l?.takeIf { it.isNotBlank() } }
         val audioInfo = if (audioNames.isNullOrEmpty()) null else audioNames.joinToString(", ")
         val enhancedPlot = buildString {
             append(data.desc ?: "")
             if (audioInfo != null) {
-                append("\n\n -- Audio: $audioInfo")
+                append("\n\n--Audio: $audioInfo")
             }
         }
 
@@ -161,11 +170,13 @@ class  NetflixProvider : MainAPI() {
 
         val episodes = arrayListOf<Episode>()
 
+        // Load ALL seasons from page 1
         data.season?.forEach { season ->
             if (!season.id.isNullOrBlank())
                 episodes.addAll(getEpisodes(title, season.id, 1))
         }
 
+        // If no seasons, try the direct episode list
         if (episodes.isEmpty() && !data.episodes.isNullOrEmpty()) {
             data.episodes.filterNotNull().mapTo(episodes) {
                 newEpisode(NewTvLoadData(title, it.id)) {
@@ -228,6 +239,12 @@ class  NetflixProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit
     ): Boolean {
         val id = parseJson<NewTvLoadData>(data).id
+
+        // Force fresh bypass when episode changes (fixes "next episode" showing 10-min preview)
+        if (id != lastLoadedId) {
+            NetflixMirrorStorage.clearCookie()
+            lastLoadedId = id
+        }
         val cookie = try { bypass(mainUrl) } catch (_: Exception) { "" }
 
         lastBypassCookie = cookie
@@ -248,9 +265,10 @@ class  NetflixProvider : MainAPI() {
                         .replace("::ep::99", "::ep::m")
                         .replace("%3A%3Aep%3A%3A99", "%3A%3Aep%3A%3Am")
 
-                    val m3u8 = if (fixedSrc.startsWith("http")) fixedSrc else "$domain$fixedSrc"
+                    val m3u8 = (if (fixedSrc.startsWith("http")) fixedSrc else "$domain$fixedSrc") + "&_t=${System.currentTimeMillis()}"
                     Log.e("Netmirror", "URL M3U8 Base Enviada: $m3u8")
 
+                    // Parse subtitle tracks from JSON response
                     items.firstOrNull()?.tracks.orEmpty().forEach { t ->
                         if (t.kind == "captions" && !t.file.isNullOrBlank()) {
                             val subLang = t.label?.substringBefore(" [")?.lowercase() ?: "und"
@@ -260,6 +278,7 @@ class  NetflixProvider : MainAPI() {
                         }
                     }
 
+                    // Log M3U8 details (no subtitle entries - they come from JSON tracks above)
                     try {
                         val rawCookie = try { java.net.URLDecoder.decode(cookie, "UTF-8") } catch (_: Exception) { cookie.replace("%3A%3A", "::") }
                         val masterResp = app.get(m3u8, headers = mapOf(
