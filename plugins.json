@@ -618,5 +618,25 @@
     "iconUrl": "https://pluto.tv/assets/images/favicon/large-9423670b9efa0f1ba821b3729ad1e94e.png",
     "language": "mx",
     "fileSize": 47000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SeriesbiblicasProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "SeriesBiblicas",
+    "internalName": "SeriesbiblicasProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Plugin de PlutoTV",
+    "tvTypes": [
+      "Cartoon",
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://seriesbiblicas.net/wp-content/uploads/2019/01/FAVICON.png",
+    "language": "mx",
+    "fileSize": 27000
   }
 ]
