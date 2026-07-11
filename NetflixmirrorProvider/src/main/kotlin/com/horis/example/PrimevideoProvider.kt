@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
 import okhttp3.Interceptor
-import okhttp3.Response
 
 class PrimevideoProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
@@ -111,7 +110,6 @@ class PrimevideoProvider : MainAPI() {
         val runTime = convertRuntimeToMinutes(data.runtime ?: "")
         val isSeries = data.episodes?.any { it != null } == true
 
-        // Build audio language list
         val audioNames = data.lang?.mapNotNull { lang -> lang.l?.takeIf { it.isNotBlank() } }
         val audioInfo = if (audioNames.isNullOrEmpty()) null else audioNames.joinToString(", ")
         val enhancedPlot = buildString {
@@ -140,13 +138,11 @@ class PrimevideoProvider : MainAPI() {
 
         val episodes = arrayListOf<Episode>()
 
-        // Load ALL seasons from page 1
         data.season?.forEach { season ->
             if (!season.id.isNullOrBlank())
                 episodes.addAll(getEpisodes(title, season.id, 1))
         }
 
-        // If no seasons, try the direct episode list
         if (episodes.isEmpty() && !data.episodes.isNullOrEmpty()) {
             data.episodes.filterNotNull().mapTo(episodes) {
                 newEpisode(NewTvLoadData(title, it.id)) {
@@ -206,28 +202,7 @@ class PrimevideoProvider : MainAPI() {
 
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                var cookie = lastBypassCookie
-                if (cookie.isBlank()) {
-                    cookie = NetflixMirrorStorage.getCookie().first ?: ""
-                }
-                val rawCookie = try {
-                    java.net.URLDecoder.decode(cookie, "UTF-8")
-                } catch (_: Exception) {
-                    cookie.replace("%3A%3A", "::")
-                }
-                val newRequest = request.newBuilder()
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
-                    .header("Referer", "https://net52.cc/")
-                    .header("Cookie", "t_hash_t=$rawCookie; hd=on; ott=pv")
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Pragma", "no-cache")
-                    .build()
-                return chain.proceed(newRequest)
-            }
-        }
+        return createNetmirrorInterceptor()
     }
 
     override suspend fun loadLinks(
@@ -257,11 +232,13 @@ class PrimevideoProvider : MainAPI() {
                         .replace("in=unknown%3A%3Aep", "in=$cookie")
                         .replace("::ep::99", "::ep::m")
                         .replace("%3A%3Aep%3A%3A99", "%3A%3Aep%3A%3Am")
+                        .replace("&hp=yes", "")
+                        .replace("hp=yes&", "")
+                        .replace("?hp=yes", "?")
 
                     val m3u8 = (if (fixedSrc.startsWith("http")) fixedSrc else "$domain$fixedSrc") + "&_t=${System.currentTimeMillis()}"
                     Log.e("Netmirror", "URL M3U8 Base Enviada: $m3u8")
 
-                    // Parse subtitle tracks from JSON response
                     items.firstOrNull()?.tracks.orEmpty().forEach { t ->
                         if (t.kind == "captions" && !t.file.isNullOrBlank()) {
                             val subLang = t.label?.substringBefore(" [")?.lowercase() ?: "und"
@@ -271,7 +248,23 @@ class PrimevideoProvider : MainAPI() {
                         }
                     }
 
-                    callback(newExtractorLink(name, name, m3u8, type = ExtractorLinkType.M3U8) {
+                    try {
+                        val rawCookie = try { java.net.URLDecoder.decode(cookie, "UTF-8") } catch (_: Exception) { cookie.replace("%3A%3A", "::") }
+                        val masterResp = app.get(m3u8, headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36",
+                            "Referer" to "$domain/",
+                            "Cookie" to "t_hash_t=$rawCookie; hd=on; ott=$ott"
+                        ))
+                        val m3u8Body = masterResp.text
+                        Log.d("Netmirror", "M3U8 OK len=${m3u8Body.length} body=${m3u8Body.take(2000)}")
+                        m3u8Body.lines().filter { it.contains("STREAM-INF") || it.contains("freecdn") || it.contains("nm-cdn") || it.contains("hls/") }.forEach { Log.d("Netmirror", "M3U8 video line: $it") }
+                        setCustomMaster(id, m3u8Body)
+                    } catch (e: Exception) {
+                        Log.e("Netmirror", "M3U8 fetch failed: ${e.message}")
+                    }
+
+                    val cmUrl = "$domain/mobile/$ott/hls/$id.m3u8?__cm=1&_t=${System.currentTimeMillis()}"
+                    callback(newExtractorLink(name, name, cmUrl, type = ExtractorLinkType.M3U8) {
                         referer = "$domain/"
                     })
                     return true
@@ -282,5 +275,4 @@ class PrimevideoProvider : MainAPI() {
         }
         return false
     }
-
 }

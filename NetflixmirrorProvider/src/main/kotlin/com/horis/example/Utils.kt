@@ -162,6 +162,7 @@ object NetflixMirrorStorage {
 
 var appContext: Context? = null
 
+// Latest bypass token, used by interceptor to replace in=unknown::ep watermark
 var currentBypassToken: String = ""
 
 // ---------------------------------------------------------------------------
@@ -239,6 +240,7 @@ suspend fun getNewTvUserToken(apiBase: String, ott: String): String {
     val tHash = try { bypass("") } catch (_: Exception) { "" }
     val baseHeaders = buildNewTvHeaders(ott, emptyMap()) + mapOf("Cookie" to "t_hash_t=$tHash")
 
+    // Step 1: GET — server may return usertoken directly, or pub_msg with OTP hint
     val step1 = try { app.get("$apiBase/newtv/otp.php?ott=$ott", headers = baseHeaders).text } catch (_: Exception) { "{}" }
     Log.d("USERTOKEN", "step1=${step1.take(300)}")
     val step1Parsed = tryParseJson<NewTvOtpResponse>(step1)
@@ -247,6 +249,7 @@ suspend fun getNewTvUserToken(apiBase: String, ott: String): String {
         return step1Parsed.usertoken
     }
 
+    // Step 2: try GET with OTP code as query param
     val otpCode = Regex("""(\d{4,8})""").find(step1Parsed?.pub_msg ?: "")?.groupValues?.get(1) ?: "111111"
     Log.d("USERTOKEN", "step2 trying GET with otp=$otpCode")
     try {
@@ -303,6 +306,7 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                 Log.e("BYPASS", "Still on Cloudflare challenge, waiting...")
                                 return@evaluateJavascript
                             }
+                            // Page loaded successfully — extract cookies
                             val cookies = CookieManager.getInstance().getCookie(url) ?: ""
                             Log.e("BYPASS", "WebView cookies=${cookies.take(200)}")
                             val tHash = cookies.split(";").firstOrNull {
@@ -312,6 +316,7 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                 finished = true; handler.removeCallbacks(timeout)
                                 cont.resume(tHash)
                             } else {
+                                // Try response JSON for token_hash
                                 if (bodyText.startsWith("{")) {
                                     val parsed = tryParseJson<NewTvTokenResponse>(bodyText)
                                     val hash = parsed?.token_hash
@@ -322,6 +327,7 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                     }
                                 }
                                 Log.e("BYPASS", "No token yet — waiting for reCAPTCHA completion or timeout")
+                                // DON'T resume null — keep waiting for next page load or 30s timeout
                             }
                         }
                     }
@@ -690,11 +696,52 @@ fun setCustomMaster(id: String, master: String) {
     Log.d("Netmirror", "setCustomMaster id=$id size=${master.length}")
 }
 
+fun createNetmirrorInterceptor(): Interceptor {
+    Log.d("Netmirror", "createNetmirrorInterceptor()")
+    return Interceptor { chain ->
+        val request = chain.request()
+        val url = request.url.toString()
+
+        if (url.contains("__cm=1")) {
+            val id = Regex("""/hls/(\d+)\.m3u8""").find(url)?.groupValues?.get(1)
+            if (id != null) {
+                val master = customMasters[id]
+                if (master != null) {
+                    Log.d("Netmirror", "Serving custom master for id=$id")
+                    val mediaType: MediaType = "application/vnd.apple.mpegurl".toMediaType()
+                    val body = ResponseBody.create(mediaType, master)
+                    return@Interceptor Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(body)
+                        .build()
+                } else {
+                    Log.w("Netmirror", "No custom master found for id=$id")
+                }
+            }
+        }
+
+        val host = Regex("https://([^/]+)/").find(url)?.groupValues?.get(1).orEmpty()
+        if (host.contains("nm-cdn") || host.contains("freecdn") || host.contains("imgcdn")) {
+            val builder = request.newBuilder()
+                .header("Cookie", "hd=on")
+                .header("Connection", "close")
+                .header("Cache-Control", "no-cache")
+            return@Interceptor chain.proceed(builder.build())
+        }
+
+        chain.proceed(request)
+    }
+}
+
 fun m3u8CdnFixInterceptor(): Interceptor {
     Log.d("Netmirror", "m3u8CdnFixInterceptor() called - creating new interceptor")
     return Interceptor { chain ->
         var req = chain.request()
         val url = req.url.toString()
+        // Serve custom master playlist if __cm=1 is present
         if (url.contains("__cm=1")) {
             val id = Regex("""/hls/(\d+)\.m3u8""").find(url)?.groupValues?.get(1)
             if (id != null) {
@@ -716,7 +763,6 @@ fun m3u8CdnFixInterceptor(): Interceptor {
                 }
             }
         }
-
         val cdnHost = Regex("https://([^/]+)/").find(url)?.groupValues?.get(1).orEmpty()
         if (cdnHost.contains("nm-cdn") || cdnHost.contains("freecdn") || cdnHost.contains("imgcdn")) {
             val existing = req.header("Cookie") ?: ""
@@ -881,6 +927,7 @@ suspend fun getPlaylistUrl(
             Log.w("PlayPhp", "playlist.php $hlsDomain failed: ${e.message}")
         }
     }
+    // Fallback: try direct M3U8 with 3-part hash on all HLS domains
     for (hlsDomain in hlsDomains) {
         try {
             val m3u8Url = "$hlsDomain/hls/$id.m3u8?in=$cleanHash"

@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
 import okhttp3.Interceptor
-import okhttp3.Response
 
 class JioHotstarProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama)
@@ -193,23 +192,7 @@ class JioHotstarProvider : MainAPI() {
 
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                val cookie = NetflixMirrorStorage.getCookie().first ?: ""
-                val rawCookie = try {
-                    java.net.URLDecoder.decode(cookie, "UTF-8")
-                } catch (_: Exception) {
-                    cookie.replace("%3A%3A", "::")
-                }
-                val newRequest = request.newBuilder()
-                    .header("Cookie", if (rawCookie.isNotBlank()) "t_hash_t=$rawCookie; hd=on" else "hd=on")
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Pragma", "no-cache")
-                    .build()
-                return chain.proceed(newRequest)
-            }
-        }
+        return createNetmirrorInterceptor()
     }
 
     override suspend fun loadLinks(
@@ -220,7 +203,6 @@ class JioHotstarProvider : MainAPI() {
         val id = parseJson<NewTvLoadData>(data).id
         Log.d("JioHotstar", "loadLinks id=$id apiBase=$apiBase")
 
-        // Force fresh bypass when episode changes
         if (id != lastLoadedId) {
             NetflixMirrorStorage.clearCookie()
             NetflixMirrorStorage.clearFullCookie()
@@ -230,13 +212,24 @@ class JioHotstarProvider : MainAPI() {
         val cookies = mapOf("Cookie" to "t_hash_t=$cookie; hd=on")
         val mHeaders = mobileHeaders(ott, cookie)
 
-        // Primary: player.php
         val userToken = try { getNewTvUserToken(apiBase, ott) } catch (e: Exception) { Log.d("JioHotstar", "getNewTvUserToken failed: ${e.message}"); "" }
         val playerHeaders = buildNewTvHeaders(ott, mapOf("Usertoken" to userToken)) + cookies
         val playerResp = app.get("$apiBase/newtv/player.php?id=$id", headers = playerHeaders)
             .parsed<NewTvPlayerResponse>()
         if (playerResp.status == "ok" && !playerResp.video_link.isNullOrBlank()) {
             val m3u8 = playerResp.video_link + (if (playerResp.video_link.contains("?")) "&_t=${System.currentTimeMillis()}" else "?_t=${System.currentTimeMillis()}")
+
+            try {
+                val masterResp = app.get(m3u8, headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36",
+                    "Referer" to "${apiBase}/",
+                    "Cookie" to "t_hash_t=$cookie; hd=on; ott=$ott"
+                ))
+                val m3u8Body = masterResp.text
+                Log.d("Netmirror", "Jio player M3U8 body=${m3u8Body.take(2000)}")
+            } catch (e: Exception) {
+                Log.e("Netmirror", "Jio M3U8 fetch failed: ${e.message}")
+            }
             callback(newExtractorLink(name, name, m3u8, type = ExtractorLinkType.M3U8) {
                 referer = playerResp.referer ?: apiBase
             })
@@ -250,8 +243,29 @@ class JioHotstarProvider : MainAPI() {
         val items = tryParseJsonList<PlaylistItem>(playText)
         val src = items?.firstOrNull()?.sources?.firstOrNull()?.file
         if (src != null) {
-            val m3u8 = (if (src.startsWith("http")) src else "${apiBase}${src}") + (if (src.contains("?")) "&_t=${System.currentTimeMillis()}" else "?_t=${System.currentTimeMillis()}")
-            callback(newExtractorLink(name, name, m3u8, type = ExtractorLinkType.M3U8) {
+            val fixedSrc = src
+                .replace("&hp=yes", "")
+                .replace("hp=yes&", "")
+                .replace("?hp=yes", "?")
+            val m3u8 = (if (fixedSrc.startsWith("http")) fixedSrc else "${apiBase}${fixedSrc}") + (if (fixedSrc.contains("?")) "&_t=${System.currentTimeMillis()}" else "?_t=${System.currentTimeMillis()}")
+
+            try {
+                val rawCookie = try { java.net.URLDecoder.decode(cookie, "UTF-8") } catch (_: Exception) { cookie.replace("%3A%3A", "::") }
+                val masterResp = app.get(m3u8, headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36",
+                    "Referer" to "$apiBase/",
+                    "Cookie" to "t_hash_t=$rawCookie; hd=on; ott=$ott"
+                ))
+                val m3u8Body = masterResp.text
+                Log.d("Netmirror", "Jio fallback M3U8 OK len=${m3u8Body.length} body=${m3u8Body.take(2000)}")
+                m3u8Body.lines().filter { it.contains("STREAM-INF") || it.contains("freecdn") || it.contains("nm-cdn") || it.contains("hls/") }.forEach { Log.d("Netmirror", "Jio M3U8 video line: $it") }
+                val idMatch = Regex("""/(\d+)\.m3u8""").find(m3u8)?.groupValues?.get(1)
+                if (idMatch != null) setCustomMaster(idMatch, m3u8Body)
+            } catch (e: Exception) {
+                Log.e("Netmirror", "Jio fallback M3U8 fetch failed: ${e.message}")
+            }
+            val cmUrl = m3u8 + (if (m3u8.contains("?")) "&" else "?") + "__cm=1"
+            callback(newExtractorLink(name, name, cmUrl, type = ExtractorLinkType.M3U8) {
                 referer = apiBase
             })
             return true
