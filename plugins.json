@@ -574,6 +574,28 @@
         "name": "RetrotveProvider"
     },
     {
+        "fileHash": "sha256-0a9fec9b40fb49d05da9cd244737f186846dd54e5f07ca2c0d2cfbbcc9303e41",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 26675,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita",
+            "Yeji",
+            "Mina"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Cartoon"
+        ],
+        "version": 21,
+        "internalName": "SeriesbiblicasProvider",
+        "description": "Contenido en Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SeriesbiblicasProvider.cs3",
+        "name": "SeriesbiblicasProvider"
+    },
+    {
         "fileHash": "sha256-fb04009c616c08a60b5646678d1c7a022c42063173ae52dd23910fc6cdac21ee",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
