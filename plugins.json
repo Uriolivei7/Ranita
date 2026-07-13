@@ -119,6 +119,26 @@
         "name": "AsialiveactionProvider"
     },
     {
+        "iconUrl": "https://atalayas21.com/favicon.ico",
+        "fileHash": "sha256-9ae43a3ca3556a1e7757179ad6b875c583cee68dbf6f48e98078c1bc78b3fca5",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 31881,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "ruthriveiro"
+        ],
+        "tvTypes": [
+            "AsianDrama"
+        ],
+        "version": 1,
+        "internalName": "Atalayas21Provider",
+        "description": "Series b\u00edblicas cristianas gratuitas",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Atalayas21Provider.cs3",
+        "name": "Atalayas21Provider"
+    },
+    {
         "fileHash": "sha256-7ff40c2c867c243da3c7b7795ff3c137a22ab386a4f4e2d4bd7ee38dd0a3d182",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
