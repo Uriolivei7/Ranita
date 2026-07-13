@@ -24,46 +24,34 @@ class MundoDonghuaProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val urls = listOf(
-            Pair("$mainUrl/lista-donghuas", "Donghuas"),
-        )
-
         val items = ArrayList<HomePageList>()
+
         items.add(
             HomePageList(
                 "Últimos episodios",
-                app.get(mainUrl, timeout = 120).document.select("div.row .col-xs-4").map {
-                    val title = it.selectFirst("h5")?.text() ?: ""
-                    val poster = it.selectFirst(".fit-1 img")?.attr("src")
-                    val epRegex = Regex("(\\/(\\d+)\$|\\/(\\d+).\\/.*)")
-                    val url = it.selectFirst("a")?.attr("href")?.replace(epRegex, "")?.replace("/ver/", "/donghua/")
-                        ?.replace(Regex("$/|$(\\d+)"), "")
-                    val epnumRegex = Regex("((\\d+)$)")
-                    val epNum = epnumRegex.find(title)?.value?.toIntOrNull()
-                    val dubstat = if (title.contains("Latino") || title.contains("Castellano")) DubStatus.Dubbed else DubStatus.Subbed
-                    newAnimeSearchResponse(title.replace(Regex("Episodio|(\\d+)"), "").trim(), fixUrl(url ?: "")) {
-                        this.posterUrl = fixUrl(poster ?: "")
-                        addDubStatus(dubstat, epNum)
+                app.get(mainUrl, timeout = 120).document.select("div.md-card-grid:not(.md-card-grid-limited) div.md-card:not(.limited) > a").mapNotNull { a ->
+                    val title = a.selectFirst(".md-card-title")?.text() ?: return@mapNotNull null
+                    val poster = a.selectFirst(".md-card-img img")?.attr("src") ?: return@mapNotNull null
+                    val href = a.attr("href")
+                    val slug = href.substringAfter("/ver/").substringBefore("/")
+                    newAnimeSearchResponse(title, fixUrl("/donghua/$slug"), TvType.Anime) {
+                        this.posterUrl = fixUrl(poster)
                     }
-                })
+                }
+            )
         )
 
         coroutineScope {
-            urls.map { (url, name) ->
+            listOf(
+                "$mainUrl/lista-donghuas" to "Donghuas"
+            ).map { (url, name) ->
                 async {
-                    val home = app.get(url, timeout = 120).document.select(".col-xs-4").map {
-                        val title = it.selectFirst(".fs-14")?.text() ?: ""
-                        val poster = it.selectFirst(".fit-1 img")?.attr("src") ?: ""
-                        newAnimeSearchResponse(
-                            title,
-                            fixUrl(it.selectFirst("a")?.attr("href") ?: ""),
-                            TvType.Anime
-                        ) {
+                    val home = app.get(url, timeout = 120).document.select("div.md-card-grid div.md-card > a").mapNotNull { a ->
+                        val title = a.selectFirst(".md-card-title")?.text() ?: return@mapNotNull null
+                        val poster = a.selectFirst(".md-card-img img")?.attr("src") ?: ""
+                        val href = a.attr("href")
+                        newAnimeSearchResponse(title, fixUrl(href), TvType.Anime) {
                             this.posterUrl = fixUrl(poster)
-                            this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
-                                EnumSet.of(DubStatus.Dubbed)
-                            else
-                                EnumSet.of(DubStatus.Subbed)
                         }
                     }
                     items.add(HomePageList(name, home))
@@ -76,70 +64,42 @@ class MundoDonghuaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return app.get("$mainUrl/busquedas/$query", timeout = 120).document.select(".col-xs-4").map {
-            val title = it.selectFirst(".fs-14")?.text() ?: ""
-            val href = fixUrl(it.selectFirst("a")?.attr("href") ?: "")
-            val image = it.selectFirst(".fit-1 img")?.attr("src")
-            newAnimeSearchResponse(
-                title,
-                href,
-                TvType.Anime
-            ) {
+        return app.get("$mainUrl/busquedas/$query", timeout = 120).document.select("div.md-card-grid div.md-card > a").mapNotNull {
+            val title = it.selectFirst(".md-card-title")?.text() ?: return@mapNotNull null
+            val href = fixUrl(it.attr("href"))
+            val image = it.selectFirst(".md-card-img img")?.attr("src")
+            newAnimeSearchResponse(title, href, TvType.Anime) {
                 this.posterUrl = fixUrl(image ?: "")
-                this.dubStatus = if (title.contains("Latino") || title.contains("Castellano"))
-                    EnumSet.of(DubStatus.Dubbed)
-                else
-                    EnumSet.of(DubStatus.Subbed)
             }
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, timeout = 120).document
-        val secondDoc = app.get(mainUrl).document
         val poster = doc.selectFirst("head meta[property=og:image]")?.attr("content") ?: ""
-        val title = doc.selectFirst(".ls-title-serie")?.text() ?: ""
-        val description = doc.selectFirst("p.text-justify.fc-dark")?.text() ?: ""
-        val genres = doc.select("span.label.label-primary.f-bold").map { it.text() }
-        val status = when (doc.selectFirst("div.col-md-6.col-xs-6.align-center.bg-white.pt-10.pr-15.pb-0.pl-15 p span.badge")?.text()) {
+        val title = doc.selectFirst(".md-detail-title")?.text() ?: ""
+        val description = doc.selectFirst(".md-detail-synopsis")?.text() ?: ""
+        val genres = doc.select("div.md-genre-tags a.md-genre-tag").map { it.text() }
+        val status = when (doc.selectFirst(".md-emision-badge")?.text()?.trim()) {
             "En Emisión" -> ShowStatus.Ongoing
             "Finalizada" -> ShowStatus.Completed
             else -> null
         }
-        val slug = url.substringAfter("/donghua/")
-        val epNumRegex = Regex("ver\\/.*\\/(\\d+)")
+
+        val typeBadge = doc.selectFirst(".md-card-badge.md-badge-static")?.text()?.trim()
+        val tvType = if (typeBadge == "Película" || typeBadge == "Pelicula") TvType.AnimeMovie else TvType.Anime
+
         val newEpisodes = ArrayList<Episode>()
-
-        doc.select("ul.donghua-list a").map {
-            val link = it.attr("href")
-            val epnum = epNumRegex.find(link)?.destructured?.component1()
-            val episodePoster = it.selectFirst("img.avatar")?.attr("src")
-
-            newEpisodes.add(
-                newEpisode(fixUrl(link)) {
-                    this.episode = epnum.toString().toIntOrNull()
-                    this.posterUrl = if (!episodePoster.isNullOrEmpty()) fixUrl(episodePoster) else null
-                }
-            )
+        doc.select("ul.md-episode-list li.md-episode-item").mapNotNull { li ->
+            val epNum = li.attr("data-ep").toIntOrNull()
+            val link = li.selectFirst("a.md-ep-link")?.attr("href") ?: return@mapNotNull null
+            val epPoster = li.selectFirst(".md-episode-thumb img")?.attr("src")
+            newEpisodes.add(newEpisode(fixUrl(link)) {
+                this.episode = epNum
+                this.posterUrl = if (!epPoster.isNullOrEmpty()) fixUrl(epPoster) else null
+            })
         }
 
-        secondDoc.select("div.sm-row.bg-white.pt-10.pr-20.pb-15.pl-20 div.row div.item.col-lg-2.col-md-2.col-xs-4").mapNotNull {
-            val href = it.selectFirst("a")?.attr("href")
-            if (href?.contains(slug) == true) {
-                val epnum = epNumRegex.find(href)?.destructured?.component1()
-                val existingEpisode = newEpisodes.find { ep -> ep.episode == epnum.toString().toIntOrNull() }
-                if (existingEpisode == null) {
-                    newEpisodes.add(
-                        newEpisode(fixUrl(href)) {
-                            this.episode = epnum.toString().toIntOrNull()
-                        }
-                    )
-                }
-            }
-        }
-
-        val typeinfo = doc.select("div.row div.col-md-6.pl-15 p.fc-dark").text()
-        val tvType = if (typeinfo.contains(Regex("Tipo.*Pel.cula"))) TvType.AnimeMovie else TvType.Anime
         return newAnimeLoadResponse(title, url, tvType) {
             posterUrl = poster
             addEpisodes(DubStatus.Subbed, newEpisodes.sortedBy { it.episode })
