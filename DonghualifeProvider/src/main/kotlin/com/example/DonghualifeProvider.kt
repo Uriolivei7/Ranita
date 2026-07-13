@@ -107,11 +107,13 @@ class DonghualifeProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$mainUrl/search?search_api_fulltext=$query"
-        val doc = app.get(searchUrl).document
-        
-        val allItems = doc.select(".view-content .views-row .serie, .view-content .views-row .movie")
-        
+        val searchUrl = "$mainUrl/search?search_api_fulltext=${java.net.URLEncoder.encode(query, "utf-8")}"
+        val doc = app.get(searchUrl, headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")).document
+
+        if (doc.selectFirst(".view-empty") != null) return emptyList()
+
+        val allItems = doc.select(".region-content .views-row .serie, .region-content .views-row .movie")
+
         return allItems.mapNotNull { parseListingItem(it) }
     }
 
@@ -122,20 +124,20 @@ class DonghualifeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
-        
+
         val isMovie = url.contains("/movie/")
-        
+
         val title = fixTitle(doc.selectFirst(".field--name-title")?.text())
             ?: fixTitle(doc.selectFirst("h2 a span")?.text())
             ?: "Sin título"
-            
+
         val poster = extractImgSrc(doc.selectFirst(".field--name-field-poster img"))
             ?: doc.selectFirst("meta[property=og:image]")?.attr("content")
-            
+
         val description = doc.selectFirst(".field--name-field-synopsis")?.text()
-        
+
         val year = extractYearFromDatetime(doc.selectFirst(".field--name-field-fecha-de-emision time")?.attr("datetime"))
-        
+
         val tags = doc.select(".field--name-field-genero .field__item a").mapNotNull { it.text().trim() }.takeIf { it.isNotEmpty() }
 
         if (isMovie) {
@@ -157,7 +159,7 @@ class DonghualifeProvider : MainAPI() {
             for (seasonUrl in seasonsUrls) {
                 val seasonInfo = parseSeasonUrl(seasonUrl)
                 val seasonNum = seasonInfo?.second ?: 1
-                
+
                 try {
                     val seasonDoc = app.get(seasonUrl).document
                     seasonDoc.select("table.table-hover tbody tr, .views-row tr").forEach { row ->
@@ -165,7 +167,7 @@ class DonghualifeProvider : MainAPI() {
                         val epLink = row.selectFirst("td a") ?: return@forEach
                         val epHref = extractHref(epLink) ?: return@forEach
                         val epName = epLink.text().trim()
-                        
+
                         if (epHref.isNotBlank()) {
                             episodes.add(newEpisode(epHref) {
                                 this.name = epName.takeIf { it.isNotBlank() } ?: "Episodio $epNum"
@@ -217,18 +219,18 @@ class DonghualifeProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
         val doc = app.get(data).document
-        
+
         var found = false
-        
+
         doc.select(".embed-links li a").forEach { link ->
             val videoUrl = link.attr("data-video")
-            
+
             if (videoUrl.isNotBlank()) {
                 loadExtractor(videoUrl, data, subtitleCallback, callback)
                 found = true
             }
         }
-        
+
         doc.select("iframe").forEach { iframe ->
             val src = iframe.attr("abs:src")
             if (src.isNotBlank()) {
@@ -236,7 +238,7 @@ class DonghualifeProvider : MainAPI() {
                 found = true
             }
         }
-        
+
         doc.select("source, video").forEach { video ->
             val src = video.attr("abs:src")
             if (src.isNotBlank()) {
@@ -250,7 +252,7 @@ class DonghualifeProvider : MainAPI() {
                 found = true
             }
         }
-        
+
         return found
     }
 }

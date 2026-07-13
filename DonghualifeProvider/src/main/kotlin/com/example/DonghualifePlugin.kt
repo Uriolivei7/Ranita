@@ -8,5 +8,6 @@ import android.content.Context
 class DonghualifePlugin: Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DonghualifeProvider())
+        registerExtractorAPI(RumbleExtractor())
     }
 }
