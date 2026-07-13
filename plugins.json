@@ -681,6 +681,25 @@
         "name": "SoloLatinoProvider"
     },
     {
+        "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
+        "fileHash": "sha256-66aecc5724b36e58171394a6bfb4a4523fa6f9edbc29f1e42021a8f84dbb708e",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 23428,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "TeleonlineProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TeleonlineProvider.cs3",
+        "name": "TeleonlineProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=tioanime.com&sz=%size%",
         "fileHash": "sha256-aee2295997101a6a9be9be378ea4d06a6904d81f4906f8198545ecccfaa7c15c",
         "apiVersion": 1,
