@@ -10,7 +10,7 @@ import org.json.JSONObject
 import org.jsoup.nodes.Element
 
 data class SeriesInfo(val title: String, val url: String, val posterUrl: String?)
-data class VideoEntry(val name: String, val urls: List<String>, val isNewSeason: Boolean = false)
+data class VideoEntry(val name: String, val urls: List<String>, val season: Int = 1)
 
 class SeriesbiblicasProvider : MainAPI() {
     override var mainUrl = "https://seriesbiblicas.net"
@@ -19,7 +19,7 @@ class SeriesbiblicasProvider : MainAPI() {
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Cartoon)
+    override val supportedTypes = setOf(TvType.TvSeries, TvType.Cartoon)
 
     override val mainPage = mainPageOf("/" to "Todas las Series")
 
@@ -203,31 +203,25 @@ class SeriesbiblicasProvider : MainAPI() {
             }
         } ?: document.selectFirst("meta[name='description']")?.attr("content")
             ?.let { if (slugLang != null) "$slugLang — $it" else it }
-            ?: slugLang
+        ?: slugLang
         Log.d("SeriesBiblicas", "load: description=${description?.take(80) ?: "null"}")
 
         val episodes = ArrayList<Episode>()
         val allVideoEntries = extractAllVideoEntries(document)
         Log.d("SeriesBiblicas", "load: total video entries=${allVideoEntries.size}")
 
-        var globalIndex = 0
-        var currentSeason = 1
-        var epInSeason = 0
-        for ((index, entry) in allVideoEntries.withIndex()) {
-            val (name, urls, isNewSeason) = entry
-            if (isNewSeason && globalIndex > 0) {
-                currentSeason++
-                epInSeason = 0
-            }
-            epInSeason++
-            Log.d("SeriesBiblicas", "load: ep$globalIndex title=$name urls=${urls.size} season=$currentSeason")
-            episodes.add(newEpisode("$url?ep=$globalIndex") {
-                this.name = name
+        val epCountPerSeason = mutableMapOf<Int, Int>()
+        for ((flatIndex, entry) in allVideoEntries.withIndex()) {
+            val seasonNum = entry.season
+            val epInSeason = (epCountPerSeason[seasonNum] ?: 0) + 1
+            epCountPerSeason[seasonNum] = epInSeason
+            Log.d("SeriesBiblicas", "load: ep title=${entry.name} season=$seasonNum ep=$epInSeason")
+            episodes.add(newEpisode("$url?ep=$flatIndex") {
+                this.name = entry.name
                 this.episode = epInSeason
-                this.season = currentSeason
+                this.season = seasonNum
                 this.posterUrl = poster
             })
-            globalIndex++
         }
 
         Log.d("SeriesBiblicas", "load: returning ${episodes.size} episodes for $title")
@@ -301,21 +295,54 @@ class SeriesbiblicasProvider : MainAPI() {
     }
 
     private fun extractAllVideoEntries(document: org.jsoup.nodes.Document): List<VideoEntry> {
-        val spoilers = document.select(".su-accordion .su-spoiler")
-        if (spoilers.isNotEmpty()) {
-            var spoilerIsNewSeason = false
-            val entries = spoilers.mapNotNull { spoiler ->
-                val videoUrls = extractVideoUrls(spoiler)
-                if (videoUrls.isEmpty()) return@mapNotNull null
-                val title = spoiler.selectFirst(".su-spoiler-title")?.text() ?: "Capítulo"
-                VideoEntry(title, videoUrls)
+        val tabPanes = document.select(".su-tabs-pane")
+        if (tabPanes.isNotEmpty()) {
+            Log.d("SeriesBiblicas", "extractAllVideoEntries: found ${tabPanes.size} tab panes")
+            val entries = mutableListOf<VideoEntry>()
+            tabPanes.forEachIndexed { seasonIdx, pane ->
+                val containers = pane.select(".sa_hover_container")
+                if (containers.isEmpty()) return@forEachIndexed
+                Log.d("SeriesBiblicas", "extractAllVideoEntries: pane $seasonIdx has ${containers.size} items")
+                containers.forEachIndexed { epIdx, container ->
+                    val urls = extractVideoUrls(container)
+                    if (urls.isEmpty()) return@forEachIndexed
+                    val rawText = container.wholeText()
+                    val epName = Regex("""CAP\s*[#:]?\s*(\d+)""").find(rawText)
+                        ?.let { "Capítulo ${it.groupValues[1]}" }
+                        ?: "Capítulo ${epIdx + 1}"
+                    Log.d("SeriesBiblicas", "extractAllVideoEntries: ep=${epName} urls=${urls.size} season=${seasonIdx + 1}")
+                    entries.add(VideoEntry(epName, urls, season = seasonIdx + 1))
+                }
+            }
+            if (entries.isNotEmpty()) return entries
+        }
+
+        val accordions = document.select(".su-accordion")
+        if (accordions.isNotEmpty()) {
+            val entries = mutableListOf<VideoEntry>()
+            var seasonIndex = 0
+            for (accordion in accordions) {
+                val spoilers = accordion.select(".su-spoiler")
+                if (spoilers.isEmpty()) continue
+                val hasEpisodeSpoiler = spoilers.any {
+                    it.selectFirst(".su-spoiler-title")?.text()?.contains("Capítulo", ignoreCase = true) == true
+                }
+                if (!hasEpisodeSpoiler) continue
+                seasonIndex++
+                Log.d("SeriesBiblicas", "extractAllVideoEntries: accordion season=$seasonIndex has ${spoilers.size} spoilers")
+                for (spoiler in spoilers) {
+                    val videoUrls = extractVideoUrls(spoiler)
+                    if (videoUrls.isEmpty()) continue
+                    val title = spoiler.selectFirst(".su-spoiler-title")?.text() ?: "Capítulo"
+                    entries.add(VideoEntry(title, videoUrls, season = seasonIndex))
+                }
             }
             if (entries.isNotEmpty()) return entries
         }
 
         val entries = mutableListOf<VideoEntry>()
-        val carousels = document.select(".su-tabs-pane .owl-carousel")
-        Log.d("SeriesBiblicas", "extractAllVideoEntries: found ${carousels.size} carousels")
+        val carousels = document.select(".owl-carousel")
+        Log.d("SeriesBiblicas", "extractAllVideoEntries: found ${carousels.size} carousels (fallback)")
 
         carousels.forEachIndexed { carouselIdx, carousel ->
             val containers = carousel.select(".sa_hover_container")
@@ -329,7 +356,7 @@ class SeriesbiblicasProvider : MainAPI() {
                     ?.let { "Capítulo ${it.groupValues[1]}" }
                     ?: "Capítulo ${epIdx + 1}"
                 Log.d("SeriesBiblicas", "extractAllVideoEntries: ep=${epName} urls=${urls.size}")
-                entries.add(VideoEntry(epName, urls, isNewSeason = epIdx == 0))
+                entries.add(VideoEntry(epName, urls, season = carouselIdx + 1))
             }
         }
 

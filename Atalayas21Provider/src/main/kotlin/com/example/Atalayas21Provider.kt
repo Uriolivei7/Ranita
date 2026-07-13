@@ -144,7 +144,7 @@ class Atalayas21Provider : MainAPI() {
                 .sortedBy { it.numeroEpisodio ?: it.numero ?: 0 }
             for (ep in seasonEps) {
                 val epNum = ep.numeroEpisodio ?: ep.numero ?: 0
-                val epTitle = cleanEpisodeTitle(ep.titulo ?: ep.title ?: "")
+                val epTitle = cleanEpisodeTitle(ep.titulo ?: ep.title ?: "", epNum)
                 episodes.add(
                     newEpisode("$BASE_URL/api/episodios.php?id=${ep.id}") {
                         this.name = epTitle.ifEmpty { "Episodio $epNum" }
@@ -211,10 +211,15 @@ class Atalayas21Provider : MainAPI() {
         return found
     }
 
-    private fun cleanEpisodeTitle(raw: String): String {
+    private fun cleanEpisodeTitle(raw: String, epNum: Int = 0): String {
         val parts = raw.split(" - ")
         val last = if (parts.size > 1) parts.last().trim() else raw.trim()
-        if (last.isEmpty() || last.matches(Regex("""\d+x\d+"""))) return ""
+        if (last.isEmpty()) return ""
+        if (last.contains(Regex("""\d+x\d+"""))) return ""
+        if (epNum > 0) {
+            val epPattern = Regex("""^(cap[íi]tulo\s+)?$epNum(\s*\(.*\))?$""", RegexOption.IGNORE_CASE)
+            if (last.replace(".", "").matches(epPattern)) return ""
+        }
         return last
     }
 
