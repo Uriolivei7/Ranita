@@ -165,7 +165,7 @@ class Atalayas21Provider : MainAPI() {
         return newTvSeriesLoadResponse(
             serie.titulo ?: "Serie",
             url,
-            TvType.AsianDrama,
+            TvType.TvSeries,
             episodes
         ) {
             this.posterUrl = poster?.let { fixUrl(it) }
@@ -254,7 +254,7 @@ class Atalayas21Provider : MainAPI() {
         return newMovieSearchResponse(
             this.titulo ?: "Sin título",
             "$BASE_URL/api/series.php?id=$id&lang=es",
-            TvType.AsianDrama
+            TvType.TvSeries
         ) {
             this.posterUrl = when {
                 poster?.startsWith("http") == true -> fixUrl(poster)
@@ -270,7 +270,7 @@ class Atalayas21Provider : MainAPI() {
         return newMovieSearchResponse(
             this.titulo ?: "Sin título",
             "$BASE_URL/api/series.php?id=$id&lang=es",
-            TvType.AsianDrama
+            TvType.TvSeries
         ) {
             this.posterUrl = this@toSearchResponse.imagenUrl?.let {
                 if (it.startsWith("http")) fixUrl(it) else "$BASE_URL/$it"
