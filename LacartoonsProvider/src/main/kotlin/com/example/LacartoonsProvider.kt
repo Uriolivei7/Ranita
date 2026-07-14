@@ -22,10 +22,10 @@ class LacartoonsProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "/?Categoria_id=7" to "Marvel",
-        "/?Categoria_id=5" to "Disney",
         "/?Categoria_id=1" to "Nickelodeon",
         "/?Categoria_id=2" to "Cartoon Network",
         "/?Categoria_id=3" to "Fox Kids",
+        "/?Categoria_id=5" to "Disney",
         "/?Categoria_id=4" to "Hanna Barbera",
         "/?Categoria_id=6" to "Warner Channel",
         "/?Categoria_id=8" to "Otros",
@@ -69,11 +69,12 @@ class LacartoonsProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
+        Log.d("LACartoonsProvider", "Loading series page: $url")
         val doc = app.get(url).document
 
         val regexep = Regex("Capitulo\\s*(\\d+)")
 
-        val titleElement = doc.selectFirst("h2.text-center") ?: return null
+        val titleElement = doc.selectFirst("h2.text-center") ?: return null.also { Log.e("LACartoonsProvider", "Could not find h2.text-center in $url") }
         val title = titleElement.ownText().trim()
 
         val tags = titleElement.selectFirst("span")?.text()?.let { listOf(it) } ?: emptyList()
@@ -102,6 +103,7 @@ class LacartoonsProvider : MainAPI() {
             }
         }
 
+        Log.d("LACartoonsProvider", "Found ${episodes.size} episodes for '$title'")
         val recommendations = doc.select(".series-recomendadas a").mapNotNull { it.toSearchResult() }
 
         return newTvSeriesLoadResponse(title, url, TvType.Cartoon, episodes) {
@@ -119,28 +121,47 @@ class LacartoonsProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("LACartoonsProvider", "Attempting to load links from: $data")
+        Log.d("LACartoonsProvider", "loadLinks called for: $data")
         var linksFound = false
         val res = app.get(data).document
+        val iframes = res.select(".serie-video-informacion iframe")
+        Log.d("LACartoonsProvider", "Found ${iframes.size} iframe(s) on the page")
+        if (iframes.isEmpty()) {
+            Log.w("LACartoonsProvider", "No iframes found with selector .serie-video-informacion iframe")
+        }
 
-        res.select(".serie-video-informacion iframe").forEach { element ->
+        iframes.forEachIndexed { index, element ->
             val rawLink = element.attr("src")
             if (rawLink.isNullOrBlank()) {
-                Log.w("LACartoonsProvider", "Empty iframe source found.")
-                return@forEach
+                Log.w("LACartoonsProvider", "[#$index] Empty iframe src")
+                return@forEachIndexed
             }
 
-            val link = rawLink.replaceFirst("https://short.ink/", "https://abysscdn.com/?v=")
+            Log.d("LACartoonsProvider", "[#$index] Raw iframe src: $rawLink")
 
-            Log.d("LACartoonsProvider", "Extracted link after redirect fix: $link")
+            val link = rawLink.replaceFirst("https://short.ink/", "https://abysscdn.com/?v=")
+            if (link != rawLink) {
+                Log.d("LACartoonsProvider", "[#$index] short.ink replaced → $link")
+            }
 
             val finalLink = fixHostsLinks(link)
-            val success = loadExtractor(finalLink, data, subtitleCallback, callback)
+            if (finalLink != link) {
+                Log.d("LACartoonsProvider", "[#$index] fixHostsLinks applied → $finalLink")
+            }
+
+            val success = try {
+                loadExtractor(finalLink, data, subtitleCallback, callback)
+            } catch (e: Exception) {
+                Log.e("LACartoonsProvider", "[#$index] loadExtractor threw exception for $finalLink: ${e::class.simpleName}: ${e.message}")
+                false
+            }
+            Log.d("LACartoonsProvider", "[#$index] loadExtractor($finalLink) returned: $success")
             if (success) {
                 linksFound = true
             }
         }
 
+        Log.d("LACartoonsProvider", "loadLinks returning: $linksFound (${if (linksFound) "links found" else "NO links found"})")
         return linksFound
     }
 }
