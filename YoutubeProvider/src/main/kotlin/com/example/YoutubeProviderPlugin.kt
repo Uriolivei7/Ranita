@@ -1,0 +1,48 @@
+package com.example
+
+import android.content.Context
+import androidx.appcompat.app.AppCompatActivity
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
+
+@CloudstreamPlugin
+class YoutubeTokenPlugin: Plugin() {
+    override fun load(context: Context) {
+
+        val sharedPref = context.getSharedPreferences("YouTube", Context.MODE_PRIVATE)
+
+        registerMainAPI(YoutubeProvider(sharedPref))
+
+        openSettings = { ctx ->
+
+            val activity = ctx as? AppCompatActivity
+
+            if (activity != null) {
+
+                YoutubeSettingsBottomSheet.show(activity.supportFragmentManager, sharedPref)
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
