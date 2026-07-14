@@ -328,10 +328,10 @@
         "name": "KatanimeProvider"
     },
     {
-        "fileHash": "sha256-fd6253b31a2373e4fa8b9f0995096a77afabd560ed085cfdbe2cb6a2a254d043",
+        "fileHash": "sha256-3197d1041f8ef17b411cf7263b7cc903819b2c3f860f467680cb727f92ae3539",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 15958,
+        "fileSize": 23551,
         "status": 1,
         "language": "es",
         "authors": [
