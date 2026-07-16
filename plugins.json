@@ -572,28 +572,6 @@
         "name": "PlutotvProvider"
     },
     {
-        "fileHash": "sha256-729d27bc248e94191107aeae2085fecffa27c284de496d73c0b1366f1183c311",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38103,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Cartoon"
-        ],
-        "version": 21,
-        "internalName": "RetrotveProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/RetrotveProvider.cs3",
-        "name": "RetrotveProvider"
-    },
-    {
         "fileHash": "sha256-f50e62e32fab539e44616cca669c5f92e53af9fd4d61eb5d09f307d653869d20",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
