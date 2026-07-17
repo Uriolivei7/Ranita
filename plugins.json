@@ -561,6 +561,26 @@
     "fileSize": 24000
   },
   {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/RetrotveProvider.cs3",
+    "status": 1,
+    "version": 2,
+    "apiVersion": 1,
+    "name": "RetroTVE",
+    "internalName": "RetrotveProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://retrotve.com/",
+    "tvTypes": [
+      "Cartoon",
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://retrotve.com/wp-content/uploads/2024/11/cropped-android-chrome-512x512-1-32x32.png",
+    "language": "mx",
+    "fileSize": 38000
+  },
+  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlutotvProvider.cs3",
     "status": 1,
     "version": 2,
