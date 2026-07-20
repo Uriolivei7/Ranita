@@ -239,6 +239,26 @@
         "name": "ExampleProvider"
     },
     {
+        "iconUrl": "https://globoview.cam/favicon.svg",
+        "fileHash": "sha256-211aca951c8cc144c821b16bdfc9176adf1e63912232481ac24f474de922c6cf",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 23590,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "GloboViewProvider",
+        "description": "10.793+ canales de TV en vivo de 150+ pa\u00edses",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/GloboViewProvider.cs3",
+        "name": "GloboViewProvider"
+    },
+    {
         "fileHash": "sha256-2a01e0b6f7d672a1a81fd682753df119b2eb13e0b6f1636aa15f211c55a44879",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
