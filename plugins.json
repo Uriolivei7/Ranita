@@ -693,5 +693,23 @@
     "iconUrl": "https://images.icon-icons.com/935/PNG/512/television-outline_icon-icons.com_73141.png",
     "language": "mx",
     "fileSize": 24000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TokianimeProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "name": "TokiAnime",
+    "internalName": "TokianimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://tokianime.tv/",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://tokianime.tv/favicon.ico",
+    "language": "mx",
+    "fileSize": 39000
   }
 ]
