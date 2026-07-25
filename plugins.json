@@ -740,6 +740,25 @@
         "name": "TioanimeProvider"
     },
     {
+        "fileHash": "sha256-928de3212e0fe23e262fb671c396ce9630f4d851f228cabf01e189f79428b35c",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 61678,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "opencode"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 1,
+        "internalName": "TokianimeProvider",
+        "description": "Anime sub espa\u00f1ol y audio latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TokianimeProvider.cs3",
+        "name": "TokianimeProvider"
+    },
+    {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
         "fileHash": "sha256-2a7e05e08cfe0da4a55e934abdcff1925dd3e14fc00935480e3f5bf327c9d6c8",
         "apiVersion": 1,
