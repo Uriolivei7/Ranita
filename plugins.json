@@ -740,10 +740,10 @@
         "name": "TioanimeProvider"
     },
     {
-        "fileHash": "sha256-928de3212e0fe23e262fb671c396ce9630f4d851f228cabf01e189f79428b35c",
+        "fileHash": "sha256-28e35c75ce8550e76355903f8f773cda202794cc9412c49e6326dd705b8c14a2",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 61678,
+        "fileSize": 61670,
         "status": 1,
         "language": "es",
         "authors": [
