@@ -636,10 +636,10 @@
         "name": "SeriesbiblicasProvider"
     },
     {
-        "fileHash": "sha256-fb04009c616c08a60b5646678d1c7a022c42063173ae52dd23910fc6cdac21ee",
+        "fileHash": "sha256-d3461d4a1c20fa351228a1b2db9aba6ae0ccbefdd823b448e9d9fa4cd3a98292",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 31147,
+        "fileSize": 32297,
         "status": 1,
         "language": "es",
         "authors": [
