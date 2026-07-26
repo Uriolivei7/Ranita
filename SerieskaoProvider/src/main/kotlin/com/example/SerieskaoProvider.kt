@@ -213,25 +213,52 @@ class SerieskaoProvider : MainAPI() {
                     this.recommendations = recommendations
                 }
             } else {
-                val epItems = doc.select("a.episode-item")
-                Log.d(TAG, "load episodios HTML=${epItems.size}")
-                val episodes = epItems.mapNotNull { element ->
-                    try {
-                        val epUrl = fixUrl(element.attr("href") ?: "")
-                        val epTitle = element.selectFirst("span.episode-item__title")?.text()?.trim() ?: ""
-                        val epNum = element.selectFirst("span.episode-item__number")?.text()?.toIntOrNull()
-                        if (epUrl.isBlank()) return@mapNotNull null
-                        newEpisode(epUrl) {
-                            this.name = epTitle
-                            this.episode = epNum
-                            this.season = 1
+                val episodes = mutableListOf<Episode>()
+
+                val seasonSection = doc.selectFirst("section.seasons-section")
+                if (seasonSection != null) {
+                    val seasonContainers = seasonSection.select("div.episodes-list[id^='season-']")
+                    Log.d(TAG, "load seasonContainers=${seasonContainers.size}")
+                    for (container in seasonContainers) {
+                        val seasonNum = container.id().removePrefix("season-").toIntOrNull() ?: continue
+                        val epItems = container.select("a.episode-item")
+                        Log.d(TAG, "load season $seasonNum episodios=${epItems.size}")
+                        for (epItem in epItems) {
+                            try {
+                                val epUrl = fixUrl(epItem.attr("href") ?: "")
+                                val epTitle = epItem.selectFirst("span.episode-item__title")?.text()?.trim() ?: ""
+                                val epNum = epItem.selectFirst("span.episode-item__number")?.text()?.toIntOrNull()
+                                if (epUrl.isBlank()) continue
+                                episodes.add(newEpisode(epUrl) {
+                                    this.name = epTitle
+                                    this.episode = epNum
+                                    this.season = seasonNum
+                                })
+                            } catch (e: Exception) {
+                                Log.e(TAG, "load error episodio season $seasonNum: ${e.message}")
+                            }
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "load error episodio: ${e.message}")
-                        null
+                    }
+                } else {
+                    val epItems = doc.select("a.episode-item")
+                    Log.d(TAG, "load flat episodios HTML=${epItems.size}")
+                    for ((ei, element) in epItems.withIndex()) {
+                        try {
+                            val epUrl = fixUrl(element.attr("href") ?: "")
+                            val epTitle = element.selectFirst("span.episode-item__title")?.text()?.trim() ?: ""
+                            val epNum = element.selectFirst("span.episode-item__number")?.text()?.toIntOrNull() ?: (ei + 1)
+                            if (epUrl.isBlank()) continue
+                            episodes.add(newEpisode(epUrl) {
+                                this.name = epTitle
+                                this.episode = epNum
+                                this.season = 1
+                            })
+                        } catch (e: Exception) {
+                            Log.e(TAG, "load error episodio: ${e.message}")
+                        }
                     }
                 }
-                Log.d(TAG, "load -> TvSeries, episodios=${episodes.size}")
+                Log.d(TAG, "load -> TvSeries, episodios=${episodes.size} temporadas=${episodes.distinctBy { it.season }.size}")
                 newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                     this.posterUrl = poster
                     this.plot = description
