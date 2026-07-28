@@ -33,7 +33,54 @@ class  NetflixProvider : MainAPI() {
 
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        return createNetmirrorInterceptor()
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request()
+                val url = request.url.toString()
+                val host = Regex("https://([^/]+)/").find(url)?.groupValues?.get(1).orEmpty()
+
+                var cookie = lastBypassCookie
+                if (cookie.isBlank()) {
+                    cookie = NetflixMirrorStorage.getCookie().first ?: ""
+                }
+                val rawCookie = try {
+                    java.net.URLDecoder.decode(cookie, "UTF-8")
+                } catch (_: Exception) {
+                    cookie.replace("%3A%3A", "::")
+                }
+
+                if (url.contains("__cm=1")) {
+                    val id = Regex("""/hls/(\d+)\.m3u8""").find(url)?.groupValues?.get(1)
+                    if (id != null) {
+                        val master = customMasters[id]
+                        if (master != null) {
+                            Log.d("Netmirror", "Serving custom master for id=$id")
+                            val mediaType: MediaType = "application/vnd.apple.mpegurl".toMediaType()
+                            val body = ResponseBody.create(mediaType, master)
+                            return Response.Builder()
+                                .request(request)
+                                .protocol(Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .body(body)
+                                .build()
+                        }
+                    }
+                }
+
+                val builder = request.newBuilder()
+
+                if (host.contains("net52") || host.contains("net22") || host.contains("net11")) {
+                    builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+                        .header("Referer", "https://net52.cc/")
+                        .header("Cookie", "t_hash_t=$rawCookie; hd=on; ott=nf")
+                } else {
+                    builder.header("Cookie", "hd=on")
+                }
+
+                return chain.proceed(builder.build())
+            }
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
@@ -264,9 +311,31 @@ class  NetflixProvider : MainAPI() {
                             "Referer" to "$domain/",
                             "Cookie" to "t_hash_t=$rawCookie; hd=on; ott=$ott"
                         ))
-                        val m3u8Body = masterResp.text
+                        var m3u8Body = masterResp.text
                         Log.d("Netmirror", "M3U8 OK len=${m3u8Body.length} body=${m3u8Body.take(2000)}")
                         m3u8Body.lines().filter { it.contains("STREAM-INF") || it.contains("freecdn") || it.contains("nm-cdn") || it.contains("hls/") }.forEach { Log.d("Netmirror", "M3U8 video line: $it") }
+
+                        if (m3u8Body.contains("https:///files/")) {
+                            m3u8Body = m3u8Body.replace("https:///files/", "https://net11.cc/hls/")
+                            Log.d("Netmirror", "Fixed broken CDN URLs in custom master")
+                        }
+                        val inParam = Regex("[?&]in=([^&#]+)").find(m3u8)?.groupValues?.get(1)
+                        if (inParam != null) {
+                            val relRegex = Regex("^(?!#)([^\n\r]+)$", RegexOption.MULTILINE)
+                            var fixedCount = 0
+                            m3u8Body = relRegex.replace(m3u8Body) { match ->
+                                val line = match.value.trim()
+                                if (line.isBlank() || line.contains("in=")) line
+                                else if (line.startsWith("http")) line
+                                else {
+                                    fixedCount++
+                                    val base = m3u8.substringBeforeLast("/")
+                                    val suffix = if (line.contains("?")) "&in=$inParam" else "?in=$inParam"
+                                    "$base/$line$suffix"
+                                }
+                            }
+                            if (fixedCount > 0) Log.d("Netmirror", "Fixed $fixedCount relative URLs in custom master")
+                        }
                         setCustomMaster(id, m3u8Body)
                     } catch (e: Exception) {
                         Log.e("Netmirror", "M3U8 fetch failed: ${e.message}")
