@@ -3,13 +3,15 @@ package com.example
 import android.util.Base64
 import android.util.Log
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
+import okhttp3.Interceptor
+import okhttp3.Response
 import org.jsoup.nodes.Element
 import java.net.URL
 import java.util.regex.Pattern
@@ -224,6 +226,76 @@ class PlushdProvider : MainAPI() {
         return urls
     }
 
+    private val cloudflareKiller by lazy { CloudflareKiller() }
+
+    @Suppress("ObjectLiteralToLambda")
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request()
+                val url = request.url.toString()
+
+                if (!url.contains(".m3u8") && !url.contains(".ts")) {
+                    return chain.proceed(request)
+                }
+
+                val newRequest = request.newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
+                    .header("Referer", extractorLink.referer)
+                    .header("Origin", mainUrl)
+                    .build()
+
+                val response = chain.proceed(newRequest)
+
+                try {
+                    val peek = response.peekBody(2097152L)
+                    val html = peek.string()
+                    if (html.contains("Just a moment", ignoreCase = true) ||
+                        html.contains("Attention Required", ignoreCase = true)) {
+                        Log.d("PlushdProvider", "Cloudflare detected in video stream, resolving...")
+                        return cloudflareKiller.intercept(chain)
+                    }
+                    if (url.contains(".m3u8") && html.startsWith("#EXTM3U") && html.contains("RESOLUTION=")) {
+                        val lines = html.lines()
+                        val filtered = mutableListOf<String>()
+                        var skip = false
+                        for (line in lines) {
+                            if (line.contains("RESOLUTION=") && (
+                                        line.contains("1920x1080") ||
+                                                line.contains("1920x800") ||
+                                                line.contains("1080p") ||
+                                                line.matches(Regex(".*RESOLUTION=\\d+x1080.*"))
+                                        )) {
+                                Log.d("PlushdProvider", "Filtering out 1080p variant: $line")
+                                skip = true
+                                continue
+                            }
+                            if (skip) {
+                                if (line.startsWith("http") || line.startsWith("/") || line.startsWith("https")) {
+                                    Log.d("PlushdProvider", "Filtering out 1080p URL: $line")
+                                    skip = false
+                                    continue
+                                }
+                                skip = false
+                            }
+                            filtered.add(line)
+                        }
+                        val filteredBody = filtered.joinToString("\n")
+                        if (filteredBody.length != html.length) {
+                            Log.d("PlushdProvider", "M3U8 filtered: ${html.length} -> ${filteredBody.length} chars (removed 1080p)")
+                            val mediaType = response.body?.contentType()
+                            if (mediaType != null) {
+                                return response.newBuilder().body(okhttp3.ResponseBody.create(mediaType, filteredBody)).build()
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+
+                return response
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -265,6 +337,13 @@ class PlushdProvider : MainAPI() {
         }
 
         var hasValidServer = false
+        val foundLinks = java.util.concurrent.atomic.AtomicInteger(0)
+
+        val wrappedCallback2: (ExtractorLink) -> Unit = { link ->
+            foundLinks.incrementAndGet()
+            wrappedCallback(link)
+        }
+
         coroutineScope {
             serverItems.toList().forEach { serverLi ->
                 launch {
@@ -284,14 +363,27 @@ class PlushdProvider : MainAPI() {
                         }
                         Log.d(tag, "usará ${if (isPlayerPath) "PLAYER" else "DIRECT"}: ${url.take(120)}")
 
-                        val videoUrl = if (url.contains("/player/")) {
+                        var videoUrl: String
+                        if (url.contains("/player/")) {
                             val playerHeaders = headers + mapOf("Referer" to data)
-                            Log.d(tag, "fetcheando player page: $url")
+                            Log.d(tag, "fetcheando player page (intento 1): $url")
                             val playerDoc = app.get(url, headers = playerHeaders).document
                             Log.d(tag, "HTML player page: ${playerDoc.html().length} chars")
-                            extractUrlFromPlayerPage(playerDoc)
+                            videoUrl = extractUrlFromPlayerPage(playerDoc)
+
+                            if (videoUrl.isBlank()) {
+                                Log.w(tag, "intento 1 falló, reintentando con user-agent móvil...")
+                                val retryHeaders = headers + mapOf(
+                                    "Referer" to url,
+                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36"
+                                )
+                                try {
+                                    val retryDoc = app.get(url, headers = retryHeaders).document
+                                    videoUrl = extractUrlFromPlayerPage(retryDoc)
+                                } catch (_: Exception) { }
+                            }
                         } else {
-                            url
+                            videoUrl = url
                         }
 
                         if (videoUrl.isBlank()) {
@@ -326,18 +418,33 @@ class PlushdProvider : MainAPI() {
 
                         hasValidServer = true
 
-                        withTimeout(7000) {
+                        if (fixedLink.contains("vidhide")) {
+                            Log.d(tag, "URL VidHide detectada, usando extractor directo...")
+                            val ok = tryVidHideExtraction(
+                                url = fixedLink,
+                                referer = fixedLink, // MhdflixVidHide usa URL como referer
+                                subtitleCallback = loggingSubtitleCallback,
+                                callback = wrappedCallback2
+                            )
+                            if (!ok) {
+                                Log.w(tag, "VidHide directo fallo, probando loadExtractor...")
+                                loadExtractor(
+                                    url = fixedLink,
+                                    referer = fixedLink,
+                                    subtitleCallback = loggingSubtitleCallback,
+                                    callback = wrappedCallback2
+                                )
+                            }
+                        } else {
                             Log.d(tag, "llamando loadExtractor...")
                             loadExtractor(
                                 url = fixedLink,
                                 referer = data,
                                 subtitleCallback = loggingSubtitleCallback,
-                                callback = wrappedCallback
+                                callback = wrappedCallback2
                             )
-                            Log.d(tag, "OK (loadExtractor)")
                         }
-                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                        Log.w(tag, "loadExtractor timed out (>7s)")
+                        Log.d(tag, "OK")
                     } catch (e: Exception) {
                         Log.e(tag, "Error: ${e.message}")
                     }
@@ -345,8 +452,118 @@ class PlushdProvider : MainAPI() {
             }
         }
 
-        Log.d("PlushdProvider", "=== loadLinks FIN: hasValidServer=$hasValidServer ===")
-        return hasValidServer
+        if (foundLinks.get() == 0 && hasValidServer) {
+            Log.d("PlushdProvider", "No se encontraron links, reintentando con otro referer...")
+            coroutineScope {
+                serverItems.toList().forEach { serverLi ->
+                    launch {
+                        try {
+                            val serverData = serverLi.attr("data-server")
+                            if (serverData.isNullOrEmpty()) return@launch
+                            val decoded = String(Base64.decode(serverData, Base64.DEFAULT))
+                            if (REGEX_LINK.matcher(decoded).matches()) {
+                                val fixedLink = fixPelisplusHostsLinks(decoded)
+                                if (fixedLink.isNotBlank() && !fixedLink.contains("turbovidhls.com")) {
+                                    if (fixedLink.contains("vidhide")) {
+                                        tryVidHideExtraction(
+                                            url = fixedLink,
+                                            referer = fixedLink,
+                                            subtitleCallback = loggingSubtitleCallback,
+                                            callback = wrappedCallback2
+                                        )
+                                    } else {
+                                        loadExtractor(
+                                            url = fixedLink,
+                                            referer = "$mainUrl/",
+                                            subtitleCallback = loggingSubtitleCallback,
+                                            callback = wrappedCallback2
+                                        )
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }
+            }
+        }
+
+        Log.d("PlushdProvider", "=== loadLinks FIN: hasValidServer=$hasValidServer linksFound=${foundLinks.get()} ===")
+        return foundLinks.get() > 0
+    }
+
+    private suspend fun tryVidHideExtraction(
+        url: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (!url.contains("vidhide")) return false
+        val tag = "PlushdProvider-VidHide"
+        try {
+            val vidReferer = if (url.contains("vidhide")) url else referer
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer" to vidReferer,
+                "Accept-Language" to "es",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
+            val html = app.get(url, headers = headers).text
+            var m3u8Url: String? = Regex("""(https?://[^"'<>\s]+\.m3u8[^"'<>\s]*)""").find(html)?.value
+
+            if (m3u8Url == null) {
+                val evalMarker = "eval(function(p,a,c,k,e,d){"
+                val evalStart = html.indexOf(evalMarker)
+                if (evalStart >= 0) {
+                    val callStart = html.indexOf("}('", evalStart)
+                    if (callStart >= 0) {
+                        var argIdx = callStart + 2
+                        if (argIdx < html.length && html[argIdx] == '\'') {
+                            argIdx++
+                            val pStart = argIdx
+                            while (argIdx < html.length && html[argIdx] != '\'') argIdx++
+                            if (argIdx < html.length) {
+                                val p = html.substring(pStart, argIdx)
+                                argIdx++
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                val aStart = argIdx
+                                while (argIdx < html.length && html[argIdx].isDigit()) argIdx++
+                                val a = html.substring(aStart, argIdx).toIntOrNull() ?: 36
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                val cStart = argIdx
+                                while (argIdx < html.length && html[argIdx].isDigit()) argIdx++
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                if (argIdx < html.length && html[argIdx] == '\'') {
+                                    argIdx++
+                                    val kStart = argIdx
+                                    while (argIdx < html.length && html[argIdx] != '\'') argIdx++
+                                    val k = html.substring(kStart, argIdx).split("|")
+                                    var decoded = p
+                                    for (idx in k.indices.reversed()) {
+                                        if (k[idx].isBlank()) continue
+                                        decoded = decoded.replace(Regex("\\b${idx.toString(a)}\\b"), k[idx])
+                                    }
+                                    m3u8Url = Regex("""(https?://[^"'<>\s]+\.m3u8[^"'<>\s]*)""").find(decoded)?.value
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (m3u8Url != null) {
+                Log.d(tag, "M3U8 encontrado: ${m3u8Url.take(100)}")
+                callback(newExtractorLink("VidHide", "VidHide", m3u8Url, ExtractorLinkType.M3U8) {
+                    this.referer = mainUrl
+                })
+                return true
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error: ${e.message}")
+        }
+        return false
     }
 
     private suspend fun extractUrlFromPlayerPage(playerDoc: org.jsoup.nodes.Document): String {
@@ -375,6 +592,12 @@ class PlushdProvider : MainAPI() {
             "a[href]" to { doc: org.jsoup.nodes.Document ->
                 doc.selectFirst("a[href$=\".mp4\"], a[href$=\".m3u8\"]")?.attr("href") ?: ""
             },
+            "data-player" to { doc: org.jsoup.nodes.Document ->
+                doc.select("[data-player], [data-video], [data-src]").firstNotNullOfOrNull {
+                    val v = it.attr("data-player").ifBlank { it.attr("data-video").ifBlank { it.attr("data-src") } }
+                    v.takeIf { it.isNotBlank() }
+                } ?: ""
+            },
         )
 
         for ((name, extract) in strategies) {
@@ -387,7 +610,7 @@ class PlushdProvider : MainAPI() {
             }
         }
 
-        Log.w(tag, "Ninguna estrategia encontró URL")
+        Log.w(tag, "Ninguna estrategia encontró URL. HTML sample: ${playerDoc.html().take(500)}")
         return ""
     }
 }
