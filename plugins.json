@@ -523,10 +523,10 @@
         "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
-        "fileHash": "sha256-764173553be973c567ed561d698b26cab39fbbcc0da45ddc4b8ced5af76edfc8",
+        "fileHash": "sha256-33473bb6c15a3ab197a4fdb7720c16684794b0b5e28904fe0d19438ce7a3b450",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 47951,
+        "fileSize": 59748,
         "status": 1,
         "language": "es",
         "authors": [
