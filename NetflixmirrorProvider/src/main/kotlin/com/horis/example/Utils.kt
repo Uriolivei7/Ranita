@@ -158,11 +158,25 @@ object NetflixMirrorStorage {
             apply()
         }
     }
+
+    fun saveAddhash(hash: String) {
+        prefs?.edit()?.apply {
+            putString("mirror_addhash", hash)
+            putLong("mirror_addhash_timestamp", System.currentTimeMillis())
+            apply()
+        }
+    }
+
+    fun getAddhash(): Pair<String?, Long> {
+        return Pair(
+            prefs?.getString("mirror_addhash", null),
+            prefs?.getLong("mirror_addhash_timestamp", 0L) ?: 0L
+        )
+    }
 }
 
 var appContext: Context? = null
 
-// Latest bypass token, used by interceptor to replace in=unknown::ep watermark
 var currentBypassToken: String = ""
 
 // ---------------------------------------------------------------------------
@@ -215,9 +229,39 @@ suspend fun bypass(mainUrl: String): String {
             ?.substringAfter("t_hash_t=")
             ?.substringBefore(";")
             ?.trim()
+        val allSetCookie = response.headers("Set-Cookie")
         response.close()
         if (!newCookie.isNullOrBlank()) {
             NetflixMirrorStorage.saveCookie(newCookie)
+
+            val addHash = allSetCookie.firstOrNull { it.startsWith("addhash=") }
+                ?.substringAfter("addhash=")
+                ?.substringBefore(";")
+                ?.trim()
+            if (!addHash.isNullOrBlank()) {
+                NetflixMirrorStorage.saveAddhash(addHash)
+                Log.d("BYPASS", "Got addhash from verify.php: $addHash")
+            }
+
+            if (addHash.isNullOrBlank()) {
+                try {
+                    val tHashCookie = "t_hash_t=$newCookie"
+                    val verify2Resp = client.newCall(okhttp3.Request.Builder()
+                        .url("https://net22.cc/verify2")
+                        .header("Cookie", tHashCookie)
+                        .apply { headers.forEach { (k, v) -> if (k != "Content-Type") addHeader(k, v) } }
+                        .build()
+                    ).execute()
+                    val verify2Html = verify2Resp.body?.string().orEmpty()
+                    verify2Resp.close()
+                    val addHash2 = Regex("""data-addhash="([^"]+)"""").find(verify2Html)?.groupValues?.get(1)
+                    if (!addHash2.isNullOrBlank()) {
+                        NetflixMirrorStorage.saveAddhash(addHash2)
+                        Log.d("BYPASS", "Got addhash from verify2: $addHash2")
+                    }
+                } catch (_: Exception) { }
+            }
+
             Log.d("BYPASS", "Got new token: ${newCookie.take(60)}")
             return newCookie
         }
@@ -240,7 +284,6 @@ suspend fun getNewTvUserToken(apiBase: String, ott: String): String {
     val tHash = try { bypass("") } catch (_: Exception) { "" }
     val baseHeaders = buildNewTvHeaders(ott, emptyMap()) + mapOf("Cookie" to "t_hash_t=$tHash")
 
-    // Step 1: GET — server may return usertoken directly, or pub_msg with OTP hint
     val step1 = try { app.get("$apiBase/newtv/otp.php?ott=$ott", headers = baseHeaders).text } catch (_: Exception) { "{}" }
     Log.d("USERTOKEN", "step1=${step1.take(300)}")
     val step1Parsed = tryParseJson<NewTvOtpResponse>(step1)
@@ -249,7 +292,6 @@ suspend fun getNewTvUserToken(apiBase: String, ott: String): String {
         return step1Parsed.usertoken
     }
 
-    // Step 2: try GET with OTP code as query param
     val otpCode = Regex("""(\d{4,8})""").find(step1Parsed?.pub_msg ?: "")?.groupValues?.get(1) ?: "111111"
     Log.d("USERTOKEN", "step2 trying GET with otp=$otpCode")
     try {
@@ -302,11 +344,11 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                 ?.replace("\\n", "\n")?.replace("\\t", "\t") ?: ""
                             Log.e("BYPASS", "WebView body=${bodyText.take(200)}")
                             if (bodyText.contains("Just a moment") || bodyText.contains("Checking")) {
-                                // Still on Cloudflare — wait for more page loads
+
                                 Log.e("BYPASS", "Still on Cloudflare challenge, waiting...")
                                 return@evaluateJavascript
                             }
-                            // Page loaded successfully — extract cookies
+
                             val cookies = CookieManager.getInstance().getCookie(url) ?: ""
                             Log.e("BYPASS", "WebView cookies=${cookies.take(200)}")
                             val tHash = cookies.split(";").firstOrNull {
@@ -316,7 +358,6 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                 finished = true; handler.removeCallbacks(timeout)
                                 cont.resume(tHash)
                             } else {
-                                // Try response JSON for token_hash
                                 if (bodyText.startsWith("{")) {
                                     val parsed = tryParseJson<NewTvTokenResponse>(bodyText)
                                     val hash = parsed?.token_hash
@@ -327,7 +368,6 @@ private suspend fun webViewBypass(mainUrl: String): String? {
                                     }
                                 }
                                 Log.e("BYPASS", "No token yet — waiting for reCAPTCHA completion or timeout")
-                                // DON'T resume null — keep waiting for next page load or 30s timeout
                             }
                         }
                     }
@@ -692,8 +732,21 @@ val customMasters = java.util.concurrent.ConcurrentHashMap<String, String>()
 private val customMastersLogged = java.util.concurrent.atomic.AtomicBoolean(false)
 
 fun setCustomMaster(id: String, master: String) {
-    customMasters[id] = master
-    Log.d("Netmirror", "setCustomMaster id=$id size=${master.length}")
+    val filtered = master.lines().filter { line ->
+        val t = line.trim()
+        !t.startsWith("#EXT-X-IMAGE-STREAM-INF") &&
+                !t.startsWith("#EXT-X-MEDIA:TYPE=IMAGE") &&
+                !t.contains("s21.freecdn") &&
+                !t.contains("freecdn4") &&
+                !t.contains("preview") &&
+                !t.contains("jpg")
+    }.joinToString("\n")
+    val removed = master.lines().size - filtered.lines().size
+    if (removed > 0) {
+        Log.d("Netmirror", "setCustomMaster id=$id removed $removed thumbnail/preview lines (was ${master.length}b now ${filtered.length}b)")
+    }
+    customMasters[id] = filtered
+    Log.d("Netmirror", "setCustomMaster id=$id size=${filtered.length}")
 }
 
 fun createNetmirrorInterceptor(): Interceptor {
@@ -741,7 +794,6 @@ fun m3u8CdnFixInterceptor(): Interceptor {
     return Interceptor { chain ->
         var req = chain.request()
         val url = req.url.toString()
-        // Serve custom master playlist if __cm=1 is present
         if (url.contains("__cm=1")) {
             val id = Regex("""/hls/(\d+)\.m3u8""").find(url)?.groupValues?.get(1)
             if (id != null) {
@@ -927,7 +979,7 @@ suspend fun getPlaylistUrl(
             Log.w("PlayPhp", "playlist.php $hlsDomain failed: ${e.message}")
         }
     }
-    // Fallback: try direct M3U8 with 3-part hash on all HLS domains
+
     for (hlsDomain in hlsDomains) {
         try {
             val m3u8Url = "$hlsDomain/hls/$id.m3u8?in=$cleanHash"

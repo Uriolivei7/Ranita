@@ -2,11 +2,13 @@ package com.horis.example
 
 import android.util.Log
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import java.net.URLEncoder
 import okhttp3.Interceptor
 import okhttp3.Response
+import org.jsoup.Jsoup
 
 class PrimevideoProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
@@ -14,10 +16,10 @@ class PrimevideoProvider : MainAPI() {
     override var mainUrl = "https://net52.cc"
     override var name = "PrimeVideo"
     override val hasMainPage = true
-
     private val ott = "pv"
     @Volatile private var lastBypassCookie = ""
     private var lastLoadedId = ""
+    private val cloudflareKiller by lazy { CloudflareKiller() }
 
     init {
         Log.e("Netmirror", "PrimevideoProvider init called")
@@ -73,8 +75,9 @@ class PrimevideoProvider : MainAPI() {
 
         try {
             val url = "$mainUrl/mobile/pv/search.php?s=${URLEncoder.encode(query, "UTF-8")}&t=${System.currentTimeMillis()}"
-            val data = app.get(url, headers = mHeaders, cookies = cookies, referer = "$mainUrl/home")
-                .parsed<MobileSearchData>()
+            val rawResp = app.get(url, headers = mHeaders, cookies = cookies, referer = "$mainUrl/home")
+            Log.e("Netmirror", "search raw response: ${rawResp.text.take(500)}")
+            val data = fromJson<MobileSearchData>(rawResp.text)
             return data.searchResult.orEmpty().map { item ->
                 newAnimeSearchResponse(item.t, NewTvId(item.id).toJson()) {
                     posterUrl = pvPoster(item.id)
@@ -207,7 +210,10 @@ class PrimevideoProvider : MainAPI() {
             override fun intercept(chain: Interceptor.Chain): Response {
                 val request = chain.request()
                 val url = request.url.toString()
-                val host = Regex("https://([^/]+)/").find(url)?.groupValues?.get(1).orEmpty()
+
+                if (!url.contains(".m3u8") && !url.contains(".ts") && !url.contains(".jpg")) {
+                    return chain.proceed(request)
+                }
 
                 var cookie = lastBypassCookie
                 if (cookie.isBlank()) {
@@ -219,17 +225,33 @@ class PrimevideoProvider : MainAPI() {
                     cookie.replace("%3A%3A", "::")
                 }
 
-                val builder = request.newBuilder()
+                val addHash = NetflixMirrorStorage.getAddhash().first ?: ""
 
-                if (host.contains("net52") || host.contains("net22") || host.contains("net11")) {
-                    builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
-                        .header("Referer", "https://net52.cc/")
-                        .header("Cookie", "t_hash_t=$rawCookie; hd=on; ott=pv")
+                val cookieStr = if (addHash.isNotBlank()) {
+                    "t_hash_t=$rawCookie; addhash=$addHash; hd=on; ott=pv"
                 } else {
-                    builder.header("Cookie", "hd=on")
+                    "t_hash_t=$rawCookie; hd=on; ott=pv"
                 }
 
-                return chain.proceed(builder.build())
+                val newRequest = request.newBuilder()
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.132 Safari/537.36 /OS.Gatu v3.0")
+                    .header("Referer", "$mainUrl/mobile/home?app=1")
+                    .header("Origin", mainUrl)
+                    .header("Cookie", cookieStr)
+                    .build()
+
+                val response = chain.proceed(newRequest)
+
+                try {
+                    val body = response.peekBody(1048576L)
+                    val html = body.string()
+                    if (html.contains("Just a moment", ignoreCase = true)) {
+                        Log.d("Netmirror", "Cloudflare detected, resolving...")
+                        return cloudflareKiller.intercept(chain)
+                    }
+                } catch (_: Exception) { }
+
+                return response
             }
         }
     }
