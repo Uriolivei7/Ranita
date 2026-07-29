@@ -1,18 +1,21 @@
 package com.example
 
 import android.util.Log
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.newSubtitleFile
 import java.net.URI
 
 class PlayhubProvider : MainAPI() {
     override var mainUrl = "https://www.playhubmax.com"
     override var name = "PlayHUB"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Cartoon)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon)
     override var lang = "mx"
     override val hasMainPage = true
     override val hasChromecastSupport = true
@@ -21,30 +24,24 @@ class PlayhubProvider : MainAPI() {
     private val apiUrl = "https://api.playhubmax.com/api"
 
     private val headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
         "Accept" to "application/json, text/plain, */*",
         "Accept-Language" to "es",
         "Origin" to mainUrl,
         "Referer" to "$mainUrl/",
-        "sec-ch-ua" to "\"Brave\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"",
+        "sec-ch-ua" to "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\", \"Brave\";v=\"150\"",
         "sec-ch-ua-mobile" to "?0",
         "sec-ch-ua-platform" to "\"Windows\"",
         "sec-fetch-dest" to "empty",
         "sec-fetch-mode" to "cors",
         "sec-fetch-site" to "same-site",
+        "sec-gpc" to "1",
+        "priority" to "u=1, i",
     )
 
-    private fun getImageUrl(artwork: Artwork?): String {
-        return artwork?.poster?.medium?.takeIf { it.isNotBlank() }
-            ?: artwork?.backdrop?.medium?.takeIf { it.isNotBlank() }
-            ?: artwork?.poster?.small.orEmpty()
-    }
+    private fun getImageUrl(artwork: Artwork?): String = ""
 
-    private fun getBackdropUrl(artwork: Artwork?): String {
-        return artwork?.backdrop?.large?.takeIf { it.isNotBlank() }
-            ?: artwork?.backdrop?.medium?.takeIf { it.isNotBlank() }
-            ?: artwork?.poster?.medium.orEmpty()
-    }
+    private fun getBackdropUrl(artwork: Artwork?): String = ""
 
     data class ApiContent(
         val id: Int,
@@ -100,7 +97,7 @@ class PlayhubProvider : MainAPI() {
     data class ContentDetailResponse(
         val id: Int,
         val uuid: String,
-        val title: String,
+        @JsonProperty("title") private val titleRaw: Any? = null,
         val overview: String?,
         val type: String?,
         val releaseDate: String?,
@@ -109,11 +106,24 @@ class PlayhubProvider : MainAPI() {
         val seasonCount: Int?,
         val episodeCount: Int?,
         val languages: List<String>?,
-        val artwork: Artwork?,
+        val artwork: HomeArtwork?,
         val genres: List<GenreItem>?,
         val people: List<PeopleItem>?,
         val seasons: List<SeasonItem>?,
-    )
+    ) {
+        fun displayTitle(): String {
+            @Suppress("UNCHECKED_CAST")
+            fun extractFromMap(m: Any): String {
+                val map = m as Map<String, String>
+                return map["es-419"] ?: map["es-ES"] ?: map["en-US"] ?: map.values.firstOrNull() ?: ""
+            }
+            return when (titleRaw) {
+                is Map<*, *> -> extractFromMap(titleRaw)
+                is String -> titleRaw
+                else -> ""
+            }
+        }
+    }
 
     data class SectionItem(
         val id: Int,
@@ -127,34 +137,102 @@ class PlayhubProvider : MainAPI() {
         val data: List<SectionItem>,
     )
 
+    data class HomePageData(
+        val placement: String? = null,
+        val sections: List<HomeSection>? = null,
+    )
+
+    data class HomeSection(
+        val uuid: String? = null,
+        val name: String? = null,
+        val maxItems: Int? = null,
+        val layout: String? = null,
+        @JsonProperty("itemType") val itemType: String? = null,
+        val showAll: Boolean? = null,
+        val items: List<HomeItem>? = null,
+    )
+
+    data class HomeItem(
+        val id: Int? = null,
+        val uuid: String? = null,
+        val title: String? = null,
+        val isAdult: Boolean? = null,
+        val overview: String? = null,
+        val artwork: HomeArtwork? = null,
+        val linkCount: Int? = null,
+    )
+
+    data class HomeArtwork(
+        val poster: List<ArtworkUrl>? = null,
+        val backdrop: List<ArtworkUrl>? = null,
+        val logo: List<ArtworkUrl>? = null,
+    )
+
+    data class ArtworkUrl(
+        val url: String? = null,
+        val width: Int? = null,
+        val blurhash: String? = null,
+    )
+
+    private fun getBestPoster(artwork: HomeArtwork?): String {
+        if (artwork == null) return ""
+        val sizes = listOf(320, 240, 420, 560)
+        for (size in sizes) {
+            val match = artwork.poster?.firstOrNull { it.width == size }?.url
+            if (!match.isNullOrBlank()) return match
+        }
+        return artwork.poster?.firstOrNull { !it.url.isNullOrBlank() }?.url ?: ""
+    }
+
+    private fun getBestBackdrop(artwork: HomeArtwork?): String {
+        if (artwork == null) return ""
+        val sizes = listOf(1280, 1920, 1080, 720)
+        for (size in sizes) {
+            val match = artwork.backdrop?.firstOrNull { it.width == size }?.url
+            if (!match.isNullOrBlank()) return match
+        }
+        return artwork.backdrop?.firstOrNull { !it.url.isNullOrBlank() }?.url
+            ?: getBestPoster(artwork)
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodeItem(
-        val id: Int,
-        val uuid: String,
-        @JsonProperty("seasonId") val seasonId: Int,
-        @JsonProperty("contentId") val contentId: Int,
-        @JsonProperty("episodeNumber") val episodeNumber: Int,
-        @JsonProperty("seasonNumber") val seasonNumber: Int,
-        val name: String,
-        val overview: String?,
-        val runtime: Int?,
-        val artwork: EpisodeArtwork?,
-        @JsonProperty("contentData") val contentData: EpisodeContentData?,
-    )
+        val id: Int? = null,
+        val uuid: String? = null,
+        @JsonProperty("seasonId") val seasonId: Int? = null,
+        @JsonProperty("contentId") val contentId: Int? = null,
+        @JsonProperty("episodeNumber") val episodeNumber: Int? = null,
+        @JsonProperty("seasonNumber") val seasonNumber: Int? = null,
+        val name: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        val overview: String? = null,
+        val runtime: Int? = null,
+        val artwork: EpisodeArtwork? = null,
+        @JsonProperty("contentData") val contentData: EpisodeContentData? = null,
+    ) {
+        fun displayName(): String {
+            return name ?: title ?: "Episode ${episodeNumber ?: ""}"
+        }
+    }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodeArtwork(
-        val backdrop: ImageSizes?,
+        val poster: List<ArtworkUrl>? = null,
+        val backdrop: List<ArtworkUrl>? = null,
     )
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodeContentData(
         val id: Int,
         val uuid: String,
         val title: String,
     )
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class EpisodesResponse(
-        val data: List<EpisodeItem>,
-        val currentPage: Int,
-        val hasMore: Boolean,
+        val data: List<EpisodeItem>? = null,
+        val currentPage: Int? = null,
+        val hasMore: Boolean? = null,
     )
 
     data class SourceResponse(
@@ -168,72 +246,148 @@ class PlayhubProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val sectionsRes = app.get(
-            "$apiUrl/es/content-sections",
-            headers = headers
-        ).parsed<SectionsResponse>()
+        val resp = app.get("$apiUrl/pages/home", headers = headers)
+        Log.d("PlayHub", "Homepage response status=${resp.code} len=${resp.text.length}")
+        val homeData = try {
+            resp.parsed<HomePageData>()
+        } catch (e: Exception) {
+            Log.e("PlayHub", "Failed to parse homepage: ${e.message}")
+            Log.d("PlayHub", "first200=${resp.text.take(200)}")
+            return newHomePageResponse(emptyList())
+        }
+        if (homeData.sections.isNullOrEmpty()) {
+            Log.e("PlayHub", "Homepage has no sections")
+            return newHomePageResponse(emptyList())
+        }
+        Log.d("PlayHub", "Homepage parsed OK: ${homeData.sections.size} sections")
 
-        val homePageLists = sectionsRes.data.mapNotNull { section ->
-            val items = try {
-                val contentsUrl = "$apiUrl${section.path}&page=$page"
-                val res = app.get(contentsUrl, headers = headers)
-                val parsed = tryParseJson<ContentListResponse>(res.text)
-                parsed?.data?.map { content ->
-                    newAnimeSearchResponse(content.title, "$mainUrl/content/${content.uuid}") {
-                        this.type = when (content.type) {
-                            "Movie" -> TvType.Movie
-                            "Show" -> TvType.TvSeries
-                            else -> TvType.Others
-                        }
-                        this.posterUrl = getImageUrl(content.artwork)
-                    }
-                } ?: emptyList()
-            } catch (e: Exception) {
-                Log.e("PlayHub", "Error loading section ${section.name}: ${e.message}")
-                emptyList()
+        val homePageLists = homeData.sections.mapNotNull { section ->
+            if (section.itemType != "content" || section.items.isNullOrEmpty()) return@mapNotNull null
+
+            val items = section.items.mapNotNull { item ->
+                if (item.uuid.isNullOrBlank() || item.title.isNullOrBlank()) return@mapNotNull null
+                val poster = getBestPoster(item.artwork)
+                newAnimeSearchResponse(item.title, "$mainUrl/content/${item.uuid}") {
+                    this.posterUrl = poster
+                }
             }
 
             if (items.isNotEmpty()) {
-                HomePageList(section.name, items)
+                HomePageList(section.name ?: "Section", items)
             } else null
         }
 
         return newHomePageResponse(homePageLists)
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val res = app.get(
-            "$apiUrl/ES/es/contents?q=$query",
-            headers = headers
-        )
-        val parsed = tryParseJson<ContentListResponse>(res.text)
-        return parsed?.data?.map { content ->
-            newAnimeSearchResponse(content.title, "$mainUrl/content/${content.uuid}") {
-                this.type = when (content.type) {
-                    "Movie" -> TvType.Movie
-                    "Show" -> TvType.TvSeries
-                    else -> TvType.Others
-                }
-                this.posterUrl = getImageUrl(content.artwork)
+    private val meiliUrl = "https://meili.playhub-plus.com"
+    private val meiliToken = "72750fbe7a11442219b3828261ddb4d6d3cbd38c90d57178e90c32fd03e05dfd"
+
+    data class MeiliSearchBody(
+        val queries: List<MeiliQuery>,
+    )
+
+    data class MeiliQuery(
+        val indexUid: String = "contents",
+        val q: String,
+        val limit: Int = 20,
+        val filter: String = "is_active = true AND is_adult = false",
+    )
+
+    data class MeiliResponse(
+        val results: List<MeiliResult>? = null,
+    )
+
+    data class MeiliResult(
+        val indexUid: String? = null,
+        val hits: List<MeiliHit>? = null,
+    )
+
+    data class MeiliHit(
+        val uuid: String? = null,
+        val title: Map<String, String>? = null,
+        val poster: Map<String, List<ArtworkUrl>>? = null,
+    ) {
+        fun displayTitle(): String {
+            return title?.get("es-419") ?: title?.get("es-ES") ?: title?.get("en-US") ?: title?.values?.firstOrNull() ?: ""
+        }
+        fun getPosterUrl(): String {
+            if (poster == null) return ""
+            val langPriority = listOf("es-419", "es-ES", "en-US")
+            for (lang in langPriority) {
+                val match = poster[lang]?.firstOrNull { it.width == 320 }?.url
+                    ?: poster[lang]?.firstOrNull { it.width == 240 }?.url
+                    ?: poster[lang]?.firstOrNull { !it.url.isNullOrBlank() }?.url
+                if (!match.isNullOrBlank()) return match
             }
-        } ?: emptyList()
+            for (list in poster.values) {
+                val match = list.firstOrNull { !it.url.isNullOrBlank() }?.url
+                if (!match.isNullOrBlank()) return match
+            }
+            return ""
+        }
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        val body = MeiliSearchBody(listOf(MeiliQuery(q = query)))
+        Log.d("PlayHub", "search query=$query")
+        val res = app.post(
+            "$meiliUrl/multi-search",
+            json = body,
+            headers = mapOf(
+                "Content-Type" to "application/json",
+                "Authorization" to "Bearer $meiliToken",
+                "Origin" to mainUrl,
+                "Referer" to "$mainUrl/",
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            )
+        )
+        Log.d("PlayHub", "search response status=${res.code} len=${res.text.length}")
+        val parsed = try {
+            res.parsed<MeiliResponse>()
+        } catch (e: Exception) {
+            Log.e("PlayHub", "Failed to parse search: ${e.message}")
+            return emptyList()
+        }
+        val hits = parsed.results?.firstOrNull()?.hits.orEmpty()
+        Log.d("PlayHub", "search hits=${hits.size}")
+        if (hits.isNotEmpty()) {
+            val first = hits.first()
+            val posterUrl = first.getPosterUrl()
+            Log.d("PlayHub", "first hit uuid=${first.uuid} title=${first.displayTitle()} posterSize=${first.poster?.size} posterUrl=${posterUrl.take(80)}")
+        }
+        return hits.mapNotNull { hit ->
+            val t = hit.displayTitle()
+            if (hit.uuid.isNullOrBlank() || t.isBlank()) return@mapNotNull null
+            newAnimeSearchResponse(t, "$mainUrl/content/${hit.uuid}") {
+                this.posterUrl = hit.getPosterUrl()
+            }
+        }
     }
 
     override suspend fun load(url: String): LoadResponse? {
+        Log.d("PlayHub", "load url=$url")
         val uuid = url.substringAfterLast("/")
         val detailRes = app.get(
-            "$apiUrl/es/contents/$uuid",
+            "$apiUrl/contents/$uuid",
             headers = headers
         )
-        val content = tryParseJson<ContentDetailResponse>(detailRes.text) ?: return null
+        Log.d("PlayHub", "load response status=${detailRes.code} len=${detailRes.text.length}")
+        val content = try {
+            detailRes.parsed<ContentDetailResponse>()
+        } catch (e: Exception) {
+            Log.e("PlayHub", "Failed to parse load: ${e.message}")
+            return null
+        }
 
         val tvType = if (content.type == "Movie") TvType.Movie else TvType.TvSeries
-        val posterUrl = getImageUrl(content.artwork)
-        val backdropUrl = getBackdropUrl(content.artwork)
+        val posterUrl = getBestPoster(content.artwork)
+        val backdropUrl = getBestBackdrop(content.artwork)
         val year = content.releaseDate?.substringBefore("-")?.toIntOrNull()
+        Log.d("PlayHub", "load type=${content.type} tvType=$tvType seasons=${content.seasons?.size} title=${content.displayTitle()}")
 
         if (tvType == TvType.Movie) {
-            return newMovieLoadResponse(content.title, url, tvType, "content:$uuid") {
+            return newMovieLoadResponse(content.displayTitle(), url, tvType, "content:$uuid") {
                 this.posterUrl = posterUrl
                 this.backgroundPosterUrl = backdropUrl
                 this.plot = content.overview
@@ -245,37 +399,53 @@ class PlayhubProvider : MainAPI() {
 
         val episodes = mutableListOf<Episode>()
         val seasons = content.seasons ?: emptyList()
+        Log.d("PlayHub", "load episodes: ${seasons.size} seasons")
 
         for (season in seasons.sortedBy { it.seasonNumber }) {
             var page = 1
             var hasMore = true
             while (hasMore) {
                 val epRes = app.get(
-                    "$apiUrl/es/episodes?season_id=${season.id}&page=$page",
+                    "$apiUrl/episodes?seasonId=${season.id}&page=$page",
                     headers = headers
                 )
-                val epParsed = tryParseJson<EpisodesResponse>(epRes.text)
-                if (epParsed != null) {
+                Log.d("PlayHub", "episodes season=${season.id} page=$page status=${epRes.code} len=${epRes.text.length}")
+                val epParsed = try {
+                    jacksonObjectMapper().readValue(epRes.text, EpisodesResponse::class.java)
+                } catch (e: Exception) {
+                    Log.e("PlayHub", "Failed to parse episodes: ${e.message}")
+                    Log.d("PlayHub", "episodes raw first 2000: ${epRes.text.take(2000)}")
+                    null
+                }
+                if (epParsed != null && epParsed.data != null) {
+                    Log.d("PlayHub", "episodes parsed: ${epParsed.data.size} items hasMore=${epParsed.hasMore}")
                     epParsed.data.forEach { ep ->
+                        val epPoster = ep.artwork?.backdrop?.firstOrNull { it.width == 320 }?.url
+                            ?: ep.artwork?.backdrop?.firstOrNull { it.width == 240 }?.url
+                            ?: ep.artwork?.backdrop?.firstOrNull { !it.url.isNullOrBlank() }?.url
+                            ?: ep.artwork?.poster?.firstOrNull { it.width == 320 }?.url
+                            ?: ep.artwork?.poster?.firstOrNull { !it.url.isNullOrBlank() }?.url
                         episodes.add(
-                            newEpisode("episode:${ep.uuid}") {
-                                this.name = ep.name
-                                this.season = ep.seasonNumber
-                                this.episode = ep.episodeNumber
-                                this.posterUrl = ep.artwork?.backdrop?.medium
+                            newEpisode("${mainUrl}/play/episode/${ep.uuid ?: ep.id}") {
+                                this.name = ep.displayName()
+                                this.season = ep.seasonNumber ?: 1
+                                this.episode = ep.episodeNumber ?: (episodes.size + 1)
+                                this.posterUrl = epPoster
                                 this.description = ep.overview
                             }
                         )
                     }
-                    hasMore = epParsed.hasMore
+                    hasMore = epParsed.hasMore ?: false
                     page++
                 } else {
+                    Log.e("PlayHub", "Failed to parse episodes response or empty data")
                     hasMore = false
                 }
             }
         }
+        Log.d("PlayHub", "load done: ${episodes.size} episodes total")
 
-        return newTvSeriesLoadResponse(content.title, url, tvType, episodes) {
+        return newTvSeriesLoadResponse(content.displayTitle(), url, tvType, episodes) {
             this.posterUrl = posterUrl
             this.backgroundPosterUrl = backdropUrl
             this.plot = content.overview
@@ -291,9 +461,8 @@ class PlayhubProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val splitIndex = data.lastIndexOf(':')
-        val type = if (splitIndex > 0 && data.substringBeforeLast(':').contains("/episode")) "episode" else "content"
-        val uuid = data.substring(splitIndex + 1)
+        val type = if (data.contains("/episode/")) "episode" else "content"
+        val uuid = if (data.contains("/episode/")) data.substringAfterLast("/") else data.substringAfterLast(":")
         val url = "$apiUrl/$type/$uuid/sources"
         Log.d("PlayHub", "loadLinks data: $data -> type=$type uuid=$uuid url=$url")
         val sourceRes = app.get(url, headers = headers)
@@ -320,6 +489,32 @@ class PlayhubProvider : MainAPI() {
         }
 
         return true
+    }
+
+    private suspend fun extractSubtitlesFromDecoded(js: String, pageUrl: String, subtitleCallback: (SubtitleFile) -> Unit) {
+        val tracksRegex = Regex("""tracks:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        val tracksMatch = tracksRegex.find(js) ?: return
+        val tracksContent = tracksMatch.groupValues[1]
+
+        val vttRegex = Regex("""file:\s*["']([^"']+\.vtt[^"']*)["']""")
+        val labelRegex = Regex("""label:\s*["']([^"']+)["']""")
+
+        val fileMatches = vttRegex.findAll(tracksContent).toList()
+        val labelMatches = labelRegex.findAll(tracksContent).toList()
+
+        for (i in fileMatches.indices) {
+            val rawUrl = fileMatches[i].groupValues[1].replace("\\/", "/")
+            val label = labelMatches.getOrNull(i)?.groupValues?.get(1) ?: "Subtitle"
+            val fullUrl = if (rawUrl.startsWith("http")) rawUrl else {
+                val uri = URI(pageUrl)
+                "${uri.scheme}://${uri.host}$rawUrl"
+            }
+            Log.d("PlayHub", "Subtitle: $label -> $fullUrl")
+            val subFile = newSubtitleFile(label, fullUrl) {
+                this.headers = mapOf("Referer" to pageUrl)
+            }
+            subtitleCallback.invoke(subFile)
+        }
     }
 
     private fun decodeEvalPacker(p: String, a: Int, c: Int, k: List<String>): String {
@@ -410,7 +605,8 @@ class PlayhubProvider : MainAPI() {
             Log.d("PlayHub", "Decoded length: ${decoded.length}")
             Log.d("PlayHub", "Decoded first 3000: ${decoded.take(3000)}")
 
-            // Prefer /stream/.../master.m3u8 path (goes through embed server proxy, more reliable)
+            extractSubtitlesFromDecoded(decoded, url, subtitleCallback)
+
             val streamPathRegex = Regex("""(/stream/[^"'\s]+/master\.(?:m3u8|txt))""")
             val streamPathMatch = streamPathRegex.find(decoded)
             if (streamPathMatch != null) {
@@ -432,7 +628,6 @@ class PlayhubProvider : MainAPI() {
                 return
             }
 
-            // Fallback: direct m3u8 CDN URLs (may have token expiration issues)
             val m3u8Regex = Regex("""(https?://[^"'\s]+/master\.m3u8[^"'\s]*)""")
             val m3u8Match = m3u8Regex.find(decoded)
             if (m3u8Match != null) {
@@ -451,7 +646,6 @@ class PlayhubProvider : MainAPI() {
                 return
             }
 
-            // Fallback: master.txt - fetch and parse to find actual m3u8 links
             val txtRegex = Regex("""(https?://[^"'\s]+/master\.txt[^"'\s]*)""")
             val txtMatch = txtRegex.find(decoded)
             if (txtMatch != null) {

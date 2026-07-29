@@ -502,7 +502,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlayhubProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "PlayHUB",
     "internalName": "PlayhubProvider",
@@ -515,9 +515,9 @@
       "Movie",
       "Cartoon"
     ],
-    "iconUrl": "https://img.icons8.com/?size=96&id=GwYlS5m5Goz6&format=png",
+    "iconUrl": "https://i.pinimg.com/736x/ab/99/19/ab9919a3fefdd712be72f03360c21cd0.jpg",
     "language": "mx",
-    "fileSize": 46000
+    "fileSize": 58000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MhdflixProvider.cs3",
@@ -597,7 +597,7 @@
       "Anime",
       "Movie"
     ],
-    "iconUrl": "https://pluto.tv/assets/images/favicon/large-9423670b9efa0f1ba821b3729ad1e94e.png",
+    "iconUrl": "https://pluto.tv/favicon/large.png",
     "language": "mx",
     "fileSize": 47000
   },
