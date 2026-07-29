@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.Score
+import okhttp3.Interceptor
+import okhttp3.Response
 
 class LamovieProvider : MainAPI() {
     override var mainUrl = "https://lamovie.org"
@@ -20,6 +22,30 @@ class LamovieProvider : MainAPI() {
     private val apiBase = "$mainUrl/wp-api/v1"
     private val TAG = "LaMovie"
     private val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request()
+                val url = request.url.toString()
+
+                val builder = request.newBuilder()
+
+                val ref = extractorLink.referer
+                if (ref.isNotBlank()) {
+                    builder.header("Referer", ref)
+                }
+
+                builder.header("User-Agent", USER_AGENT)
+                    .header("Connection", "close")
+                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                    .header("Pragma", "no-cache")
+                    .header("Expires", "0")
+
+                return chain.proceed(builder.build())
+            }
+        }
+    }
 
     private fun fixImg(url: String?): String? {
         if (url.isNullOrBlank()) return null
