@@ -3,6 +3,7 @@ package com.example
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.json.JSONArray
 import org.jsoup.Jsoup
 
 class TokianimeProvider : MainAPI() {
@@ -16,6 +17,15 @@ class TokianimeProvider : MainAPI() {
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
+    )
+
+    private fun apiHeaders(referer: String): Map<String, String> = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Accept" to "*/*",
+        "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
+        "Referer" to referer,
+        "Origin" to mainUrl,
+        "X-Requested-With" to "XMLHttpRequest",
     )
 
     override val mainPage = mainPageOf(
@@ -38,15 +48,12 @@ class TokianimeProvider : MainAPI() {
             } else {
                 "$mainUrl${request.data}${if (page > 1) "?page=$page" else ""}"
             }
-            Log.i("Tokianime", "getMainPage: fetching section='${request.name}' data='${request.data}' url='$url' page=$page")
             val html = app.get(url, headers = headers).text
-            Log.i("Tokianime", "getMainPage: HTML length=${html.length} primeros_200=${html.take(200)}")
             val doc = Jsoup.parse(html)
 
             if (request.data == "/") {
                 val items = mutableListOf<SearchResponse>()
                 val links = doc.select("section a[href^='/anime/']")
-                Log.i("Tokianime", "getMainPage(/): encontré ${links.size} links section a[href^=/anime/]")
                 links.forEach { link ->
                     val href = link.attr("href")
                     if (href.isBlank()) return@forEach
@@ -57,12 +64,8 @@ class TokianimeProvider : MainAPI() {
                         this.posterUrl = fixPoster(poster)
                     })
                 }
-                Log.i("Tokianime", "getMainPage(/): items después de parsear=${items.size}")
                 if (items.isEmpty()) {
                     Log.w("Tokianime", "getMainPage(/): 0 items, revisa el selector CSS 'section a[href^=/anime/]'")
-
-                    val fallbackLinks = doc.select("a[href^='/anime/']")
-                    Log.i("Tokianime", "getMainPage(/): fallback genérico encontró ${fallbackLinks.size} links")
                     return null
                 }
                 return newHomePageResponse(listOf(HomePageList("Tendencia", items.distinctBy { it.url }.take(50))), false)
@@ -71,7 +74,6 @@ class TokianimeProvider : MainAPI() {
             if (request.data == "#ultimos") {
                 val items = mutableListOf<SearchResponse>()
                 val links = doc.select("a[href^='/watch/']")
-                Log.i("Tokianime", "getMainPage(#ultimos): encontré ${links.size} links a[href^=/watch/]")
                 val seenSlugs = mutableSetOf<String>()
                 links.forEach { link ->
                     val href = link.attr("href")
@@ -92,7 +94,6 @@ class TokianimeProvider : MainAPI() {
                         this.posterUrl = fixPoster(poster)
                     })
                 }
-                Log.i("Tokianime", "getMainPage(#ultimos): items=${items.size} slugs_unicos=${seenSlugs.size}")
                 if (items.isEmpty()) {
                     Log.w("Tokianime", "getMainPage(#ultimos): 0 items, revisa selector 'a[href^=/watch/]'")
                     return null
@@ -102,7 +103,6 @@ class TokianimeProvider : MainAPI() {
 
             val items = mutableListOf<SearchResponse>()
             val links = doc.select("a[href^='/anime/']")
-            Log.i("Tokianime", "getMainPage('${request.data}'): encontré ${links.size} links a[href^=/anime/]")
             links.forEach { link ->
                 val href = link.attr("href")
                 if (href.isBlank()) return@forEach
@@ -116,7 +116,6 @@ class TokianimeProvider : MainAPI() {
 
             val hasNext = doc.select("a:contains(Siguiente)").isNotEmpty()
             val listName = request.name.ifBlank { request.data }
-            Log.i("Tokianime", "getMainPage('${request.data}'): items=${items.size} hasNext=$hasNext")
             if (items.isEmpty()) {
                 Log.w("Tokianime", "getMainPage('${request.data}'): 0 items, página posiblemente dinámica o selector incorrecto")
                 return null
@@ -139,16 +138,14 @@ class TokianimeProvider : MainAPI() {
         while (hasMore && results.size < 50) {
             try {
                 val apiUrl = "$mainUrl/api/catalog?adult=0&q=${query.replace(" ", "%20")}&page=$page&pageSize=$pageSize"
-                Log.i("Tokianime", "search: API query='$query' page=$page url=$apiUrl")
+                Log.i("Tokianime", "search: query='$query' page=$page")
                 val resp = app.get(apiUrl, headers = headers).text
-                Log.i("Tokianime", "search: API respuesta (primeros 300)=${resp.take(300)}")
 
                 if (resp.contains("\"items\":[]") || resp.contains("\"items\": []")) {
                     hasMore = false
                 } else {
                     val itemMatches = Regex(""""slug":"([^"]+)"[^}]*?"title":"([^"]+)"""", RegexOption.DOT_MATCHES_ALL).findAll(resp).toList()
                     val posters = Regex(""""coverImage":"([^"]+)"""", RegexOption.DOT_MATCHES_ALL).findAll(resp).toList()
-                    Log.i("Tokianime", "search: page=$page items=${itemMatches.size} posters=${posters.size}")
                     var added = 0
                     for ((idx, match) in itemMatches.withIndex()) {
                         val slug = match.groupValues[1]
@@ -189,7 +186,6 @@ class TokianimeProvider : MainAPI() {
 
             val pageUrl = "$mainUrl/anime/$slug"
             val html = app.get(pageUrl, headers = headers).text
-            Log.i("Tokianime", "load: HTML length=${html.length} primeros_300=${html.take(300)}")
             val doc = Jsoup.parse(html)
 
             val titleRaw = doc.selectFirst("meta[property='og:title']")?.attr("content")
@@ -211,7 +207,6 @@ class TokianimeProvider : MainAPI() {
             val year = if (yearRaw != null && yearRaw in 1900..2050) yearRaw else null
 
             val tags = doc.select("a[href^='/genero/']").mapNotNull { it.text().ifBlank { null } }.distinct()
-            Log.i("Tokianime", "load: tags=$tags year=$year score=$score")
 
             val episodes = mutableListOf<Episode>()
             val seenSlugs = mutableSetOf<String>()
@@ -220,13 +215,11 @@ class TokianimeProvider : MainAPI() {
                 val result = mutableListOf<Episode>()
                 try {
                     val apiUrl = "$mainUrl/api/anime/$epSlug/episodes"
-                    Log.i("Tokianime", "load: consultando API slug='$epSlug' season=$seasonNum: $apiUrl")
                     val apiResp = app.get(apiUrl, headers = headers).text
                     val withVideoMatch = Regex(""""withVideo":\[([^\]]+)\]""").find(apiResp)
                     if (withVideoMatch != null) {
                         val epNums = Regex("""\d+""").findAll(withVideoMatch.groupValues[1])
                             .map { it.value.toIntOrNull() }.filterNotNull().toList()
-                        Log.i("Tokianime", "load: API slug='$epSlug' withVideo=${epNums}")
                         for (epNum in epNums) {
                             val metaRegex = Regex(""""$epNum":\{"title":"([^"]*)","overview":"([^"]*)"""")
                             val metaMatch = metaRegex.find(apiResp)
@@ -258,7 +251,6 @@ class TokianimeProvider : MainAPI() {
                 if (suggestButton != null) {
                     val listId = suggestButton.attr("aria-controls")
                     val listItems = doc.select("div#$listId li")
-                    Log.i("Tokianime", "load: 'Ver orden sugerido' encontrado con ${listItems.size} entradas")
                     data class SeasonEntry(val slug: String, val name: String, val order: Int)
                     val entries = mutableListOf<SeasonEntry>()
                     for ((idx, item) in listItems.withIndex()) {
@@ -279,7 +271,6 @@ class TokianimeProvider : MainAPI() {
                         }
                     }.thenBy { it.order })
                     for ((seasonNum, entry) in entries.withIndex()) {
-                        Log.i("Tokianime", "load: orden sugerido #${seasonNum+1} slug='${entry.slug}' name='${entry.name}'")
                         val seasonEps = fetchEpisodes(entry.slug, seasonNum + 1)
                         episodes.addAll(seasonEps)
                     }
@@ -293,13 +284,11 @@ class TokianimeProvider : MainAPI() {
                     seenSlugs.add(slug)
                     val slugEps = fetchEpisodes(slug, 1)
                     episodes.addAll(slugEps)
-                    Log.i("Tokianime", "load: episodios desde API slug actual=${slugEps.size}")
                 }
             }
 
             if (episodes.isEmpty()) {
                 val epItems = doc.select("a[href^='/watch/$slug/']")
-                Log.i("Tokianime", "load: episodios por DOM (a[href^=/watch/$slug/]) = ${epItems.size}")
                 epItems.forEach { epLink ->
                     val epHref = epLink.attr("href")
                     val epText = epLink.text().trim()
@@ -317,14 +306,11 @@ class TokianimeProvider : MainAPI() {
             }
 
             if (episodes.isEmpty()) {
-                Log.i("Tokianime", "load: DOM no dio episodios, buscando regex de total de episodios")
                 val totalEps = Regex("""(\d+)\s*eps""", RegexOption.IGNORE_CASE).find(html)
                     ?.groupValues?.get(1)?.toIntOrNull()
                     ?: Regex("""(\d+)\s*/\s*(\d+)""").find(html)?.groupValues?.get(2)?.toIntOrNull()
                     ?: Regex("""(\d+)\s*de\s*(\d+)""").find(html)?.groupValues?.get(2)?.toIntOrNull()
-                Log.i("Tokianime", "load: totalEps por regex=$totalEps")
                 if (totalEps != null && totalEps in 1..1000) {
-                    Log.i("Tokianime", "load: generando $totalEps episodios por rango numérico")
                     for (i in 1..totalEps) {
                         episodes.add(newEpisode("$mainUrl/watch/$slug/$i") {
                             this.name = "Episodio $i"
@@ -357,7 +343,6 @@ class TokianimeProvider : MainAPI() {
                     this.posterUrl = fixPoster(recPoster)
                 }
             }.distinctBy { it.url }.take(20)
-            Log.i("Tokianime", "load: recomendaciones=${recommendations.size}")
 
             return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = fixPoster(poster)
@@ -386,52 +371,92 @@ class TokianimeProvider : MainAPI() {
 
             val watchUrl = "$mainUrl/watch/$slug/$epNum"
             val html = app.get(watchUrl, headers = headers).text
-            Log.i("Tokianime", "loadLinks: HTML length=${html.length} primeros_400=${html.take(400)}")
 
             val rscChunks = Regex("""self\.__next_f\.push\(\[.*?""").findAll(html).toList()
-            Log.i("Tokianime", "loadLinks: chunks RSC = ${rscChunks.size}")
-
-            val hasRankedServers = html.contains("rankedServers")
-            Log.i("Tokianime", "loadLinks: contiene 'rankedServers'=$hasRankedServers")
 
             val normalized = html.replace("\\\"", "\"")
+            val servers = parseRankedServers(normalized)
+            Log.i("Tokianime", "loadLinks: rankedServers parsed = ${servers.size}")
+            if (servers.isNotEmpty()) {
+                var found = false
+                val seenSids = mutableSetOf<String>()
+                for (server in servers) {
+                    val langRaw = server.first
+                    val qualityStr = server.second
+                    val srcRaw = server.third
+                    val lang = langRaw.uppercase()
+                    val quality = qualityStr.takeWhile { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
+                    val cleanSrc = srcRaw.replace("""\u0026""", "&")
+                    val apiUrl = "$mainUrl$cleanSrc"
+                    val sid = Regex("sid=([^&]+)").find(cleanSrc)?.groupValues?.get(1) ?: ""
+                    if (sid.isNotEmpty() && !seenSids.add(sid)) continue
+                    try {
+                        val respCall = app.get(apiUrl, headers = apiHeaders(watchUrl))
+                        val headBuf = ByteArray(10240)
+                        val headRead = respCall.body.byteStream().use { s -> s.read(headBuf) }
+                        val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
+                        val langLabel = labelFor(lang)
+                        Log.i("Tokianime", "loadLinks: [$langLabel] code=${respCall.code} len=$headRead head='${headStr.take(80)}'")
+                        if (headStr.trimStart().startsWith("#EXTM3U")) {
+                            callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.M3U8) {
+                                this.referer = mainUrl; this.quality = quality
+                            })
+                            found = true
+                            Log.i("Tokianime", "loadLinks: M3U8 [$langLabel] q=$quality")
+                        } else if (headStr.contains("ftyp")) {
+                            val iframeOk = tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
+                            if (!iframeOk) {
+                                callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.VIDEO) {
+                                    this.referer = mainUrl; this.quality = quality
+                                })
+                                found = true
+                                Log.i("Tokianime", "loadLinks: MP4 [$langLabel] q=$quality")
+                            } else {
+                                found = true
+                            }
+                        } else if (headStr.contains("<!DOCTYPE html", ignoreCase = true) || headStr.contains("<html", ignoreCase = true) || headStr.isBlank()) {
+                            tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
+                        } else {
+                            Log.w("Tokianime", "loadLinks: respuesta no reconocida para '$lang': '${headStr.take(100)}'")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Tokianime", "loadLinks: error al consultar API server: ${e.message}")
+                    }
+                }
+                Log.i("Tokianime", "loadLinks: resultado final=${if (found) "OK" else "SIN_ENLACES"}")
+                return found
+            }
+
             val playRegex = Regex(""""lang":"([^"]+)".*?"quality":"([^"]+)".*?"play":\{"src":"(/api/player/source[^"]+)""")
             val matches = playRegex.findAll(normalized).toList()
-            Log.i("Tokianime", "loadLinks: matches de regex playSrc (normalizado) = ${matches.size}")
 
             val allPlayUrls = Regex("""/api/player/source[^"]*""").findAll(normalized).toList()
                 .map { it.value.replace("""\u0026""", "&") }
                 .filter { it.contains("mode=play") }
                 .distinct()
-            Log.i("Tokianime", "loadLinks: allPlayUrls total=${allPlayUrls.size}")
 
             if (matches.isEmpty()) {
-                Log.w("Tokianime", "loadLinks: 0 matches incluso normalizado. Buscando '/api/player/source' en HTML crudo...")
+                Log.w("Tokianime", "loadLinks: 0 matches. Buscando '/api/player/source' en HTML crudo...")
                 val rawMatches = Regex("""/api/player/source[^"\\]*""").findAll(html).toList()
                 val normMatches = Regex("""/api/player/source[^"]*""").findAll(normalized).toList()
-                Log.i("Tokianime", "loadLinks: raw src matches=${rawMatches.map { it.value }}")
-                Log.i("Tokianime", "loadLinks: normalized src matches=${normMatches.map { it.value.take(100) }}")
+                Log.i("Tokianime", "loadLinks: raw=${rawMatches.size} norm=${normMatches.size}")
 
                 val rscFull = rscChunks.joinToString("") { it.value }
                     .replace("\\\"", "\"")
                     .replace("\\n", "")
                     .replace("\\t", "")
                 val rankedMatch = Regex(""""rankedServers""").find(rscFull)
-                Log.i("Tokianime", "loadLinks: rankedServers en RSC unido=${rankedMatch != null}")
                 if (rankedMatch != null) {
 
                     val srcRegex = Regex(""""src":"(/api/player/source[^"]+)""")
                     val srcs = srcRegex.findAll(rscFull).map { it.groupValues[1] }.toList()
-                    Log.i("Tokianime", "loadLinks: srcs de RSC unido = ${srcs}")
                     for (src in srcs) {
                         try {
                             val apiUrl = "$mainUrl$src"
-                            Log.i("Tokianime", "loadLinks: intentando API (RSC fallback): $apiUrl")
-                            val respCall = app.get(apiUrl, headers = headers)
+                            val respCall = app.get(apiUrl, headers = apiHeaders(watchUrl))
                             val headBuf = ByteArray(100)
                             val headRead = respCall.body.byteStream().use { s -> s.read(headBuf) }
                             val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
-                            Log.i("Tokianime", "loadLinks: header='${headStr.take(50)}'")
                             if (headStr.trimStart().startsWith("#EXTM3U") || headStr.contains("ftyp")) {
                                 val linkType = if (headStr.trimStart().startsWith("#EXTM3U")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                                 Log.i("Tokianime", "loadLinks: enlace válido via RSC fallback! type=$linkType url='$apiUrl'")
@@ -448,14 +473,12 @@ class TokianimeProvider : MainAPI() {
 
                 Log.i("Tokianime", "loadLinks: probando normMatches como fallback final...")
                 val playUrls = normMatches.map { it.value }.distinct().filter { it.contains("mode=play") }
-                Log.i("Tokianime", "loadLinks: normMatches con mode=play = ${playUrls.size}")
                 for (src in playUrls) {
                     try {
                         val apiUrl = "$mainUrl${src.replace("""\u0026""", "&")}"
-                        Log.i("Tokianime", "loadLinks: intentando normMatch: $apiUrl")
                         try {
 
-                            val call = app.get(apiUrl, headers = headers)
+                            val call = app.get(apiUrl, headers = apiHeaders(watchUrl))
                             val headBuf = ByteArray(100)
                             val headRead = call.body.byteStream().use { s -> s.read(headBuf) }
                             val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
@@ -482,33 +505,22 @@ class TokianimeProvider : MainAPI() {
             val allLangs = matches.map { it.groupValues[1].uppercase() }.toSet()
             val hasEs = allLangs.any { it == "ES" }
             val hasLat = allLangs.contains("LAT")
-            fun labelFor(raw: String): String {
-                val upper = raw.uppercase()
-                if (upper == "SUB") return "SUB"
-
-                if (hasEs && hasLat && upper == "ES") return "ES"
-                if (hasEs && hasLat && upper == "LAT") return "LAT"
-                return upper
-            }
-            Log.i("Tokianime", "loadLinks: allLangs=$allLangs hasEs=$hasEs hasLat=$hasLat")
 
             for ((idx, match) in matches.withIndex()) {
                 val lang = match.groupValues[1]
                 val qualityStr = match.groupValues[2]
                 val playSrc = match.groupValues[3]
                 val quality = qualityStr.takeWhile { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
-                Log.i("Tokianime", "loadLinks: match[$idx] lang='$lang' quality='$qualityStr' q=$quality src='$playSrc'")
 
                 val cleanSrc = playSrc.replace("""\u0026""", "&")
                 val apiUrl = "$mainUrl$cleanSrc"
-                Log.i("Tokianime", "loadLinks: consultando API player source: $apiUrl")
                 try {
-                    val respCall = app.get(apiUrl, headers = headers)
+                    val respCall = app.get(apiUrl, headers = apiHeaders(watchUrl))
                     val headBuf = ByteArray(10240)
                     val headRead = respCall.body.byteStream().use { s -> s.read(headBuf) }
                     val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
-                    Log.i("Tokianime", "loadLinks: header='${headStr.take(100)}'")
                     val langLabel = labelFor(lang)
+                    Log.i("Tokianime", "loadLinks: match[$idx] code=${respCall.code} len=$headRead")
 
                     if (headStr.trimStart().startsWith("#EXTM3U")) {
                         callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.M3U8) {
@@ -524,7 +536,6 @@ class TokianimeProvider : MainAPI() {
                                 this.referer = mainUrl; this.quality = quality
                             })
                             found = true
-                            Log.i("Tokianime", "loadLinks: enlace MP4 agregado [$langLabel] q=$quality")
                         } else {
                             found = true
                         }
@@ -561,7 +572,7 @@ class TokianimeProvider : MainAPI() {
                 Log.i("Tokianime", "loadLinks: extra server sid=$extraSid lang=$extraLang q=$extraQuality")
                 val extraUrl = "$mainUrl$extraSrc"
                 try {
-                    val extraCall = app.get(extraUrl, headers = headers)
+                    val extraCall = app.get(extraUrl, headers = apiHeaders(watchUrl))
                     val extraBuf = ByteArray(10240)
                     val extraRead = extraCall.body.byteStream().use { s -> s.read(extraBuf) }
                     val extraHead = if (extraRead > 0) String(extraBuf, 0, extraRead) else ""
@@ -578,7 +589,6 @@ class TokianimeProvider : MainAPI() {
                                 this.referer = mainUrl; this.quality = extraQuality
                             })
                             found = true
-                            Log.i("Tokianime", "loadLinks: extra server MP4 [$extraLang] q=$extraQuality")
                         } else { found = true }
                     }
                 } catch (e: Exception) {
@@ -593,14 +603,79 @@ class TokianimeProvider : MainAPI() {
         }
     }
 
+    private fun labelFor(raw: String): String {
+        return when (raw.uppercase()) {
+            "SUB" -> "SUB"
+            "LAT" -> "LAT"
+            "ES" -> "ES"
+            "CAST" -> "CAST"
+            else -> raw.uppercase()
+        }
+    }
+
+    private fun parseRankedServers(html: String): List<Triple<String, String, String>> {
+        val result = mutableListOf<Triple<String, String, String>>()
+        val idx = html.indexOf("\"rankedServers\":")
+        if (idx < 0) return result
+        val arrStart = html.indexOf('[', idx)
+        if (arrStart < 0) return result
+        var depth = 0
+        var end = -1
+        var inString = false
+        var i = arrStart
+        while (i < html.length) {
+            val ch = html[i]
+            if (inString) {
+                if (ch == '\\') {
+                    i += 2
+                    continue
+                }
+                if (ch == '"') inString = false
+            } else {
+                when (ch) {
+                    '"' -> inString = true
+                    '{', '[' -> depth++
+                    '}', ']' -> {
+                        depth--
+                        if (depth == 0) {
+                            end = i
+                            break
+                        }
+                    }
+                }
+            }
+            i++
+        }
+        if (end < 0) return result
+        val arrayJson = html.substring(arrStart, end + 1)
+        return try {
+            val array = JSONArray(arrayJson)
+            for (j in 0 until array.length()) {
+                val obj = array.optJSONObject(j) ?: continue
+                val lang = obj.optString("lang", "")
+                val quality = obj.optString("quality", "")
+                val play = obj.optJSONObject("play")
+                val src = play?.optString("src", "") ?: ""
+                if (src.isNotEmpty() && src.contains("mode=play")) {
+                    result.add(Triple(lang, quality, src))
+                }
+            }
+            result
+        } catch (e: Exception) {
+            Log.e("Tokianime", "loadLinks: parseRankedServers error: ${e.message}")
+            result
+        }
+    }
+
     private suspend fun tryFallbackIframe(apiUrl: String, langLabel: String, quality: Int, callback: (ExtractorLink) -> Unit, mainUrl: String): Boolean {
         val iframeUrl = apiUrl.replace("mode=play", "mode=iframe")
         Log.i("Tokianime", "loadLinks: probando iframe fallback: $iframeUrl")
         return try {
-            val iframeCall = app.get(iframeUrl)
+            val iframeCall = app.get(iframeUrl, headers = apiHeaders(iframeUrl))
             val iframeBuf = ByteArray(10240)
             val iframeRead = iframeCall.body.byteStream().use { s -> s.read(iframeBuf) }
             val iframeStr = if (iframeRead > 0) String(iframeBuf, 0, iframeRead) else ""
+            Log.i("Tokianime", "loadLinks: iframe code=${iframeCall.code} len=$iframeRead head='${iframeStr.take(120)}'")
             val m3u8InIframe = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""").find(iframeStr)?.groupValues?.get(1)
             if (m3u8InIframe != null) {
                 callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", m3u8InIframe, ExtractorLinkType.M3U8) {
