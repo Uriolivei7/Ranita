@@ -797,6 +797,28 @@
         "name": "TvporinternetProvider"
     },
     {
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
+        "fileHash": "sha256-30154195471749d7836a065a9ed0a1e6c879e8a9f4375ef3b4a4d3c6579fcecf",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 56919,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 1,
+        "internalName": "UniquestreamProvider",
+        "description": "Espa\u00f1ola (Spanish) Anime Extension",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/UniquestreamProvider.cs3",
+        "name": "UniquestreamProvider"
+    },
+    {
         "fileHash": "sha256-61e77fbb5be13d9225c649fd101b4294e3b3839b300b69b911f6a25d3735b0f4",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
