@@ -39,40 +39,36 @@ class MonoschinosProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
+        val items = ArrayList<HomePageList>()
         val urls = listOf(
             Pair("$mainUrl/emision", "Recientes"),
             Pair("$mainUrl/animes", "Animes"),
         )
-        val items = ArrayList<HomePageList>()
-        val isHorizontal = true
+
         items.add(
             HomePageList(
-                "Capítulos actualizados",
-                app.get(mainUrl, timeout = 120).document.select(".row-cols-xl-4 li article").map {
-                    val title = it.selectFirst("h2")?.text() ?: it.selectFirst("h2.text-truncate")?.text() ?: ""
-                    val poster =
-                        it.selectFirst("img")?.attr("data-src") ?: ""
-
-                    val epRegex = Regex("episodio-(\\d+)")
-                    val url = it.selectFirst("a")?.attr("href")!!.replace("ver/", "anime/")
-                        .replace(epRegex, "sub-espanol")
-                    val epNum = (it.selectFirst("article span.episode")?.text() ?: it.selectFirst("div.positioning p")?.text())?.toIntOrNull()
+                "Últimos capítulos",
+                app.get(mainUrl, timeout = 120).document.select("a.card-wrap").map {
+                    val title = it.selectFirst("h3.card-title")?.text() ?: ""
+                    val poster = it.selectFirst("img.card-img")?.attr("data-src") ?: ""
+                    val href = it.attr("href")
+                    val url = href.replace("ver/", "anime/")
+                        .replace(Regex("episodio-\\d+"), "sub-espanol")
+                    val epNum = Regex("""episodio-(\d+)""").find(href)?.groupValues?.get(1)?.toIntOrNull()
                     newAnimeSearchResponse(title, url) {
                         this.posterUrl = fixUrl(poster)
                         addDubStatus(getDubStatus(title), epNum)
                     }
-                }, isHorizontal)
+                }, isHorizontalImages = true)
         )
 
         urls.amap { (url, name) ->
 
-            val home = app.get(url, timeout = 120).document.select("li.col").map {
-                val title = it.selectFirst("h3")!!.text()
-                val poster =
-                    it.selectFirst("img")?.attr("data-src")
-                        ?: ""
+            val home = app.get(url, timeout = 120).document.select("a.card-wrap").map {
+                val title = it.selectFirst("h3.card-title")?.text() ?: ""
+                val poster = it.selectFirst("img.card-img")?.attr("data-src") ?: ""
 
-                newAnimeSearchResponse(title, fixUrl(it.selectFirst("a")!!.attr("href"))) {
+                newAnimeSearchResponse(title, fixUrl(it.attr("href"))) {
                     this.posterUrl = fixUrl(poster)
                     addDubStatus(getDubStatus(title))
                 }
@@ -95,14 +91,14 @@ class MonoschinosProvider : MainAPI() {
             )
             Log.d(TAG, "search: HTTP ${resp.code}, len=${resp.text.length}")
             val doc = resp.document
-            val items = doc.select("li.col")
+            val items = doc.select("a.card-wrap")
             Log.d(TAG, "search: found ${items.size} items")
 
             val results = items.mapNotNull { el ->
                 try {
-                    val title = el.selectFirst("h3")?.text() ?: el.selectFirst("h2")?.text() ?: return@mapNotNull null
-                    val href = el.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                    val image = el.selectFirst("img")?.attr("data-src") ?: el.selectFirst("img")?.attr("src") ?: ""
+                    val title = el.selectFirst("h3.card-title")?.text() ?: return@mapNotNull null
+                    val href = el.attr("href") ?: return@mapNotNull null
+                    val image = el.selectFirst("img.card-img")?.attr("data-src") ?: el.selectFirst("img.card-img")?.attr("src") ?: ""
                     Log.d(TAG, "search: item title='$title' href=$href")
                     newAnimeSearchResponse(title, fixUrl(href), TvType.Anime) {
                         this.posterUrl = fixUrl(image)
@@ -146,8 +142,7 @@ class MonoschinosProvider : MainAPI() {
 
         Log.d(TAG, "load: HTML title='${doc.title()}', body length=${doc.text().length}")
         Log.d(TAG, "load: .caplist found=${doc.selectFirst(".caplist") != null}")
-        Log.d(TAG, "load: img.w-100 found=${doc.selectFirst("img.w-100") != null}")
-        Log.d(TAG, "load: .fs-2 found=${doc.selectFirst(".fs-2") != null}")
+        Log.d(TAG, "load: h1 found=${doc.selectFirst("h1") != null}")
 
         if (doc.selectFirst(".caplist") == null) {
             Log.e(TAG, "load: .caplist NO ENCONTRADO — posible bloqueo Cloudflare o cambio de HTML")
@@ -157,15 +152,14 @@ class MonoschinosProvider : MainAPI() {
 
         val caplist = doc.selectFirst(".caplist")!!.attr("data-ajax")
         Log.d(TAG, "load: caplist url=$caplist")
-        val poster = doc.selectFirst("img.w-100")!!.attr("data-src")
-        val backimage = doc.selectFirst("img.rounded-3")!!.attr("data-src")
-        val title = doc.selectFirst(".fs-2")!!.text()
-        val type = doc.selectFirst("div.bg-transparent > dl:nth-child(1) > dd:nth-child(2)")?.text() ?: ""
-        val description = doc.selectFirst("div.mb-3")!!.text().replace("Ver menos", "")
-        val genres = doc.select(".my-4 > div a span").map { it.text() }
-        val status = when (doc.selectFirst("div.col:nth-child(1) > div:nth-child(1) > div")?.text()) {
-            "Estreno" -> ShowStatus.Ongoing
+        val poster = doc.selectFirst("img.lazy")?.attr("data-src") ?: doc.selectFirst("img[data-src]")?.attr("data-src") ?: ""
+        val title = doc.selectFirst("h1")?.text() ?: doc.title()
+        val type = doc.select("span.uppercase.text-brand").firstOrNull()?.text() ?: ""
+        val description = doc.select("main p").firstOrNull()?.text() ?: ""
+        val genres = doc.select("a[href^='/genero/']").map { it.text() }
+        val status = when (doc.select("span.uppercase").firstOrNull()?.text()?.trim()) {
             "Finalizado" -> ShowStatus.Completed
+            "En emisión" -> ShowStatus.Ongoing
             else -> null
         }
         Log.d(TAG, "load: title='$title' type='$type' status=$status poster=$poster")
@@ -203,7 +197,7 @@ class MonoschinosProvider : MainAPI() {
             val thumbUrl = if (!ep.thumb.isNullOrBlank()) {
                 if (ep.thumb.startsWith("http")) ep.thumb else "$mainUrl${ep.thumb}"
             } else {
-                backimage
+                poster
             }
 
             newEpisode(epUrl) {
@@ -214,7 +208,6 @@ class MonoschinosProvider : MainAPI() {
 
         return newAnimeLoadResponse(title, url, getType(type)) {
             posterUrl = poster
-            backgroundPosterUrl = backimage
             addEpisodes(DubStatus.Subbed, epList)
             showStatus = status
             plot = description
@@ -228,8 +221,8 @@ class MonoschinosProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        app.get(data).document.select("#myTab li").amap {
-            val encodedurl = it.select(".play-video").attr("data-player")
+        app.get(data).document.select(".play-video").amap {
+            val encodedurl = it.attr("data-player")
             val urlDecoded = base64Decode(encodedurl)
             val url = (urlDecoded).replace("https://monoschinos2.com/reproductor?url=", "")
                 .replace("https://sblona.com","https://watchsb.com").replace("https://swdyu.com","https://streamwish.to")
