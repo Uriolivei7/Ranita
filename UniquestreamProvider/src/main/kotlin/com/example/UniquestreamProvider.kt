@@ -6,6 +6,10 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.*
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -174,51 +178,39 @@ class UniqueStreamProvider : MainAPI() {
         ).text
 
         val details = AppUtils.parseJson<DetailsResponse>(seriesResponse)
-        val episodesList = mutableListOf<Episode>()
         val processedSeasonIds = mutableSetOf<String>()
 
-        details.seasons?.forEach { season ->
-            if (processedSeasonIds.contains(season.content_id)) return@forEach
-            processedSeasonIds.add(season.content_id)
+        val orderedSeasons = (details.seasons ?: emptyList())
+            .filter { processedSeasonIds.add(it.content_id) }
+            .sortedWith(
+                compareBy<SeasonItem> { it.season_seq_number ?: it.season_number }
+                    .thenBy { it.season_number }
+            )
 
-            var page = 1
-            var keepLoading = true
+        val seasonResults = mutableListOf<Pair<Int, List<EpisodeItem>>>()
 
-            while (keepLoading) {
-                try {
-                    val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$page&limit=20&order_by=asc"
-                    val response = app.get(seasonUrl, headers = baseHeaders, timeout = 30L).text
-
-                    if (response.trim().startsWith("[")) {
-                        val eps = AppUtils.parseJson<List<EpisodeItem>>(response)
-
-                        if (eps.isEmpty()) {
-                            keepLoading = false
-                        } else {
-                            eps.forEach { ep ->
-                                if (ep.is_clip != true) {
-                                    episodesList.add(newEpisode(ep.content_id) {
-                                        this.name = ep.title
-                                        this.episode = ep.episode_number?.toInt()
-                                        this.season = season.season_number
-                                        this.posterUrl = ep.image
-                                    })
-                                }
-                            }
-
-                            if (eps.size < 20) {
-                                keepLoading = false
-                            } else {
-                                page++
-                            }
-                        }
-                    } else {
-                        keepLoading = false
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error en paginación: ${e.message}")
-                    keepLoading = false
+        coroutineScope {
+            val jobs = orderedSeasons.mapIndexed { index, season ->
+                async {
+                    val displaySeason = index + 1
+                    val eps = loadSeasonEpisodes(season)
+                    displaySeason to eps
                 }
+            }
+            jobs.forEach { job ->
+                seasonResults.add(job.await())
+            }
+        }
+
+        val episodesList = mutableListOf<Episode>()
+        seasonResults.sortedBy { it.first }.forEach { (displaySeason, eps) ->
+            eps.forEach { ep ->
+                episodesList.add(newEpisode(ep.content_id) {
+                    this.name = ep.title
+                    this.episode = ep.episode_number?.toInt()
+                    this.season = displaySeason
+                    this.posterUrl = ep.image
+                })
             }
         }
 
@@ -242,6 +234,72 @@ class UniqueStreamProvider : MainAPI() {
             this.tags = (details.audio_locales ?: emptyList()) + (details.subtitle_locales ?: emptyList())
             addEpisodes(DubStatus.Subbed, episodesList)
         }
+    }
+
+    private suspend fun loadSeasonEpisodes(season: SeasonItem): List<EpisodeItem> {
+        val episodeCount = season.episode_count ?: 0
+        val totalPages = if (episodeCount > 0) {
+            (episodeCount + 19) / 20
+        } else {
+            1
+        }
+
+        val pageResults = mutableListOf<List<EpisodeItem>>()
+
+        coroutineScope {
+            val jobs = (1..totalPages).map { page ->
+                async {
+                    try {
+                        val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$page&limit=20&order_by=asc"
+                        val response = app.get(seasonUrl, headers = baseHeaders, timeout = 30L).text
+                        if (response.trim().startsWith("[")) {
+                            AppUtils.parseJson<List<EpisodeItem>>(response)
+                        } else {
+                            emptyList()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error en página $page: ${e.message}")
+                        emptyList()
+                    }
+                }
+            }
+            jobs.forEach { job ->
+                pageResults.add(job.await())
+            }
+        }
+
+        val allEps = pageResults.flatten().toMutableList()
+
+        if (episodeCount <= 0) {
+            var extraPage = totalPages + 1
+            var keepLoading = true
+            while (keepLoading) {
+                try {
+                    val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$extraPage&limit=20&order_by=asc"
+                    val response = app.get(seasonUrl, headers = baseHeaders, timeout = 30L).text
+                    if (response.trim().startsWith("[")) {
+                        val eps = AppUtils.parseJson<List<EpisodeItem>>(response)
+                        if (eps.isEmpty()) {
+                            keepLoading = false
+                        } else {
+                            allEps.addAll(eps)
+                            extraPage++
+                            if (eps.size < 20) keepLoading = false
+                        }
+                    } else {
+                        keepLoading = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error en paginación extra: ${e.message}")
+                    keepLoading = false
+                }
+            }
+        }
+
+        return allEps
+            .distinctBy { it.content_id }
+            .filter { it.is_clip != true }
+            .sortedBy { it.episode_number ?: 0.0 }
     }
 
     override suspend fun loadLinks(
@@ -426,7 +484,9 @@ class UniqueStreamProvider : MainAPI() {
     data class SeasonItem(
         val content_id: String,
         val season_number: Int,
-        val title: String? = null
+        val title: String? = null,
+        val episode_count: Int? = null,
+        val season_seq_number: Int? = null
     )
 
     @Serializable

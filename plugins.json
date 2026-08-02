@@ -678,7 +678,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TokianimeProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "name": "TokiAnime",
     "internalName": "TokianimeProvider",
@@ -710,6 +710,6 @@
     ],
     "iconUrl": "https://anime.uniquestream.net/favicon.ico",
     "language": "mx",
-    "fileSize": 67000
+    "fileSize": 61000
   }
 ]
