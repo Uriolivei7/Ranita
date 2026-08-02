@@ -69,13 +69,31 @@ class UniqueStreamProvider : MainAPI() {
 
     private val keyRegex = Regex("/([0-9a-f]{32})_[^/]+/master\\.m3u8")
 
+    private fun sha256(data: ByteArray): ByteArray =
+        java.security.MessageDigest.getInstance("SHA-256").digest(data)
+
+    private fun aesCbcDecrypt(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray? {
+        return try {
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(
+                javax.crypto.Cipher.DECRYPT_MODE,
+                javax.crypto.spec.SecretKeySpec(key, "AES"),
+                javax.crypto.spec.IvParameterSpec(iv)
+            )
+            cipher.doFinal(data)
+        } catch (e: Exception) {
+            Log.w(TAG, "aesCbcDecrypt error: ${e.message}")
+            null
+        }
+    }
+
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
         val linkUrl = extractorLink.url
         val mediaId = keyRegex.find(linkUrl)?.groupValues?.get(1)
             ?: Regex("/([0-9a-f]{32})_[^/]+/").find(linkUrl)?.groupValues?.get(1)
 
-        val realKey: ByteArray? = try {
+        val fallbackKey: ByteArray? = try {
             if (mediaId != null && mediaId.length == 32) {
                 mediaId.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             } else null
@@ -89,16 +107,44 @@ class UniqueStreamProvider : MainAPI() {
                 val request = chain.request()
                 val url = request.url.toString()
 
-                if (realKey != null && url.contains("keys/") && url.contains("key.bin")) {
-                    Log.d(TAG, "Interceptando key.bin -> ${realKey.toHex()}")
-                    return Response.Builder()
-                        .request(request)
-                        .protocol(okhttp3.Protocol.HTTP_1_1)
-                        .code(200)
-                        .message("OK")
-                        .header("Content-Type", "application/octet-stream")
-                        .body(ResponseBody.create("application/octet-stream".toMediaTypeOrNull(), realKey))
+                if (url.contains("keys/") && url.contains("key.bin") && mediaId != null) {
+                    val realRequest = request.newBuilder()
+                        .header("x-am-media-id", mediaId)
                         .build()
+                    val rawBody = try {
+                        chain.proceed(realRequest).body?.bytes()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "key.bin fetch error: ${e.message}")
+                        null
+                    }
+
+                    val derivedKey: ByteArray? = rawBody?.let { body ->
+                        val b64 = String(body).trim()
+                        val encrypted = try {
+                            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "key.bin base64 error: ${e.message}")
+                            null
+                        }
+                        if (encrypted != null) {
+                            val dek = sha256("key$mediaId".toByteArray()).copyOfRange(0, 16)
+                            val div = sha256("iv$mediaId".toByteArray()).copyOfRange(0, 16)
+                            aesCbcDecrypt(encrypted, dek, div)
+                        } else null
+                    }
+
+                    val realKey = derivedKey ?: fallbackKey
+                    if (realKey != null) {
+                        Log.d(TAG, "Interceptando key.bin -> ${realKey.toHex()} (derived=${derivedKey != null})")
+                        return Response.Builder()
+                            .request(request)
+                            .protocol(okhttp3.Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .header("Content-Type", "application/octet-stream")
+                            .body(ResponseBody.create("application/octet-stream".toMediaTypeOrNull(), realKey))
+                            .build()
+                    }
                 }
                 return chain.proceed(request)
             }
@@ -210,6 +256,7 @@ class UniqueStreamProvider : MainAPI() {
                     this.episode = ep.episode_number?.toInt()
                     this.season = displaySeason
                     this.posterUrl = ep.image
+                    ep.duration_ms?.let { this.runTime = (it / 60000).toInt().coerceAtLeast(1) }
                 })
             }
         }
@@ -231,7 +278,8 @@ class UniqueStreamProvider : MainAPI() {
         return newAnimeLoadResponse(details.title ?: "Sin Título", url, TvType.Anime) {
             this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
             this.plot = fullPlot
-            this.tags = (details.audio_locales ?: emptyList()) + (details.subtitle_locales ?: emptyList())
+            this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
+            if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
             addEpisodes(DubStatus.Subbed, episodesList)
         }
     }
@@ -477,7 +525,16 @@ class UniqueStreamProvider : MainAPI() {
         val images: List<ImageItem>? = null,
         val seasons: List<SeasonItem>? = null,
         val audio_locales: List<String>? = null,
-        val subtitle_locales: List<String>? = null
+        val subtitle_locales: List<String>? = null,
+        val genre: List<GenreItem>? = null,
+        val rating_avg: Double? = null,
+        val rating_count: Int? = null
+    )
+
+    @Serializable
+    data class GenreItem(
+        val title: String? = null,
+        val name: String? = null
     )
 
     @Serializable
@@ -496,7 +553,8 @@ class UniqueStreamProvider : MainAPI() {
         val title: String? = null,
         val episode_number: Double? = null,
         val image: String? = null,
-        val is_clip: Boolean? = false
+        val is_clip: Boolean? = false,
+        val duration_ms: Long? = null
     )
 
     @Serializable
