@@ -275,12 +275,11 @@ class UniqueStreamProvider : MainAPI() {
             }
         }
 
-        return newAnimeLoadResponse(details.title ?: "Sin Título", url, TvType.Anime) {
+        return newTvSeriesLoadResponse(details.title ?: "Sin Título", url, TvType.TvSeries, episodesList) {
             this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
             this.plot = fullPlot
             this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
             if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
-            addEpisodes(DubStatus.Subbed, episodesList)
         }
     }
 
