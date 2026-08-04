@@ -315,6 +315,8 @@ class UniqueStreamProvider : MainAPI() {
             }
         }
 
+        Log.d(TAG, "loadSeasonEpisodes(${season.content_id}): pages=$totalPages count=$episodeCount")
+
         val allEps = pageResults.flatten().toMutableList()
 
         if (episodeCount <= 0) {
@@ -343,10 +345,28 @@ class UniqueStreamProvider : MainAPI() {
             }
         }
 
-        return allEps
+        val isSpecialFn: (EpisodeItem) -> Boolean = { ep ->
+            ep.title?.contains("Special", ignoreCase = true) == true ||
+                    ep.episode?.startsWith("SP", ignoreCase = true) == true
+        }
+
+        val baseEps = allEps
             .distinctBy { it.content_id }
             .filter { it.is_clip != true }
+
+        val regulars = baseEps
+            .filterNot(isSpecialFn)
             .sortedBy { it.episode_number ?: 0.0 }
+
+        val specials = baseEps
+            .filter(isSpecialFn)
+            .sortedBy { it.episode_number ?: 0.0 }
+
+        val maxRegular = regulars.maxOfOrNull { it.episode_number ?: 0.0 } ?: 0.0
+
+        return regulars + specials.mapIndexed { i, s ->
+            s.copy(episode_number = maxRegular + i + 1)
+        }
     }
 
     override suspend fun loadLinks(
@@ -551,6 +571,7 @@ class UniqueStreamProvider : MainAPI() {
         val series_id: String? = null,
         val title: String? = null,
         val episode_number: Double? = null,
+        val episode: String? = null,
         val image: String? = null,
         val is_clip: Boolean? = false,
         val duration_ms: Long? = null
