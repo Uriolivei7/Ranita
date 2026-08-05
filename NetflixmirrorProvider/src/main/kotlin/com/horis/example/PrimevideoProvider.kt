@@ -25,7 +25,7 @@ class PrimevideoProvider : MainAPI() {
         Log.e("Netmirror", "PrimevideoProvider init called")
     }
 
-    private fun pvPoster(id: String): String = "https://imgcdn.kim/pv/v/$id.jpg"
+    private fun pvPoster(id: String): String = buildVerticalPosterUrlWithProxy(id, "pv")
     private fun pvBg(id: String): String = "https://imgcdn.kim/pv/h/$id.jpg"
     private fun pvEpPoster(id: String): String = "https://imgcdn.kim/pvepimg/150/$id.jpg"
 
@@ -119,7 +119,7 @@ class PrimevideoProvider : MainAPI() {
         val enhancedPlot = buildString {
             append(data.desc ?: "")
             if (audioInfo != null) {
-                append("\n\nAudio: $audioInfo")
+                append("\n\n-- Audio: $audioInfo")
             }
         }
 
