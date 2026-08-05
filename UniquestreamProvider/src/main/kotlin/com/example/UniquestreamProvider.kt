@@ -67,7 +67,7 @@ class UniqueStreamProvider : MainAPI() {
         else -> locale
     }
 
-    private val keyRegex = Regex("/([0-9a-f]{32})_[^/]+/master\\.m3u8")
+    private val keyRegex = Regex("/([A-Za-z0-9]+)_[^/]+/master\\.m3u8")
 
     private fun sha256(data: ByteArray): ByteArray =
         java.security.MessageDigest.getInstance("SHA-256").digest(data)
@@ -90,8 +90,10 @@ class UniqueStreamProvider : MainAPI() {
     @Suppress("ObjectLiteralToLambda")
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
         val linkUrl = extractorLink.url
-        val mediaId = keyRegex.find(linkUrl)?.groupValues?.get(1)
+        val mediaIdFromLink = keyRegex.find(linkUrl)?.groupValues?.get(1)
             ?: Regex("/([0-9a-f]{32})_[^/]+/").find(linkUrl)?.groupValues?.get(1)
+        val mediaIdFromKeyUrl = Regex("/([A-Za-z0-9]+)_[^/]+/keys/key\\.bin").find(linkUrl)?.groupValues?.get(1)
+        var mediaId = mediaIdFromLink ?: mediaIdFromKeyUrl
 
         val fallbackKey: ByteArray? = try {
             if (mediaId != null && mediaId.length == 32) {
@@ -107,43 +109,49 @@ class UniqueStreamProvider : MainAPI() {
                 val request = chain.request()
                 val url = request.url.toString()
 
-                if (url.contains("keys/") && url.contains("key.bin") && mediaId != null) {
-                    val realRequest = request.newBuilder()
-                        .header("x-am-media-id", mediaId)
-                        .build()
-                    val rawBody = try {
-                        chain.proceed(realRequest).body?.bytes()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "key.bin fetch error: ${e.message}")
-                        null
+                if (url.contains("keys/") && url.contains("key.bin")) {
+                    if (mediaId == null) {
+                        mediaId = Regex("/([A-Za-z0-9]+)_[^/]+/keys/key\\.bin").find(url)?.groupValues?.get(1)
                     }
-
-                    val derivedKey: ByteArray? = rawBody?.let { body ->
-                        val b64 = String(body).trim()
-                        val encrypted = try {
-                            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                    if (mediaId != null) {
+                        val theMediaId = mediaId!!
+                        val realRequest = request.newBuilder()
+                            .header("x-am-media-id", theMediaId)
+                            .build()
+                        val rawBody = try {
+                            chain.proceed(realRequest).body?.bytes()
                         } catch (e: Exception) {
-                            Log.w(TAG, "key.bin base64 error: ${e.message}")
+                            Log.w(TAG, "key.bin fetch error: ${e.message}")
                             null
                         }
-                        if (encrypted != null) {
-                            val dek = sha256("key$mediaId".toByteArray()).copyOfRange(0, 16)
-                            val div = sha256("iv$mediaId".toByteArray()).copyOfRange(0, 16)
-                            aesCbcDecrypt(encrypted, dek, div)
-                        } else null
-                    }
 
-                    val realKey = derivedKey ?: fallbackKey
-                    if (realKey != null) {
-                        Log.d(TAG, "Interceptando key.bin -> ${realKey.toHex()} (derived=${derivedKey != null})")
-                        return Response.Builder()
-                            .request(request)
-                            .protocol(okhttp3.Protocol.HTTP_1_1)
-                            .code(200)
-                            .message("OK")
-                            .header("Content-Type", "application/octet-stream")
-                            .body(ResponseBody.create("application/octet-stream".toMediaTypeOrNull(), realKey))
-                            .build()
+                        val derivedKey: ByteArray? = rawBody?.let { body ->
+                            val b64 = String(body).trim()
+                            val encrypted = try {
+                                android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "key.bin base64 error: ${e.message}")
+                                null
+                            }
+                            if (encrypted != null) {
+                                val dek = sha256("key$theMediaId".toByteArray()).copyOfRange(0, 16)
+                                val div = sha256("iv$theMediaId".toByteArray()).copyOfRange(0, 16)
+                                aesCbcDecrypt(encrypted, dek, div)
+                            } else null
+                        }
+
+                        val realKey = derivedKey ?: fallbackKey
+                        if (realKey != null) {
+                            Log.d(TAG, "Interceptando key.bin -> ${realKey.toHex()} (derived=${derivedKey != null})")
+                            return Response.Builder()
+                                .request(request)
+                                .protocol(okhttp3.Protocol.HTTP_1_1)
+                                .code(200)
+                                .message("OK")
+                                .header("Content-Type", "application/octet-stream")
+                                .body(ResponseBody.create("application/octet-stream".toMediaTypeOrNull(), realKey))
+                                .build()
+                        }
                     }
                 }
                 return chain.proceed(request)
