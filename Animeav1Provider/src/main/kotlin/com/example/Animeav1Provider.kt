@@ -18,8 +18,12 @@ import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import okhttp3.Interceptor
+import okhttp3.Response
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,6 +59,31 @@ class Animeav1 : MainAPI() {
         "catalogo?category=pelicula" to "Pelicula",
         "catalogo?category=ova" to "OVA",
     )
+
+    private val zillaHeaders = mapOf(
+        "Accept" to "*/*",
+        "Accept-Language" to "en-US,en;q=0.9",
+        "Origin" to "https://player.zilla-networks.com",
+        "Referer" to "https://player.zilla-networks.com/",
+        "Sec-Fetch-Dest" to "video",
+        "Sec-Fetch-Mode" to "no-cors",
+        "Sec-Fetch-Site" to "same-origin",
+        "Priority" to "u=1, i"
+    )
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request()
+                if (request.url.host.contains("zilla-networks.com")) {
+                    val builder = request.newBuilder()
+                    zillaHeaders.forEach { (k, v) -> builder.header(k, v) }
+                    return chain.proceed(builder.build())
+                }
+                return chain.proceed(request)
+            }
+        }
+    }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get("$mainUrl/${request.data}&page=$page").document
@@ -344,6 +373,26 @@ class Animeav1 : MainAPI() {
         quality: Int? = null
     ) {
         try {
+            if (url.contains("player.zilla-networks.com/play/")) {
+                val hash = url.substringAfterLast("/")
+                if (hash.length == 32) {
+                    val m3u8Url = "https://player.zilla-networks.com/m3u8/$hash"
+                    Log.d("Animeav1", "zilla HLS directo: $m3u8Url")
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name ?: "ZillaNetworks",
+                            name = name ?: "ZillaNetworks HLS",
+                            url = m3u8Url
+                        ) {
+                            this.type = ExtractorLinkType.M3U8
+                            this.quality = Qualities.P1080.value
+                            this.referer = "https://player.zilla-networks.com/"
+                            this.headers = zillaHeaders
+                        }
+                    )
+                    return
+                }
+            }
             withTimeoutOrNull(10000) {
                 val extractedLinks = mutableListOf<ExtractorLink>()
                 loadExtractor(url, referer, subtitleCallback) { link ->
