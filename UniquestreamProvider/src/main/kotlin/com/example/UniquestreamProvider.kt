@@ -360,13 +360,15 @@ class UniqueStreamProvider : MainAPI() {
         }
 
         val isSpecialFn: (EpisodeItem) -> Boolean = { ep ->
-            ep.title?.contains("Special", ignoreCase = true) == true ||
-                    ep.episode?.startsWith("SP", ignoreCase = true) == true
+            ep.episode?.startsWith("SP", ignoreCase = true) == true ||
+                    Regex("special\\s+\\d", RegexOption.IGNORE_CASE).containsMatchIn(ep.title ?: "")
         }
 
         val baseEps = allEps
             .distinctBy { it.content_id }
             .filter { it.is_clip != true }
+
+        val hasFractional = baseEps.any { (it.episode_number ?: 0.0) % 1.0 != 0.0 }
 
         val regulars = baseEps
             .filterNot(isSpecialFn)
@@ -378,9 +380,14 @@ class UniqueStreamProvider : MainAPI() {
 
         val maxRegular = regulars.maxOfOrNull { it.episode_number ?: 0.0 } ?: 0.0
 
-        return regulars + specials.mapIndexed { i, s ->
+        val merged = regulars + specials.mapIndexed { i, s ->
             s.copy(episode_number = maxRegular + i + 1)
         }
+
+        if (hasFractional) {
+            return merged.mapIndexed { i, ep -> ep.copy(episode_number = (i + 1).toDouble()) }
+        }
+        return merged
     }
 
     override suspend fun loadLinks(
