@@ -166,30 +166,29 @@ class UniqueStreamProvider : MainAPI() {
             Log.d(TAG, "Cargando MainPage...")
 
             val sections = listOf(
-                Triple("Nuevos", "$apiUrl/videos/new?limit=20", 1),
-                Triple("Populares", "$apiUrl/videos/popular?limit=20", 1),
-                Triple("Acción", "$apiUrl/browse?categories=action,popular&type=all&limit=20", 2),
-                Triple("Aventura", "$apiUrl/browse?categories=adventure,popular&type=all&limit=20", 2),
-                Triple("Comedia", "$apiUrl/browse?categories=comedy,popular&type=all&limit=20", 2),
-                Triple("Drama", "$apiUrl/browse?categories=drama,popular&type=all&limit=20", 2),
-                Triple("Fantasía", "$apiUrl/browse?categories=fantasy,popular&type=all&limit=20", 2),
-                Triple("Sci-Fi", "$apiUrl/browse?categories=sci-fi,popular&type=all&limit=20", 2),
-                Triple("Películas", "$apiUrl/videos/movies?sort=popular&limit=20", 1),
+                Triple("Nuevos", "$apiUrl/videos/new?limit=20", false),
+                Triple("Populares", "$apiUrl/videos/popular?limit=20", false),
+                Triple("Acción", "$apiUrl/browse?categories=action,popular&type=all&limit=20", true),
+                Triple("Aventura", "$apiUrl/browse?categories=adventure,popular&type=all&limit=20", true),
+                Triple("Comedia", "$apiUrl/browse?categories=comedy,popular&type=all&limit=20", true),
+                Triple("Drama", "$apiUrl/browse?categories=drama,popular&type=all&limit=20", true),
+                Triple("Fantasía", "$apiUrl/browse?categories=fantasy,popular&type=all&limit=20", true),
+                Triple("Sci-Fi", "$apiUrl/browse?categories=sci-fi,popular&type=all&limit=20", true),
+                Triple("Películas", "$apiUrl/videos/movies?sort=popular&limit=20", false),
             )
 
             val homeItems = coroutineScope {
-                sections.map { (name, baseUrl, pages) ->
+                sections.map { (name, baseUrl, secondPage) ->
                     async {
                         try {
-                            val allItems = (1..pages).flatMap { p ->
-                                try {
-                                    val url = if (p == 1) baseUrl else "$baseUrl&page=$p"
-                                    val response = app.get(url, headers = baseHeaders, timeout = 15L).text
-                                    AppUtils.parseJson<List<SeriesItem>>(response)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Página $p de '$name' falló: ${e.message}")
-                                    emptyList()
-                                }
+                            val urls = buildList {
+                                add(baseUrl)
+                                if (secondPage) add("$baseUrl&page=2")
+                            }
+                            val allItems = urls.flatMap { url ->
+                                getWithRetry(url, attempts = 2, timeout = 30L)?.let {
+                                    AppUtils.parseJson<List<SeriesItem>>(it)
+                                } ?: emptyList()
                             }
                             val list = allItems
                                 .distinctBy { it.content_id }
@@ -231,13 +230,21 @@ class UniqueStreamProvider : MainAPI() {
         val cleanId = url.split("/").lastOrNull { it.isNotBlank() } ?: url
         Log.d(TAG, "Cargando serie con ID: $cleanId")
 
-        val seriesResponse = app.get(
-            "$apiUrl/series/$cleanId",
-            headers = baseHeaders,
-            timeout = 20L
-        ).text
-
-        val details = AppUtils.parseJson<DetailsResponse>(seriesResponse)
+        var seriesResponse: String? = null
+        repeat(3) { i ->
+            try {
+                val response = app.get("$apiUrl/series/$cleanId", headers = baseHeaders, timeout = 30L)
+                if (response.isSuccessful) {
+                    seriesResponse = response.text
+                    return@repeat
+                }
+                Log.w(TAG, "series HTTP ${response.code} (intento ${i + 1})")
+            } catch (e: Exception) {
+                Log.w(TAG, "series fetch error (intento ${i + 1}): ${e.message}")
+            }
+        }
+        val seriesText = seriesResponse ?: throw Exception("No se pudo cargar la serie $cleanId")
+        val details = AppUtils.parseJson<DetailsResponse>(seriesText)
         val processedSeasonIds = mutableSetOf<String>()
 
         val orderedSeasons = (details.seasons ?: emptyList())
@@ -297,6 +304,30 @@ class UniqueStreamProvider : MainAPI() {
         }
     }
 
+    private suspend fun getWithRetry(
+        url: String,
+        attempts: Int = 3,
+        timeout: Long = 45L
+    ): String? {
+        var lastError: Exception? = null
+        repeat(attempts) { i ->
+            try {
+                val response = app.get(url, headers = baseHeaders, timeout = timeout)
+                if (response.isSuccessful) {
+                    val text = response.text
+                    if (text.trim().startsWith("[")) return text
+                } else {
+                    Log.w(TAG, "getWithRetry HTTP ${response.code} en $url (intento ${i + 1})")
+                }
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "getWithRetry error en $url (intento ${i + 1}): ${e.message}")
+            }
+        }
+        Log.e(TAG, "getWithRetry falló tras $attempts intentos: $url (${lastError?.message})")
+        return null
+    }
+
     private suspend fun loadSeasonEpisodes(season: SeasonItem): List<EpisodeItem> {
         val episodeCount = season.episode_count ?: 0
         val totalPages = if (episodeCount > 0) {
@@ -310,16 +341,11 @@ class UniqueStreamProvider : MainAPI() {
         coroutineScope {
             val jobs = (1..totalPages).map { page ->
                 async {
-                    try {
-                        val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$page&limit=20&order_by=asc"
-                        val response = app.get(seasonUrl, headers = baseHeaders, timeout = 20L).text
-                        if (response.trim().startsWith("[")) {
-                            AppUtils.parseJson<List<EpisodeItem>>(response)
-                        } else {
-                            emptyList()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error en página $page: ${e.message}")
+                    val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$page&limit=20&order_by=asc"
+                    val text = getWithRetry(seasonUrl, attempts = 3, timeout = 45L)
+                    if (text != null) {
+                        AppUtils.parseJson<List<EpisodeItem>>(text)
+                    } else {
                         emptyList()
                     }
                 }
@@ -333,27 +359,22 @@ class UniqueStreamProvider : MainAPI() {
 
         val allEps = pageResults.flatten().toMutableList()
 
-        if (episodeCount <= 0) {
+        if (episodeCount <= 0 && allEps.size >= 20) {
             var extraPage = totalPages + 1
             var keepLoading = true
             while (keepLoading) {
-                try {
-                    val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$extraPage&limit=20&order_by=asc"
-                    val response = app.get(seasonUrl, headers = baseHeaders, timeout = 20L).text
-                    if (response.trim().startsWith("[")) {
-                        val eps = AppUtils.parseJson<List<EpisodeItem>>(response)
-                        if (eps.isEmpty()) {
-                            keepLoading = false
-                        } else {
-                            allEps.addAll(eps)
-                            extraPage++
-                            if (eps.size < 20) keepLoading = false
-                        }
-                    } else {
+                val seasonUrl = "$apiUrl/season/${season.content_id}/episodes?page=$extraPage&limit=20&order_by=asc"
+                val text = getWithRetry(seasonUrl, attempts = 2, timeout = 45L)
+                if (text != null) {
+                    val eps = AppUtils.parseJson<List<EpisodeItem>>(text)
+                    if (eps.isEmpty()) {
                         keepLoading = false
+                    } else {
+                        allEps.addAll(eps)
+                        extraPage++
+                        if (eps.size < 20) keepLoading = false
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error en paginación extra: ${e.message}")
+                } else {
                     keepLoading = false
                 }
             }
