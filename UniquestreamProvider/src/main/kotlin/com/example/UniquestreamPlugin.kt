@@ -7,6 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class UniquestreamPlugin: Plugin() {
     override fun load(context: Context) {
+        UniqueStreamProvider.appContext = context
         registerMainAPI(UniqueStreamProvider())
         registerExtractorAPI(MediaCacheExtractor())
 

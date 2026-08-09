@@ -1,9 +1,9 @@
 package com.example
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.M3u8Helper
@@ -39,8 +39,9 @@ class UniqueStreamProvider : MainAPI() {
         private val episodeCache = mutableMapOf<String, List<EpisodeItem>>()
         private val seriesCache = mutableMapOf<String, DetailsResponse>()
         private val mainPageCache = mutableMapOf<String, Pair<HomePageList, Long>>()
+        var appContext: Context? = null
         private val diskCacheDir: File by lazy {
-            File(context?.filesDir ?: File(System.getProperty("java.io.tmpdir")), "uniquestream_cache")
+            File(appContext?.filesDir ?: File(System.getProperty("java.io.tmpdir")), "uniquestream_cache")
         }
         private const val CACHE_TTL_MS = 24L * 60 * 60 * 1000
     }
