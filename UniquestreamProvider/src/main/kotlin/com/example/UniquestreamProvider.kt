@@ -7,13 +7,9 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.*
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -38,6 +34,8 @@ class UniqueStreamProvider : MainAPI() {
         private val apiSemaphore = Semaphore(12)
         private val episodeCache = mutableMapOf<String, List<EpisodeItem>>()
         private val seriesCache = mutableMapOf<String, DetailsResponse>()
+        private val movieCache = mutableMapOf<String, MovieDetails>()
+        private val movieIds = mutableSetOf<String>()
         private val mainPageCache = mutableMapOf<String, Pair<HomePageList, Long>>()
         var appContext: Context? = null
         private val diskCacheDir: File by lazy {
@@ -52,20 +50,23 @@ class UniqueStreamProvider : MainAPI() {
     private fun seriesCacheFile(seriesId: String): File =
         File(diskCacheDir, "series_$seriesId.json")
 
-    private suspend fun readSeasonCache(seasonId: String): List<EpisodeItem>? = withContext(Dispatchers.IO) {
+    private fun movieCacheFile(movieId: String): File =
+        File(diskCacheDir, "movie_$movieId.json")
+
+    private suspend fun readSeasonCache(seasonId: String): List<EpisodeItem>? {
         try {
             val f = seasonCacheFile(seasonId)
-            if (!f.exists()) return@withContext null
-            if (System.currentTimeMillis() - f.lastModified() > CACHE_TTL_MS) return@withContext null
+            if (!f.exists()) return null
+            if (System.currentTimeMillis() - f.lastModified() > CACHE_TTL_MS) return null
             val parsed = AppUtils.parseJson<List<EpisodeItem>>(f.readText())
-            if (parsed.isNullOrEmpty()) null else parsed
+            return if (parsed.isNullOrEmpty()) null else parsed
         } catch (e: Exception) {
             Log.w(TAG, "readSeasonCache falló $seasonId: ${e.message}")
-            null
+            return null
         }
     }
 
-    private suspend fun writeSeasonCache(seasonId: String, eps: List<EpisodeItem>) = withContext(Dispatchers.IO) {
+    private suspend fun writeSeasonCache(seasonId: String, eps: List<EpisodeItem>) {
         try {
             val f = seasonCacheFile(seasonId)
             f.parentFile?.mkdirs()
@@ -75,19 +76,39 @@ class UniqueStreamProvider : MainAPI() {
         }
     }
 
-    private suspend fun readSeriesCache(seriesId: String): String? = withContext(Dispatchers.IO) {
+    private suspend fun readSeriesCache(seriesId: String): String? {
         try {
             val f = seriesCacheFile(seriesId)
-            if (!f.exists()) return@withContext null
-            if (System.currentTimeMillis() - f.lastModified() > CACHE_TTL_MS) return@withContext null
-            f.readText()
+            if (!f.exists()) return null
+            if (System.currentTimeMillis() - f.lastModified() > CACHE_TTL_MS) return null
+            return f.readText()
         } catch (e: Exception) {
             Log.w(TAG, "readSeriesCache falló $seriesId: ${e.message}")
-            null
+            return null
         }
     }
 
-    private suspend fun writeSeriesCache(seriesId: String, text: String) = withContext(Dispatchers.IO) {
+    private suspend fun readCacheFile(f: File): String? {
+        try {
+            if (!f.exists()) return null
+            if (System.currentTimeMillis() - f.lastModified() > CACHE_TTL_MS) return null
+            return f.readText()
+        } catch (e: Exception) {
+            Log.w(TAG, "readCacheFile falló ${f.name}: ${e.message}")
+            return null
+        }
+    }
+
+    private suspend fun writeCacheFile(f: File, text: String) {
+        try {
+            f.parentFile?.mkdirs()
+            f.writeText(text)
+        } catch (e: Exception) {
+            Log.w(TAG, "writeCacheFile falló ${f.name}: ${e.message}")
+        }
+    }
+
+    private suspend fun writeSeriesCache(seriesId: String, text: String) {
         try {
             val f = seriesCacheFile(seriesId)
             f.parentFile?.mkdirs()
@@ -104,6 +125,7 @@ class UniqueStreamProvider : MainAPI() {
 
     private fun SeriesItem.toSearchResponse(): SearchResponse {
         val isMovie = this.type == "movie"
+        if (isMovie) movieIds.add(this.content_id)
         val resp = if (isMovie) {
             newAnimeSearchResponse(this.title, this.content_id, TvType.AnimeMovie)
         } else {
@@ -120,7 +142,7 @@ class UniqueStreamProvider : MainAPI() {
         "en-US" -> "English (US)"
         "es-419" -> "Español (LATAM)"
         "es-ES" -> "Español (España)"
-        "ja-JP" -> "日本語"
+        "ja-JP" -> "Japonés"
         "pt-BR" -> "Português (BR)"
         "de-DE" -> "Deutsch"
         "fr-FR" -> "Français"
@@ -311,7 +333,10 @@ class UniqueStreamProvider : MainAPI() {
             ).text
 
             val data = AppUtils.parseJson<SearchRoot>(response)
-            data.series?.map { it.toSearchResponse() } ?: emptyList()
+            val results = mutableListOf<SearchResponse>()
+            data.series?.forEach { results.add(it.toSearchResponse()) }
+            data.movies?.forEach { results.add(it.toSearchResponse()) }
+            results.distinctBy { it.url }
         } catch (e: Exception) {
             Log.e(TAG, "Error en search: ${e.message}")
             emptyList()
@@ -320,7 +345,15 @@ class UniqueStreamProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val cleanId = url.split("/").lastOrNull { it.isNotBlank() } ?: url
-        Log.d(TAG, "Cargando serie con ID: $cleanId")
+        Log.d(TAG, "Cargando contenido con ID: $cleanId")
+
+        val isMovie = if (cleanId in movieIds) {
+            true
+        } else {
+            probeContentType(cleanId)
+        }
+
+        if (isMovie) return loadMovie(cleanId, url)
 
         var seriesText: String? = seriesCache[cleanId]?.let { null }
         if (seriesText == null) {
@@ -402,6 +435,70 @@ class UniqueStreamProvider : MainAPI() {
             this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
             this.plot = fullPlot
             this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
+            if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
+        }
+    }
+
+    private suspend fun probeContentType(id: String): Boolean {
+        if (id in movieIds) return true
+        return try {
+            val response = app.get("$apiUrl/content/$id", headers = baseHeaders, timeout = 20L)
+            val isMovie = response.isSuccessful && response.text.contains("\"content_type\"")
+            if (isMovie) movieIds.add(id)
+            isMovie
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "probeContentType error $id: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun loadMovie(id: String, url: String): LoadResponse {
+        Log.d(TAG, "Cargando película con ID: $id")
+
+        var movieText: String? = movieCache[id]?.let { null }
+        if (movieText == null) {
+            movieText = readCacheFile(movieCacheFile(id))
+        }
+        if (movieText == null) {
+            repeat(3) { i ->
+                try {
+                    val response = app.get("$apiUrl/movie/$id", headers = baseHeaders, timeout = 30L)
+                    if (response.isSuccessful) {
+                        movieText = response.text
+                        writeCacheFile(movieCacheFile(id), movieText!!)
+                        return@repeat
+                    }
+                    Log.w(TAG, "movie HTTP ${response.code} (intento ${i + 1})")
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "movie fetch error (intento ${i + 1}): ${e.message}")
+                }
+                if (i < 2) delay(1500L * (i + 1))
+            }
+        }
+        val details = movieCache[id] ?: movieText?.let {
+            AppUtils.parseJson<MovieDetails>(it).also { cached -> movieCache[id] = cached }
+        } ?: throw Exception("No se pudo cargar la película $id")
+
+        val plot = buildString {
+            append(details.description ?: "")
+            if (!details.studio.isNullOrBlank() || details.year != null) {
+                append("\n\n")
+                if (details.year != null) append(" -- Año: ${details.year}")
+                if (!details.studio.isNullOrBlank() && details.year != null) append("\n")
+                if (!details.studio.isNullOrBlank()) append(" -- Estudio: ${details.studio}")
+            }
+        }
+
+        return newMovieLoadResponse(details.title ?: "Sin Título", url, TvType.AnimeMovie, url) {
+            this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
+            this.plot = plot
+            this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
+            details.duration_ms?.let { this.duration = (it / 60000).toInt().coerceAtLeast(1) }
+            details.year?.let { this.year = it }
             if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
         }
     }
@@ -557,13 +654,19 @@ class UniqueStreamProvider : MainAPI() {
         Log.d(TAG, "Episode ID: $episodeId")
         Log.d(TAG, "========================================")
 
+        val isMovie = episodeId in movieIds || probeContentType(episodeId)
+
         return try {
             val locales = listOf("es-419", "en-US", "ja-JP")
             var linksEnviados = 0
 
             for (locale in locales) {
                 try {
-                    val mediaUrl = "$apiUrl/episode/$episodeId/media/dash/$locale"
+                    val mediaUrl = if (isMovie) {
+                        "$apiUrl/movie/$episodeId/media/dash/$locale"
+                    } else {
+                        "$apiUrl/episode/$episodeId/media/dash/$locale"
+                    }
 
                     val apiHeaders = mapOf(
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -705,6 +808,7 @@ class UniqueStreamProvider : MainAPI() {
     @Serializable
     data class SearchRoot(
         val series: List<SeriesItem>? = null,
+        val movies: List<SeriesItem>? = null,
         val episodes: List<EpisodeItem>? = null
     )
 
@@ -718,6 +822,22 @@ class UniqueStreamProvider : MainAPI() {
         val audio_locales: List<String>? = null,
         val subtitle_locales: List<String>? = null,
         val genre: List<GenreItem>? = null,
+        val rating_avg: Double? = null,
+        val rating_count: Int? = null
+    )
+
+    @Serializable
+    data class MovieDetails(
+        val content_id: String? = null,
+        val title: String? = null,
+        val description: String? = null,
+        val images: List<ImageItem>? = null,
+        val duration_ms: Long? = null,
+        val year: Int? = null,
+        val studio: String? = null,
+        val genre: List<GenreItem>? = null,
+        val is_subbed: Boolean? = null,
+        val is_dubbed: Boolean? = null,
         val rating_avg: Double? = null,
         val rating_count: Int? = null
     )

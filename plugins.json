@@ -660,7 +660,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GloboViewProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "apiVersion": 1,
     "name": "GloboView",
     "internalName": "GloboViewProvider",
@@ -696,7 +696,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/UniquestreamProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 1,
     "name": "AnimeStream",
     "internalName": "UniquestreamProvider",
@@ -710,6 +710,6 @@
     ],
     "iconUrl": "https://anime.uniquestream.net/favicon.ico",
     "language": "en",
-    "fileSize": 78000
+    "fileSize": 87000
   }
 ]

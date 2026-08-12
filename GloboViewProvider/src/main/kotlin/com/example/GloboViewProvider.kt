@@ -45,7 +45,7 @@ class GloboViewProvider : MainAPI() {
             try {
                 val url = "$mainUrl$path"
                 val doc = app.get(url, timeout = 60L).document
-                val channels = doc.select("div.card a[href*=/directorio/]").mapNotNull { a ->
+                val channels = doc.select("div.card-channel a[href*=/directorio/]").mapNotNull { a ->
                     val link = a.attr("href")
                     val title = a.selectFirst("h3.card-title")?.text()?.trim() ?: return@mapNotNull null
                     newLiveSearchResponse(title, fixUrl(link), TvType.Live) {
@@ -108,7 +108,7 @@ class GloboViewProvider : MainAPI() {
                         }
                     }
                 } catch (_: Exception) {}
-                doc.select("div.card a[href*=/directorio/]").forEach { a ->
+                doc.select("div.card-channel a[href*=/directorio/]").forEach { a ->
                     val title = a.selectFirst("h3.card-title")?.text()?.trim()
                     val poster = a.selectFirst("img")?.attr("src")
                     if (title != null && poster != null && poster.startsWith("http")) {
@@ -148,7 +148,7 @@ class GloboViewProvider : MainAPI() {
                     }
                 }
                 if (!jsonOk) {
-                    doc.select("div.card a[href*=/directorio/]").forEach { a ->
+                    doc.select("div.card-channel a[href*=/directorio/]").forEach { a ->
                         val link = fixUrl(a.attr("href"))
                         val title = a.selectFirst("h3.card-title")?.text()?.trim() ?: return@forEach
                         if (title.contains(query, ignoreCase = true)) {
@@ -181,7 +181,7 @@ class GloboViewProvider : MainAPI() {
                 ?: "Canal"
 
             val poster = doc.selectFirst("meta[property='og:image']")?.attr("content")
-                ?: doc.selectFirst(".card img")?.attr("src")
+                ?: doc.selectFirst(".card-channel img")?.attr("src")
 
             val desc = doc.selectFirst("meta[property='og:description']")?.attr("content")
                 ?: doc.selectFirst("meta[name=description]")?.attr("content")
