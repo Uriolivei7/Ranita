@@ -216,6 +216,7 @@ class SyncPlugin : Plugin() {
                     var restoredSettings = false
                     var restoredExtensions = false
                     var restoredBookmarks = false
+                    var restoredResume = false
                     try {
                         for (cat in enabledRestore) {
                             val localCat = filterBackup(localBackup, cat)
@@ -235,6 +236,7 @@ class SyncPlugin : Plugin() {
                                     SyncCategory.SETTINGS -> restoredSettings = true
                                     SyncCategory.EXTENSIONS -> restoredExtensions = true
                                     SyncCategory.BOOKMARKS -> restoredBookmarks = true
+                                    SyncCategory.RESUME_WATCHING -> restoredResume = true
                                     else -> {}
                                 }
                             }
@@ -251,6 +253,9 @@ class SyncPlugin : Plugin() {
                                 MainActivity.reloadHomeEvent(true)
                                 MainActivity.reloadAccountEvent(true)
                             } else if (restoredExtensions) {
+                                MainActivity.reloadHomeEvent(true)
+                            }
+                            if (restoredResume) {
                                 MainActivity.reloadHomeEvent(true)
                             }
                             if (restoredBookmarks) {
