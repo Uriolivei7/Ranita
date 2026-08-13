@@ -75,7 +75,7 @@ object SyncNetwork {
         return graphql(token, query)?.data?.viewer?.projectV2?.id
     }
 
-    suspend fun fetchDevices(token: String, projectNum: Int): List<SyncDevice> {
+    suspend fun fetchDevices(token: String, projectNum: Int): List<SyncDevice>? {
         val query = """
             query { viewer { projectV2(number: $projectNum) {
                 id
@@ -85,8 +85,8 @@ object SyncNetwork {
                 } } }
             } } }
         """.trimIndent()
-        val resp = graphql(token, query)
-        val nodes = resp?.data?.viewer?.projectV2?.items?.nodes ?: return emptyList()
+        val resp = graphql(token, query) ?: return null
+        val nodes = resp.data?.viewer?.projectV2?.items?.nodes ?: return emptyList()
         return nodes.mapNotNull { node ->
             val content = node.content ?: return@mapNotNull null
             val body = content.bodyText ?: ""

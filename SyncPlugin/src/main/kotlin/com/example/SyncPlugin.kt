@@ -135,10 +135,18 @@ class SyncPlugin : Plugin() {
             ?: return
 
         val devices = SyncNetwork.fetchDevices(token, projectNum)
-        val ownDevice = devices.firstOrNull { it.deviceId == deviceId }
-        if (ownDevice != null) {
-            SyncStorage.ownItemId = ownDevice.itemId
-            SyncStorage.ownContentId = ownDevice.itemContentId
+        if (devices != null) {
+            val ownDevice = devices
+                .filter { it.deviceId == deviceId }
+                .maxByOrNull { it.updatedAt }
+            if (ownDevice != null && !SyncStorage.forceReRegister) {
+                SyncStorage.ownItemId = ownDevice.itemId
+                SyncStorage.ownContentId = ownDevice.itemContentId
+            } else if (ownDevice == null) {
+                SyncStorage.ownItemId = null
+                SyncStorage.ownContentId = null
+                SyncStorage.forceReRegister = false
+            }
         }
 
         val enabledBackup = SyncCategory.entries.filter { SyncStorage.isBackupEnabled(it) }.toSet()
@@ -149,8 +157,8 @@ class SyncPlugin : Plugin() {
         // --- restore from cloud ---
         if (restoreEnabled) {
             val others = devices
-                .filter { it.deviceId != deviceId && !it.syncedData.isNullOrBlank() }
-                .maxByOrNull { it.updatedAt }
+                ?.filter { it.deviceId != deviceId && !it.syncedData.isNullOrBlank() }
+                ?.maxByOrNull { it.updatedAt }
             if (others != null) {
                 val cloudBackup = try {
                     SyncNetwork.json.decodeFromString(BackupFile.serializer(), others.syncedData!!)
@@ -214,16 +222,23 @@ class SyncPlugin : Plugin() {
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
                 val contentId = SyncStorage.ownContentId
-                if (contentId == null) {
+                if (contentId == null || SyncStorage.forceReRegister) {
                     val (itemId, newContentId) = SyncNetwork.registerDevice(token, projectId, deviceId, data)
                     if (itemId != null && newContentId != null) {
                         SyncStorage.ownItemId = itemId
                         SyncStorage.ownContentId = newContentId
                         SyncStorage.lastPushedHash = hash
+                        SyncStorage.forceReRegister = false
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
                     val ok = SyncNetwork.updateDevice(token, contentId, deviceId, data)
-                    if (ok) SyncStorage.lastPushedHash = hash
+                    if (ok) {
+                        SyncStorage.lastPushedHash = hash
+                    } else {
+                        SyncStorage.ownContentId = null
+                        SyncStorage.ownItemId = null
+                        SyncStorage.forceReRegister = true
+                    }
                 }
             }
         }

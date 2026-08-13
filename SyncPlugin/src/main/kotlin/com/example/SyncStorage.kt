@@ -51,6 +51,10 @@ object SyncStorage {
         get() = get("sync_last_pushed_hash")
         set(value) = set("sync_last_pushed_hash", value)
 
+    var forceReRegister: Boolean
+        get() = get("sync_force_register") == "true"
+        set(value) = set("sync_force_register", value.toString())
+
     fun isLoggedIn(): Boolean =
         !token.isNullOrBlank() && !projectNum.isNullOrBlank()
 
