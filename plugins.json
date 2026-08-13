@@ -1,9 +1,10 @@
-[
+﻿[
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
     "version": 16,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SoloLatino",
     "internalName": "SoloLatinoProvider",
     "authors": [
@@ -25,6 +26,7 @@
     "status": 1,
     "version": 12,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "PlusHD",
     "internalName": "PlushdProvider",
     "authors": [
@@ -47,6 +49,7 @@
     "status": 1,
     "version": 4,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "LatAnime",
     "internalName": "LatanimeProvider",
     "authors": [
@@ -65,6 +68,7 @@
     "status": 1,
     "version": 10,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AniZone",
     "internalName": "AnizoneProvider",
     "authors": [
@@ -83,6 +87,7 @@
     "status": 1,
     "version": 6,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "LACartoons",
     "internalName": "LacartoonsProvider",
     "authors": [
@@ -102,6 +107,7 @@
     "status": 1,
     "version": 5,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "TioAnime",
     "internalName": "TioanimeProvider",
     "authors": [
@@ -121,6 +127,7 @@
     "status": 1,
     "version": 7,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeAV1",
     "internalName": "Animeav1Provider",
     "authors": [
@@ -140,6 +147,7 @@
     "status": 1,
     "version": 4,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "DoramasFlix",
     "internalName": "DoramasflixProvider",
     "authors": [
@@ -158,6 +166,7 @@
     "status": 1,
     "version": 3,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "MundoDonghua",
     "internalName": "MundodonghuaProvider",
     "authors": [
@@ -176,6 +185,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "JKAnime",
     "internalName": "JkanimeProvider",
     "authors": [
@@ -194,6 +204,7 @@
     "status": 1,
     "version": 10,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "TvporInternet",
     "internalName": "TvporinternetProvider",
     "authors": [
@@ -212,6 +223,7 @@
     "status": 1,
     "version": 3,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "TVenVIVO",
     "internalName": "TvenvivoProvider",
     "authors": [
@@ -230,12 +242,13 @@
     "status": 1,
     "version": 13,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "NetMirror",
     "internalName": "NetflixmirrorProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Basado en la API de la aplicación móvil de Netmirror",
+    "description": "Basado en la API de la aplicaciÃ³n mÃ³vil de Netmirror",
     "tvTypes": [
       "TvSeries",
       "Movie",
@@ -251,6 +264,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "HenaoJara",
     "internalName": "HenaojaraProvider",
     "authors": [
@@ -271,6 +285,7 @@
     "status": 1,
     "version": 9,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeOnsen",
     "internalName": "AnimeonsenProvider",
     "authors": [
@@ -290,12 +305,13 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "OneTouchTV",
     "internalName": "OnetouchtvProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "Plugin para K-Dramas y C-Dramas con subtítulos en español de España",
+    "description": "Plugin para K-Dramas y C-Dramas con subtÃ­tulos en espaÃ±ol de EspaÃ±a",
     "tvTypes": [
       "Anime",
       "Anime"
@@ -309,6 +325,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "DoramasYT",
     "internalName": "DoramasytProvider",
     "authors": [
@@ -327,6 +344,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SeriesMetro",
     "internalName": "SeriesmetroProvider",
     "authors": [
@@ -348,6 +366,7 @@
     "status": 1,
     "version": 6,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "La.Movie",
     "internalName": "LamovieProvider",
     "authors": [
@@ -369,6 +388,7 @@
     "status": 1,
     "version": 6,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeParadise",
     "internalName": "AnimeparadiseProvider",
     "authors": [
@@ -388,6 +408,7 @@
     "status": 1,
     "version": 4,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "GNULA",
     "internalName": "GnulaProvider",
     "authors": [
@@ -409,6 +430,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "KATANIME",
     "internalName": "KatanimeProvider",
     "authors": [
@@ -427,6 +449,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SeriesKao",
     "internalName": "SerieskaoProvider",
     "authors": [
@@ -447,6 +470,7 @@
     "status": 1,
     "version": 3,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "MonosChinos",
     "internalName": "MonoschinosProvider",
     "authors": [
@@ -467,6 +491,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AsiaLiveAction",
     "internalName": "AsialiveactionProvider",
     "authors": [
@@ -485,6 +510,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "PlayHUB",
     "internalName": "PlayhubProvider",
     "authors": [
@@ -505,6 +531,7 @@
     "status": 1,
     "version": 5,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "MHDFLIX",
     "internalName": "MhdflixProvider",
     "authors": [
@@ -527,6 +554,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "DonghuaLife",
     "internalName": "DonghualifeProvider",
     "authors": [
@@ -546,6 +574,7 @@
     "status": 1,
     "version": 3,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "RetroTVE",
     "internalName": "RetrotveProvider",
     "authors": [
@@ -566,6 +595,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "PlutoTV",
     "internalName": "PlutotvProvider",
     "authors": [
@@ -587,6 +617,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SeriesBiblicas",
     "internalName": "SeriesbiblicasProvider",
     "authors": [
@@ -607,6 +638,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "Atalayas21",
     "internalName": "Atalayas21Provider",
     "authors": [
@@ -626,6 +658,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "Teleonline",
     "internalName": "TeleonlineProvider",
     "authors": [
@@ -644,6 +677,7 @@
     "status": 1,
     "version": 1,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "YouTube",
     "internalName": "YoutubeProvider",
     "authors": [
@@ -662,6 +696,7 @@
     "status": 1,
     "version": 3,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "GloboView",
     "internalName": "GloboViewProvider",
     "authors": [
@@ -680,6 +715,7 @@
     "status": 1,
     "version": 2,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "TokiAnime",
     "internalName": "TokianimeProvider",
     "authors": [
@@ -698,6 +734,7 @@
     "status": 1,
     "version": 4,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeStream",
     "internalName": "UniquestreamProvider",
     "authors": [
@@ -715,8 +752,9 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SyncPlugin.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SyncPlugin",
     "internalName": "SyncPlugin",
     "authors": [
@@ -728,6 +766,6 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=96&id=3FDJsdSpK6cv&format=png",
     "language": "mx",
-    "fileSize": 62000
+    "fileSize": 62200
   }
 ]

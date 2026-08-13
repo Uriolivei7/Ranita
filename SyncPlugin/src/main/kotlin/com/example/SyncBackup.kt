@@ -168,10 +168,8 @@ object SyncBackup {
     ) {
         restoreVars(context, backupFile.datastore, isSettings = false, enabled)
         restoreVars(context, backupFile.settings, isSettings = true, enabled)
-        if (SyncCategory.EXTENSIONS in enabled) {
-            context.getDefaultSharedPrefs().edit()
-                .putInt("auto_download_plugins_key2", 2).apply()
-        }
+        context.getDefaultSharedPrefs().edit()
+            .putInt("auto_download_plugins_key2", 2).apply()
     }
 
     private fun restoreVars(
