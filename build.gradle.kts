@@ -86,7 +86,7 @@ subprojects {
         implementation("com.google.code.gson:gson:2.13.2")
         implementation("androidx.annotation:annotation:1.9.1")
 
-        implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+        implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     }
 }
 
