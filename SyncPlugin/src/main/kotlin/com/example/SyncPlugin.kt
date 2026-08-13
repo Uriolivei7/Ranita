@@ -2,6 +2,8 @@ package com.example
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.CommonActivity.showToast
 import com.lagradost.cloudstream3.MainActivity
@@ -157,6 +159,10 @@ class SyncPlugin : Plugin() {
                 }
                 if (cloudBackup != null) {
                     isRestoring = true
+                    var restoredAny = false
+                    var restoredSettings = false
+                    var restoredExtensions = false
+                    var restoredBookmarks = false
                     try {
                         for (cat in enabledRestore) {
                             val localCat = filterBackup(localBackup, cat)
@@ -169,11 +175,33 @@ class SyncPlugin : Plugin() {
                                 cloudPayloadTs = others.updatedAt,
                                 isLocallyDirty = isDirty,
                             )
-                            SyncBackup.restore(appCtx, merged, setOf(cat))
+                            if (merged != localCat) {
+                                SyncBackup.restore(appCtx, merged, setOf(cat))
+                                restoredAny = true
+                                when (cat) {
+                                    SyncCategory.SETTINGS -> restoredSettings = true
+                                    SyncCategory.EXTENSIONS -> restoredExtensions = true
+                                    SyncCategory.BOOKMARKS -> restoredBookmarks = true
+                                    else -> {}
+                                }
+                            }
                             SyncStorage.setCategoryTimestamp(cat, others.updatedAt)
                         }
                     } finally {
                         isRestoring = false
+                    }
+                    if (restoredAny) {
+                        Handler(Looper.getMainLooper()).post {
+                            if (restoredSettings) {
+                                MainActivity.reloadHomeEvent(true)
+                                MainActivity.reloadAccountEvent(true)
+                            } else if (restoredExtensions) {
+                                MainActivity.reloadHomeEvent(true)
+                            }
+                            if (restoredBookmarks) {
+                                MainActivity.reloadLibraryEvent(true)
+                            }
+                        }
                     }
                 }
             }

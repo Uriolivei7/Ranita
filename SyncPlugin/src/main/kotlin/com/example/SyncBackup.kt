@@ -7,6 +7,8 @@ import java.security.MessageDigest
 
 object SyncBackup {
 
+    private const val ACCOUNTS_KEY = "data_store_helper/account"
+
     private val resumeMapper = ObjectMapper()
 
     val nonTransferableKeys = listOf(
@@ -286,6 +288,10 @@ object SyncBackup {
             if (cloudVal == null) {
                 merged[key] = localVal
             } else {
+                if (key == ACCOUNTS_KEY) {
+                    merged[key] = if (accountCount(cloudVal) >= accountCount(localVal)) cloudVal else localVal
+                    continue
+                }
                 val localTs = SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, local)
                 val cloudTs = SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, cloud)
                 if (localTs > 0L || cloudTs > 0L) {
@@ -318,6 +324,15 @@ object SyncBackup {
         backupFile.settings.stringSet?.keys?.let { keys.addAll(it) }
         backupFile.settings.string?.keys?.let { keys.addAll(it) }
         return keys
+    }
+
+    private fun accountCount(json: String?): Int {
+        if (json.isNullOrBlank()) return 0
+        return try {
+            resumeMapper.readTree(json).size()
+        } catch (_: Exception) {
+            0
+        }
     }
 
     private fun Context.getSharedPrefs(): SharedPreferences =
