@@ -3,7 +3,6 @@ package com.example
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatActivity
-import com.lagradost.cloudstream3.AcraApplication.Companion.context
 import com.lagradost.cloudstream3.CommonActivity.showToast
 import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
@@ -21,6 +20,7 @@ import kotlinx.coroutines.launch
 class SyncPlugin : Plugin() {
 
     var activity: AppCompatActivity? = null
+    private var appContext: Context? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val dirtyCategories = mutableSetOf<SyncCategory>()
     private var pollingJob: Job? = null
@@ -32,6 +32,8 @@ class SyncPlugin : Plugin() {
     private val pollMs = 30_000L
 
     override fun load(context: Context) {
+        appContext = context
+        SyncStorage.init(context)
         activity = context as? AppCompatActivity
         registerMainAPI(SyncProvider(this))
         openSettings = { ctx ->
@@ -55,15 +57,15 @@ class SyncPlugin : Plugin() {
     /***************** listeners *****************/
 
     private fun registerListeners() {
-        val appContext = context ?: return
+        val appCtx = appContext ?: return
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (!isRestoring && key != null) {
                 markDirty(key)
             }
         }
-        appContext.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
+        appCtx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
-        appContext.getSharedPreferences(appContext.packageName + "_preferences", Context.MODE_PRIVATE)
+        appCtx.getSharedPreferences(appCtx.packageName + "_preferences", Context.MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
 
         bookmarksObserver = { markDirty("0/result_favorites_state_data") }
@@ -71,11 +73,11 @@ class SyncPlugin : Plugin() {
     }
 
     private fun unregisterListeners() {
-        val appContext = context ?: return
+        val appCtx = appContext ?: return
         prefsListener?.let {
-            appContext.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
+            appCtx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
                 .unregisterOnSharedPreferenceChangeListener(it)
-            appContext.getSharedPreferences(appContext.packageName + "_preferences", Context.MODE_PRIVATE)
+            appCtx.getSharedPreferences(appCtx.packageName + "_preferences", Context.MODE_PRIVATE)
                 .unregisterOnSharedPreferenceChangeListener(it)
         }
         MainActivity.bookmarksUpdatedEvent -= bookmarksObserver
@@ -118,11 +120,11 @@ class SyncPlugin : Plugin() {
         val restoreEnabled = SyncCategory.entries.any { SyncStorage.isRestoreEnabled(it) }
         if (!backupEnabled && !restoreEnabled) return
 
-        val appContext = context ?: return
+        val appCtx = appContext ?: return
         val token = SyncStorage.token ?: return
         val projectNum = SyncStorage.projectNum?.toIntOrNull() ?: return
         val deviceId = SyncStorage.deviceId
-            ?: SyncNetwork.getDeviceId(appContext.packageName, appContext).also {
+            ?: SyncNetwork.getDeviceId(appCtx.packageName, appCtx).also {
                 SyncStorage.deviceId = it
             }
 
@@ -141,7 +143,7 @@ class SyncPlugin : Plugin() {
         val enabledBackup = SyncCategory.entries.filter { SyncStorage.isBackupEnabled(it) }.toSet()
         val enabledRestore = SyncCategory.entries.filter { SyncStorage.isRestoreEnabled(it) }.toSet()
 
-        val localBackup = SyncBackup.buildBackup(appContext, resumeWatching, enabledBackup)
+        val localBackup = SyncBackup.buildBackup(appCtx, resumeWatching, enabledBackup)
 
         // --- restore from cloud ---
         if (restoreEnabled) {
@@ -168,7 +170,7 @@ class SyncPlugin : Plugin() {
                                 cloudPayloadTs = others.updatedAt,
                                 isLocallyDirty = isDirty,
                             )
-                            SyncBackup.restore(appContext, merged, setOf(cat))
+                            SyncBackup.restore(appCtx, merged, setOf(cat))
                             SyncStorage.setCategoryTimestamp(cat, others.updatedAt)
                         }
                     } finally {
@@ -180,7 +182,7 @@ class SyncPlugin : Plugin() {
 
         // --- push to cloud ---
         if (backupEnabled) {
-            val toPush = SyncBackup.buildBackup(appContext, resumeWatching, enabledBackup)
+            val toPush = SyncBackup.buildBackup(appCtx, resumeWatching, enabledBackup)
             if (!SyncBackup.isEmpty(toPush)) {
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
