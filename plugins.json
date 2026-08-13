@@ -701,10 +701,10 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "fileHash": "sha256-6bc00fffef013754723e022859b0790b5897c850047f9e9a7448d02c35088c91",
+        "fileHash": "sha256-46c061365eb18074c92ff3d142431b6e1ca0b482ec269343cb8875f036fe5a4b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 62237,
+        "fileSize": 62233,
         "status": 1,
         "language": "es",
         "authors": [
@@ -713,7 +713,7 @@
         "tvTypes": [
             "Others"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "SyncPlugin",
         "description": "Sincroniza favoritos, progreso, historial, repos y ajustes entre tus dispositivos (via GitHub, sin servidor)",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SyncPlugin.cs3",
