@@ -259,10 +259,10 @@
         "name": "GloboViewProvider"
     },
     {
-        "fileHash": "sha256-2a01e0b6f7d672a1a81fd682753df119b2eb13e0b6f1636aa15f211c55a44879",
+        "fileHash": "sha256-03fcb98584b65c42b7b49b3fb91caff98b99dc9539cf789ac6b6eb1087bb7485",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 64525,
+        "fileSize": 64541,
         "status": 1,
         "language": "es",
         "authors": [
@@ -324,10 +324,10 @@
         "name": "JkanimeProvider"
     },
     {
-        "fileHash": "sha256-88b24743c1c46585c572485244702c9fac86a23ad5c46f6e79f729170f731235",
+        "fileHash": "sha256-5c5cc7d7f10df1b7e5438bef8175e3813d8e1887e38d9aac313d325986fc5558",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35638,
+        "fileSize": 35664,
         "status": 1,
         "language": "es",
         "authors": [
@@ -701,10 +701,10 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "fileHash": "sha256-a24cd72469d9c148e4fc97366388167478ae3a19750d62b03102280884e6f036",
+        "fileHash": "sha256-991b5ea9871d88876821706ba7aadde136ee3c9e1a9f21c3a78765572a330d19",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 61434,
+        "fileSize": 61453,
         "status": 1,
         "language": "es",
         "authors": [
@@ -817,10 +817,10 @@
     },
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-e90e96868f346e19151966e0f8b99022ad657dd5fa9b172889f8b7d87021c9a4",
+        "fileHash": "sha256-7c15dd0a9c6e769c90d8162fa3e50a01ad88f7e7c6f39009ac97df6afa72bed3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 90447,
+        "fileSize": 90506,
         "status": 1,
         "language": "es",
         "authors": [
