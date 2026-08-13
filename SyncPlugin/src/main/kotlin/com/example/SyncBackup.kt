@@ -2,20 +2,12 @@ package com.example
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.lagradost.cloudstream3.ui.home.HomeViewModel
-import com.lagradost.cloudstream3.utils.DataStoreHelper
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.security.MessageDigest
 
 object SyncBackup {
 
-    private val resumeWatchingCache = mutableListOf<DataStoreHelper.ResumeWatchingResult>()
-
-    suspend fun cachedResumeWatching(): List<DataStoreHelper.ResumeWatchingResult> =
-        try {
-            HomeViewModel.getResumeWatching()
-                ?.also { resumeWatchingCache.clear(); resumeWatchingCache.addAll(it) }
-            resumeWatchingCache
-        } catch (e: Exception) { resumeWatchingCache }
+    private val resumeMapper = ObjectMapper()
 
     val nonTransferableKeys = listOf(
         "anilist_unixtime", "anilist_token", "anilist_user", "anilist_cached_list",
@@ -38,10 +30,11 @@ object SyncBackup {
         "data_store_helper/account_key_index", "VERSION_NAME", "FILES_TO_DELETE_KEY",
         "HAS_DONE_SETUP", "PLUGINS_KEY",
         "used_fstream_providers_v3", "fstream_version",
-        "home_api_used", "home_api", "user_selected_homepage_api",
+        "user_selected_homepage_api",
         "last_sync_api_key", "home_pref_homepage", "library_sorting_mode",
         "results_sorting_mode", "viewpager_item_key",
         "app_layout_key",
+        "auto_download_plugins_key2",
     )
 
     private fun String.isTransferable(): Boolean {
@@ -83,16 +76,16 @@ object SyncBackup {
 
     fun buildBackup(
         context: Context,
-        resumeWatching: List<DataStoreHelper.ResumeWatchingResult>?,
         enabled: Set<SyncCategory>,
     ): BackupFile {
+        val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, resumeWatching)
+                isResumeRelevant(entry.key, resumeIndex)
         }
         val allSettings = context.getDefaultSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, resumeWatching)
+                isResumeRelevant(entry.key, resumeIndex)
         }
         return BackupFile(
             datastore = buildVars(allData),
@@ -100,25 +93,60 @@ object SyncBackup {
         )
     }
 
+    private class ResumeIndex(
+        val parentIds: Set<Int>,
+        val episodeIds: Set<Int>,
+    )
+
+    private fun buildResumeIndex(allData: Map<String, *>): Map<String, ResumeIndex> {
+        val parents = HashMap<String, MutableSet<Int>>()
+        val episodes = HashMap<String, MutableSet<Int>>()
+        for ((key, value) in allData) {
+            val parts = key.split("/")
+            if (parts.size != 3) continue
+            if (!parts[0].all { it.isDigit() }) continue
+            if (parts[1] != "result_resume_watching_2") continue
+            val parentId = parts[2].toIntOrNull() ?: continue
+            parents.getOrPut(parts[0]) { HashSet() }.add(parentId)
+            extractEpisodeId(value)?.let { episodes.getOrPut(parts[0]) { HashSet() }.add(it) }
+        }
+        return parents.keys.associateWith { account ->
+            ResumeIndex(
+                parentIds = parents[account] ?: emptySet(),
+                episodeIds = episodes[account] ?: emptySet(),
+            )
+        }
+    }
+
+    private fun extractEpisodeId(value: Any?): Int? {
+        if (value !is String) return null
+        return try {
+            resumeMapper.readTree(value).get("episodeId")?.asInt()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun isResumeRelevant(
         key: String,
-        resumeWatching: List<DataStoreHelper.ResumeWatchingResult>?,
+        resumeIndex: Map<String, ResumeIndex>,
     ): Boolean {
-        if (resumeWatching == null) return true
         val lowerKey = key.lowercase()
+        val parts = key.split("/")
+        val account = if (parts.size >= 2 && parts[0].all { it.isDigit() }) parts[0] else null
+        val index = account?.let { resumeIndex[it] }
+        if (index == null) return true
         if (lowerKey.contains("download_header_cache")) {
-            val id = key.split("/").getOrNull(1)?.toIntOrNull()
-            return id?.let { intId ->
-                resumeWatching.any { if (it.parentId != null) it.parentId == intId else it.id == intId }
-            } ?: false
+            val id = parts.getOrNull(1)?.toIntOrNull() ?: return false
+            return id in index.parentIds
         } else if (lowerKey.contains("video_pos_dur")) {
-            val id = key.split("/").getOrNull(2)?.toIntOrNull()
-            return id?.let { intId -> resumeWatching.any { it.id == intId } } ?: false
+            val id = parts.getOrNull(2)?.toIntOrNull() ?: return false
+            return id in index.episodeIds
         } else if (lowerKey.contains("result_season") || lowerKey.contains("result_dub") ||
             lowerKey.contains("result_episode")
         ) {
-            val id = key.split("/").getOrNull(2)?.toIntOrNull()
-            return id?.let { intId -> resumeWatching.any { it.parentId == intId } } ?: false
+            val id = parts.getOrNull(2)?.toIntOrNull() ?: return false
+            return id in index.parentIds
         }
         return true
     }
@@ -140,6 +168,10 @@ object SyncBackup {
     ) {
         restoreVars(context, backupFile.datastore, isSettings = false, enabled)
         restoreVars(context, backupFile.settings, isSettings = true, enabled)
+        if (SyncCategory.EXTENSIONS in enabled) {
+            context.getDefaultSharedPrefs().edit()
+                .putInt("auto_download_plugins_key2", 2).apply()
+        }
     }
 
     private fun restoreVars(

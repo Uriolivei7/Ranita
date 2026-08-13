@@ -139,11 +139,10 @@ class SyncPlugin : Plugin() {
             SyncStorage.ownContentId = ownDevice.itemContentId
         }
 
-        val resumeWatching = SyncBackup.cachedResumeWatching()
         val enabledBackup = SyncCategory.entries.filter { SyncStorage.isBackupEnabled(it) }.toSet()
         val enabledRestore = SyncCategory.entries.filter { SyncStorage.isRestoreEnabled(it) }.toSet()
 
-        val localBackup = SyncBackup.buildBackup(appCtx, resumeWatching, enabledBackup)
+        val localBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
 
         // --- restore from cloud ---
         if (restoreEnabled) {
@@ -182,7 +181,7 @@ class SyncPlugin : Plugin() {
 
         // --- push to cloud ---
         if (backupEnabled) {
-            val toPush = SyncBackup.buildBackup(appCtx, resumeWatching, enabledBackup)
+            val toPush = SyncBackup.buildBackup(appCtx, enabledBackup)
             if (!SyncBackup.isEmpty(toPush)) {
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
