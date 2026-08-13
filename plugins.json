@@ -701,6 +701,25 @@
         "name": "SoloLatinoProvider"
     },
     {
+        "fileHash": "sha256-a24cd72469d9c148e4fc97366388167478ae3a19750d62b03102280884e6f036",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 61434,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "beta"
+        ],
+        "tvTypes": [
+            "Others"
+        ],
+        "version": 1,
+        "internalName": "SyncPlugin",
+        "description": "Sincroniza favoritos, progreso, historial, repos y ajustes entre tus dispositivos (via GitHub, sin servidor)",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SyncPlugin.cs3",
+        "name": "SyncPlugin"
+    },
+    {
         "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
         "fileHash": "sha256-66aecc5724b36e58171394a6bfb4a4523fa6f9edbc29f1e42021a8f84dbb708e",
         "apiVersion": 1,
