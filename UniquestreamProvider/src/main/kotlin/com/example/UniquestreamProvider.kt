@@ -443,7 +443,8 @@ class UniqueStreamProvider : MainAPI() {
         if (id in movieIds) return true
         return try {
             val response = app.get("$apiUrl/content/$id", headers = baseHeaders, timeout = 20L)
-            val isMovie = response.isSuccessful && response.text.contains("\"content_type\"")
+            val isMovie = response.isSuccessful &&
+                    Regex("\"content_type\"\\s*:\\s*\"movie\"").containsMatchIn(response.text)
             if (isMovie) movieIds.add(id)
             isMovie
         } catch (e: kotlinx.coroutines.CancellationException) {
