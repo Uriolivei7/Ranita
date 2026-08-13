@@ -21,6 +21,8 @@ object SyncNetwork {
     private const val API_URL = "https://api.github.com/graphql"
     val json = Json { ignoreUnknownKeys = true }
 
+    @Volatile var lastError: String? = null
+
     fun compressData(data: String): String {
         val bos = ByteArrayOutputStream()
         GZIPOutputStream(bos).use { gz -> gz.write(data.toByteArray(Charsets.UTF_8)) }
@@ -72,7 +74,11 @@ object SyncNetwork {
 
     suspend fun fetchProjectId(token: String, projectNum: Int): String? {
         val query = "query { viewer { projectV2(number: $projectNum) { id } } }"
-        return graphql(token, query)?.data?.viewer?.projectV2?.id
+        val resp = graphql(token, query)
+        val id = resp?.data?.viewer?.projectV2?.id
+        if (id != null) log("Proyecto $projectNum -> $id")
+        else err("fetchProjectId: proyecto no accesible: ${resp?.errors?.joinToString() { it.message ?: "" }}")
+        return id
     }
 
     suspend fun fetchDevices(token: String, projectNum: Int): List<SyncDevice>? {
@@ -85,8 +91,16 @@ object SyncNetwork {
                 } } }
             } } }
         """.trimIndent()
-        val resp = graphql(token, query) ?: return null
-        val nodes = resp.data?.viewer?.projectV2?.items?.nodes ?: return emptyList()
+        val resp = graphql(token, query)
+        if (resp == null) {
+            err("fetchDevices: falló la consulta del proyecto")
+            return null
+        }
+        if (resp.data?.viewer?.projectV2 == null) {
+            err("fetchDevices: proyecto no accesible con este token: ${resp.errors?.joinToString() { it.message ?: "" }}")
+            return null
+        }
+        val nodes = resp.data.viewer.projectV2.items?.nodes ?: return emptyList()
         return nodes.mapNotNull { node ->
             val content = node.content ?: return@mapNotNull null
             val body = content.bodyText ?: ""
@@ -98,7 +112,9 @@ object SyncNetwork {
                 syncedData = if (body.isNotBlank()) decompressData(body) else null,
                 itemContentId = content.id,
             )
-        }.filter { it.itemId.isNotEmpty() }
+        }.filter { it.itemId.isNotEmpty() }.also {
+            log("fetchDevices: ${it.size} dispositivo(s) en el proyecto")
+        }
     }
 
     suspend fun registerDevice(token: String, projectId: String, deviceName: String, data: String): Pair<String?, String?> {
@@ -114,6 +130,7 @@ object SyncNetwork {
         val itemId = resp?.data?.addDraft?.projectItem?.id
         val contentId = resp?.data?.addDraft?.projectItem?.content?.id
         if (itemId == null) err("register failed: ${resp?.errors?.joinToString() { it.message ?: "" }}")
+        else log("register: draft creado $contentId")
         return itemId to contentId
     }
 
@@ -131,11 +148,17 @@ object SyncNetwork {
             err("update failed: ${resp?.errors?.joinToString() { it.message ?: "" }}")
             return false
         }
+        log("update: draft $contentId actualizado")
         return true
     }
 
     private fun err(msg: String) {
+        lastError = msg
         android.util.Log.e(TAG, msg)
+    }
+
+    private fun log(msg: String) {
+        android.util.Log.i(TAG, msg)
     }
 
     // ISO8601 -> epoch seconds

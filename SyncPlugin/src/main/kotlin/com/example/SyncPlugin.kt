@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.CommonActivity.showToast
 import com.lagradost.cloudstream3.MainActivity
@@ -32,6 +33,17 @@ class SyncPlugin : Plugin() {
 
     @Volatile private var isRestoring = false
     private val pollMs = 30_000L
+
+    @Volatile var lastStatus = "Sin sincronizar"
+    @Volatile var lastError: String? = null
+
+    private fun log(msg: String) {
+        Log.i(TAG, msg)
+    }
+
+    companion object {
+        private const val TAG = "SyncStream"
+    }
 
     override fun load(context: Context) {
         appContext = context
@@ -118,9 +130,24 @@ class SyncPlugin : Plugin() {
 
     suspend fun runSync() {
         if (isRestoring || !SyncStorage.isLoggedIn()) return
+        lastError = null
+        lastStatus = "Sincronizando..."
+        try {
+            runSyncInternal()
+        } catch (e: Exception) {
+            lastStatus = "Error de sync"
+            lastError = e.message ?: e.javaClass.simpleName
+            Log.e(TAG, "runSync", e)
+        }
+    }
+
+    private suspend fun runSyncInternal() {
         val backupEnabled = SyncCategory.entries.any { SyncStorage.isBackupEnabled(it) }
         val restoreEnabled = SyncCategory.entries.any { SyncStorage.isRestoreEnabled(it) }
-        if (!backupEnabled && !restoreEnabled) return
+        if (!backupEnabled && !restoreEnabled) {
+            lastStatus = "Sin categorías activadas"
+            return
+        }
 
         val appCtx = appContext ?: return
         val token = SyncStorage.token ?: return
@@ -132,21 +159,33 @@ class SyncPlugin : Plugin() {
 
         val projectId = SyncStorage.projectId
             ?: SyncNetwork.fetchProjectId(token, projectNum)?.also { SyncStorage.projectId = it }
-            ?: return
+            ?: run {
+                lastStatus = "No se encontró el proyecto $projectNum"
+                lastError = SyncNetwork.lastError ?: "Revisa el token y el número de proyecto"
+                return
+            }
 
         val devices = SyncNetwork.fetchDevices(token, projectNum)
-        if (devices != null) {
-            val ownDevice = devices
-                .filter { it.deviceId == deviceId }
-                .maxByOrNull { it.updatedAt }
-            if (ownDevice != null && !SyncStorage.forceReRegister) {
-                SyncStorage.ownItemId = ownDevice.itemId
-                SyncStorage.ownContentId = ownDevice.itemContentId
-            } else if (ownDevice == null) {
-                SyncStorage.ownItemId = null
-                SyncStorage.ownContentId = null
-                SyncStorage.forceReRegister = false
-            }
+        if (devices == null) {
+            lastStatus = "No se pudo consultar el proyecto"
+            lastError = SyncNetwork.lastError
+            return
+        }
+        log("proyecto $projectId, ${devices.size} dispositivo(s)")
+
+        val ownDevice = devices
+            .filter { it.deviceId == deviceId }
+            .maxByOrNull { it.updatedAt }
+        if (ownDevice != null && !SyncStorage.forceReRegister) {
+            SyncStorage.ownItemId = ownDevice.itemId
+            SyncStorage.ownContentId = ownDevice.itemContentId
+            log("draft propio encontrado: ${ownDevice.itemContentId}")
+        } else if (ownDevice == null) {
+            SyncStorage.ownItemId = null
+            SyncStorage.ownContentId = null
+            SyncStorage.forceReRegister = false
+            lastStatus = "Draft propio no encontrado; se creará uno nuevo"
+            log("draft propio NO encontrado -> se registrará uno nuevo")
         }
 
         val enabledBackup = SyncCategory.entries.filter { SyncStorage.isBackupEnabled(it) }.toSet()
@@ -199,6 +238,8 @@ class SyncPlugin : Plugin() {
                         isRestoring = false
                     }
                     if (restoredAny) {
+                        lastStatus = "Restaurado desde ${others.name}"
+                        log("restaurado desde ${others.name} (${others.itemContentId})")
                         Handler(Looper.getMainLooper()).post {
                             if (restoredSettings) {
                                 MainActivity.reloadHomeEvent(true)
@@ -229,26 +270,46 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownContentId = newContentId
                         SyncStorage.lastPushedHash = hash
                         SyncStorage.forceReRegister = false
+                        lastStatus = "Draft creado/recreado: sync OK"
+                        log("nuevo draft registrado: $newContentId")
+                    } else {
+                        lastStatus = "No se pudo crear el draft"
+                        lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
                     val ok = SyncNetwork.updateDevice(token, contentId, deviceId, data)
                     if (ok) {
                         SyncStorage.lastPushedHash = hash
+                        lastStatus = "Draft actualizado: sync OK"
+                        log("draft actualizado: $contentId")
                     } else {
                         SyncStorage.ownContentId = null
                         SyncStorage.ownItemId = null
                         SyncStorage.forceReRegister = true
+                        lastStatus = "Fallo al actualizar el draft; se reintentará crearlo"
+                        lastError = SyncNetwork.lastError
                     }
+                } else {
+                    lastStatus = "Sin cambios que subir"
                 }
+            } else {
+                lastStatus = "Backup vacío (nada que subir)"
             }
+        }
+
+        if (lastStatus == "Sincronizando...") {
+            lastStatus = "Sin cambios"
         }
     }
 
-    fun forceSync(showToastResult: Boolean) {
+    fun forceSync(showToastResult: Boolean, onDone: (() -> Unit)? = null) {
         scope.launch {
             runSync()
             if (showToastResult) {
                 showToast(if (SyncStorage.isLoggedIn()) "Sync completado" else "Configura el plugin primero")
+            }
+            if (onDone != null) {
+                Handler(Looper.getMainLooper()).post { onDone() }
             }
         }
     }

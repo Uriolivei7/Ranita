@@ -132,6 +132,31 @@ class SyncSettings(private val plugin: SyncPlugin) {
 
         addSpace(6)
 
+        addSectionTitle("Estado / Diagnóstico")
+        val statusView = AppCompatTextView(ctx).apply {
+            text = plugin.lastStatus
+            textSize = 13f
+        }
+        root.addView(statusView)
+        val errorView = AppCompatTextView(ctx).apply {
+            text = plugin.lastError?.let { "Último error: $it" } ?: ""
+            textSize = 13f
+            setTextColor(android.graphics.Color.parseColor("#E5484D"))
+            visibility = if (plugin.lastError == null) View.GONE else View.VISIBLE
+        }
+        root.addView(errorView)
+        addBody(
+            "Draft propio: " + if (SyncStorage.ownContentId == null) {
+                "NO registrado (se creará al sincronizar)"
+            } else {
+                "registrado"
+            },
+            12f,
+        )
+        addBody("Para ver todos los pasos: adb logcat -s SyncStream", 12f)
+
+        addSpace(6)
+
         addSectionTitle("Categorías")
         val catCheckboxes = mutableMapOf<SyncCategory, Pair<CheckBox, CheckBox>>()
         for (cat in SyncCategory.entries) {
@@ -204,7 +229,12 @@ class SyncSettings(private val plugin: SyncPlugin) {
                     }
                     return@setOnClickListener
                 }
-                plugin.forceSync(showToastResult = true)
+                plugin.forceSync(showToastResult = true) {
+                    statusView.text = plugin.lastStatus
+                    val err = plugin.lastError
+                    errorView.text = if (err == null) "" else "Último error: $err"
+                    errorView.visibility = if (err == null) View.GONE else View.VISIBLE
+                }
             }
         }
         root.addView(save)
