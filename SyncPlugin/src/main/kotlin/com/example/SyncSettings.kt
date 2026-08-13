@@ -149,7 +149,7 @@ class SyncSettings(private val plugin: SyncPlugin) {
             "Draft propio: " + if (SyncStorage.ownContentId == null) {
                 "NO registrado (se creará al sincronizar)"
             } else {
-                "registrado"
+                "registrado (${SyncStorage.ownChunkContentIds.size} trozo/s)"
             },
             12f,
         )
@@ -221,6 +221,7 @@ class SyncSettings(private val plugin: SyncPlugin) {
                 SyncStorage.projectId = null
                 SyncStorage.ownItemId = null
                 SyncStorage.ownContentId = null
+                SyncStorage.ownChunkContentIds = emptyMap()
                 if (!SyncStorage.isLoggedIn()) {
                     plugin.activity?.let {
                         android.widget.Toast.makeText(

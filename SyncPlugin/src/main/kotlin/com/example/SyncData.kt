@@ -97,6 +97,8 @@ data class SyncDevice(
     val deviceId: String,
     val itemId: String,
     val updatedAt: Long,
-    val syncedData: String? = null,
+    val rawChunkData: String? = null,
+    val chunkIndex: Int = 0,
+    val totalChunks: Int = 1,
     val itemContentId: String? = null,
 )

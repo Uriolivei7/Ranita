@@ -173,16 +173,21 @@ class SyncPlugin : Plugin() {
         }
         log("proyecto $projectId, ${devices.size} dispositivo(s)")
 
-        val ownDevice = devices
+        val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
             .maxByOrNull { it.updatedAt }
         if (ownDevice != null && !SyncStorage.forceReRegister) {
+            val ownChunks = devices.filter { it.deviceId == deviceId }
+            SyncStorage.ownChunkContentIds = ownChunks
+                .mapNotNull { c -> if (c.itemContentId == null) null else c.chunkIndex to c.itemContentId }
+                .toMap()
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
-            log("draft propio encontrado: ${ownDevice.itemContentId}")
+            log("draft propio encontrado: ${ownChunks.size} trozo(s)")
         } else if (ownDevice == null) {
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
+            SyncStorage.ownChunkContentIds = emptyMap()
             SyncStorage.forceReRegister = false
             lastStatus = "Draft propio no encontrado; se creará uno nuevo"
             log("draft propio NO encontrado -> se registrará uno nuevo")
@@ -195,12 +200,13 @@ class SyncPlugin : Plugin() {
 
         // --- restore from cloud ---
         if (restoreEnabled) {
-            val others = devices
-                ?.filter { it.deviceId != deviceId && !it.syncedData.isNullOrBlank() }
-                ?.maxByOrNull { it.updatedAt }
+            val others = SyncNetwork.mainDrafts(devices)
+                .filter { it.deviceId != deviceId && it.rawChunkData != null }
+                .maxByOrNull { it.updatedAt }
             if (others != null) {
-                val cloudBackup = try {
-                    SyncNetwork.json.decodeFromString(BackupFile.serializer(), others.syncedData!!)
+                val payload = SyncNetwork.assemblePayload(devices, others.deviceId)
+                val cloudBackup = if (payload == null) null else try {
+                    SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
                 } catch (_: Exception) {
                     null
                 }
@@ -262,29 +268,36 @@ class SyncPlugin : Plugin() {
             if (!SyncBackup.isEmpty(toPush)) {
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
-                val contentId = SyncStorage.ownContentId
-                if (contentId == null || SyncStorage.forceReRegister) {
-                    val (itemId, newContentId) = SyncNetwork.registerDevice(token, projectId, deviceId, data)
-                    if (itemId != null && newContentId != null) {
-                        SyncStorage.ownItemId = itemId
-                        SyncStorage.ownContentId = newContentId
+                val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
+                log("payload: ${data.length} chars -> ${chunks.size} trozo(s)")
+                val ownIds = SyncStorage.ownChunkContentIds
+                if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
+                    val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks)
+                    if (ids != null) {
+                        SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
+                        SyncStorage.ownContentId = ids.getOrNull(0)
+                        SyncStorage.ownItemId = null
                         SyncStorage.lastPushedHash = hash
                         SyncStorage.forceReRegister = false
-                        lastStatus = "Draft creado/recreado: sync OK"
-                        log("nuevo draft registrado: $newContentId")
+                        lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
+                        log("nuevo draft registrado: ${ids.size} trozo(s)")
                     } else {
                         lastStatus = "No se pudo crear el draft"
                         lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
-                    val ok = SyncNetwork.updateDevice(token, contentId, deviceId, data)
-                    if (ok) {
+                    val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds)
+                    if (updated != null) {
+                        SyncStorage.ownChunkContentIds = updated
+                        SyncStorage.ownContentId = updated[0]
+                        SyncStorage.ownItemId = null
                         SyncStorage.lastPushedHash = hash
-                        lastStatus = "Draft actualizado: sync OK"
-                        log("draft actualizado: $contentId")
+                        lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
+                        log("draft actualizado: ${updated.size} trozo(s)")
                     } else {
                         SyncStorage.ownContentId = null
                         SyncStorage.ownItemId = null
+                        SyncStorage.ownChunkContentIds = emptyMap()
                         SyncStorage.forceReRegister = true
                         lastStatus = "Fallo al actualizar el draft; se reintentará crearlo"
                         lastError = SyncNetwork.lastError

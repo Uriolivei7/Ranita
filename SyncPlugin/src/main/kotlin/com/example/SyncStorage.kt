@@ -47,6 +47,24 @@ object SyncStorage {
         get() = get("sync_own_content_id")
         set(value) = set("sync_own_content_id", value)
 
+    var ownChunkContentIds: Map<Int, String>
+        get() {
+            val raw = get("sync_own_chunk_ids") ?: return emptyMap()
+            return raw.split(';')
+                .mapNotNull { seg ->
+                    val parts = seg.split('|', limit = 2)
+                    val idx = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                    val id = parts.getOrNull(1)
+                    if (id.isNullOrEmpty()) null else idx to id
+                }
+                .toMap()
+        }
+        set(value) {
+            val raw = value.entries.sortedBy { it.key }
+                .joinToString(";") { "${it.key}|${it.value}" }
+            set("sync_own_chunk_ids", raw.ifEmpty { null })
+        }
+
     var lastPushedHash: String?
         get() = get("sync_last_pushed_hash")
         set(value) = set("sync_last_pushed_hash", value)
