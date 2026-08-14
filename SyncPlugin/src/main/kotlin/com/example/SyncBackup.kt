@@ -223,10 +223,9 @@ object SyncBackup {
         cloud: BackupFile,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        isLocallyDirty: Boolean,
     ): BackupFile = BackupFile(
-        datastore = mergeVars(local.datastore, cloud.datastore, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        settings = mergeVars(local.settings, cloud.settings, localCategoryTs, cloudPayloadTs, isLocallyDirty),
+        datastore = mergeVars(local.datastore, cloud.datastore, localCategoryTs, cloudPayloadTs),
+        settings = mergeVars(local.settings, cloud.settings, localCategoryTs, cloudPayloadTs),
     )
 
     private fun mergeVars(
@@ -234,22 +233,22 @@ object SyncBackup {
         cloud: BackupVars,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        isLocallyDirty: Boolean,
     ): BackupVars = BackupVars(
-        bool = mergeMap(local.bool, cloud.bool, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        int = mergeMap(local.int, cloud.int, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        float = mergeMap(local.float, cloud.float, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        long = mergeMap(local.long, cloud.long, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        string = mergeStringMap(local.string, cloud.string, localCategoryTs, cloudPayloadTs, isLocallyDirty),
-        stringSet = mergeMap(local.stringSet, cloud.stringSet, localCategoryTs, cloudPayloadTs, isLocallyDirty),
+        bool = mergeValueMap(local.bool, cloud.bool, local.string, cloud.string, localCategoryTs, cloudPayloadTs),
+        int = mergeValueMap(local.int, cloud.int, local.string, cloud.string, localCategoryTs, cloudPayloadTs),
+        float = mergeValueMap(local.float, cloud.float, local.string, cloud.string, localCategoryTs, cloudPayloadTs),
+        long = mergeValueMap(local.long, cloud.long, local.string, cloud.string, localCategoryTs, cloudPayloadTs),
+        string = mergeStringMap(local.string, cloud.string, localCategoryTs, cloudPayloadTs),
+        stringSet = mergeValueMap(local.stringSet, cloud.stringSet, local.string, cloud.string, localCategoryTs, cloudPayloadTs),
     )
 
-    private fun <T> mergeMap(
+    private fun <T> mergeValueMap(
         local: Map<String, T>?,
         cloud: Map<String, T>?,
+        localStrings: Map<String, String>?,
+        cloudStrings: Map<String, String>?,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        isLocallyDirty: Boolean,
     ): Map<String, T>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -261,7 +260,9 @@ object SyncBackup {
             if (cloudVal == null) {
                 merged[key] = localVal
             } else {
-                merged[key] = if (cloudPayloadTs > localCategoryTs && !isLocallyDirty) cloudVal else localVal
+                merged[key] = if (
+                    cloudValueWins(key, localStrings, cloudStrings, localCategoryTs, cloudPayloadTs)
+                ) cloudVal else localVal
             }
         }
         for ((key, cloudVal) in cloud) {
@@ -272,12 +273,44 @@ object SyncBackup {
         return merged
     }
 
+    /**
+     * video_pos_dur and other numeric resume keys carry no timestamp of their own,
+     * so they are resolved using the embedded updateTime of the sibling
+     * result_resume_watching_2 entry for the same parent. Only when no embedded
+     * timestamp exists on either side do we fall back to the draft-level timestamps.
+     */
+    private fun cloudValueWins(
+        key: String,
+        localStrings: Map<String, String>?,
+        cloudStrings: Map<String, String>?,
+        localCategoryTs: Long,
+        cloudPayloadTs: Long,
+    ): Boolean {
+        val localTs = resumeSiblingTs(key, localStrings)
+        val cloudTs = resumeSiblingTs(key, cloudStrings)
+        if (localTs > 0L || cloudTs > 0L) return cloudTs > localTs
+        return cloudPayloadTs > localCategoryTs
+    }
+
+    private fun resumeSiblingTs(key: String, stringMap: Map<String, String>?): Long {
+        if (stringMap == null) return 0L
+        val parts = key.split("/")
+        if (parts.size < 3) return 0L
+        val parentId = parts[parts.size - 2]
+        val account = if (parts[0].all { it.isDigit() }) parts[0] else ""
+        val resumeKey = if (account.isEmpty()) {
+            "result_resume_watching_2/$parentId"
+        } else {
+            "$account/result_resume_watching_2/$parentId"
+        }
+        return SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(stringMap[resumeKey]))
+    }
+
     private fun mergeStringMap(
         local: Map<String, String>?,
         cloud: Map<String, String>?,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        isLocallyDirty: Boolean,
     ): Map<String, String>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -301,7 +334,7 @@ object SyncBackup {
                 if (localTs > 0L || cloudTs > 0L) {
                     merged[key] = if (cloudTs > localTs) cloudVal else localVal
                 } else {
-                    merged[key] = if (cloudPayloadTs > localCategoryTs && !isLocallyDirty) cloudVal else localVal
+                    merged[key] = if (cloudPayloadTs > localCategoryTs) cloudVal else localVal
                 }
             }
         }

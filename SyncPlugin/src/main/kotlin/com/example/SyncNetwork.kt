@@ -56,7 +56,10 @@ object SyncNetwork {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return null
         val total = (drafts.maxOf { it.chunkIndex }) + 1
-        val byIndex = drafts.associateBy { it.chunkIndex }
+        val byIndex = HashMap<Int, SyncDevice>()
+        for (d in drafts.sortedByDescending { it.updatedAt }) {
+            if (byIndex[d.chunkIndex] == null) byIndex[d.chunkIndex] = d
+        }
         if ((0 until total).any { byIndex[it] == null }) return null
         val sb = StringBuilder()
         for (i in 0 until total) {

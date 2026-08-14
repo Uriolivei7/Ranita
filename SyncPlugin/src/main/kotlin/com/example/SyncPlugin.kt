@@ -244,6 +244,7 @@ class SyncPlugin : Plugin() {
             val othersList = SyncNetwork.mainDrafts(devices)
                 .filter { it.deviceId != deviceId }
                 .sortedByDescending { it.updatedAt }
+            log("restore: otros dispositivos = ${othersList.map { "${it.name}@${it.updatedAt}" }}")
             if (othersList.isNotEmpty()) {
                 isRestoring = true
                 var restoredAny = false
@@ -270,12 +271,16 @@ class SyncPlugin : Plugin() {
                             val localCat = filterBackup(localBackup, cat)
                             val cloudCat = filterBackup(cloudBackup, cat)
                             if (SyncBackup.isEmpty(cloudCat)) continue
-                            val isDirty = synchronized(dirtyCategories) { cat in dirtyCategories }
                             val merged = SyncBackup.mergeBackupFiles(
                                 localCat, cloudCat,
                                 localCategoryTs = SyncStorage.categoryTimestamp(cat),
                                 cloudPayloadTs = other.updatedAt,
-                                isLocallyDirty = isDirty,
+                            )
+                            log(
+                                "merge $cat: local=${SyncBackup.getBackupFileKeys(localCat).size} " +
+                                    "cloud=${SyncBackup.getBackupFileKeys(cloudCat).size} " +
+                                    "localTs=${SyncStorage.categoryTimestamp(cat)} cloudTs=${other.updatedAt} " +
+                                    "cambio=${merged != localCat}"
                             )
                             if (merged != localCat) {
                                 SyncBackup.restore(appCtx, merged, setOf(cat))
@@ -334,6 +339,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.lastPushedHash = hash
                         SyncStorage.forceReRegister = false
                         clearDirtyCategories()
+                        updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
                     } else {
@@ -348,6 +354,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.lastPushedHash = hash
                         clearDirtyCategories()
+                        updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
                     } else {
@@ -386,6 +393,13 @@ class SyncPlugin : Plugin() {
     private fun clearDirtyCategories() {
         synchronized(dirtyCategories) {
             dirtyCategories.clear()
+        }
+    }
+
+    private fun updateCategoryTimestamps(categories: Set<SyncCategory>) {
+        val now = SyncTime.nowEpochSeconds()
+        for (cat in categories) {
+            SyncStorage.setCategoryTimestamp(cat, now)
         }
     }
 
