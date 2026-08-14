@@ -1,8 +1,9 @@
 package com.example
 
-import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
@@ -12,14 +13,13 @@ import android.view.inputmethod.EditorInfo
 import android.widget.CheckBox
 import android.widget.CompoundButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 
 class SyncSettings(private val plugin: SyncPlugin) {
 
@@ -194,56 +194,90 @@ class SyncSettings(private val plugin: SyncPlugin) {
         addSpace(6)
 
         addSectionTitle("Acciones")
-        addBody("Sincroniza cada 30s mientras la app esté abierta. Los cambios locales se suben ~2s después de producirse.")
+        addBody("Sincroniza automáticamente cada 15s mientras la app esté abierta, al abrir la app y ~2s después de cada cambio local.")
 
-        val save = AppCompatButton(ctx).apply {
-            text = "Guardar y sincronizar"
-            isAllCaps = false
-            textSize = 15f
-            setTextColor(android.graphics.Color.WHITE)
-            ViewCompat.setBackgroundTintList(
-                this,
-                ColorStateList.valueOf(ContextCompat.getColor(ctx, android.R.color.holo_blue_dark)),
-            )
-            stateListAnimator = null
+        val syncRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(ctx, 8).toFloat()
+                setColor(ContextCompat.getColor(ctx, android.R.color.holo_blue_dark))
+            }
             setPadding(dpToPx(ctx, 16), dpToPx(ctx, 12), dpToPx(ctx, 16), dpToPx(ctx, 12))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply { topMargin = dpToPx(ctx, 16) }
-            setOnClickListener {
-                SyncStorage.token = tokenInput.text.toString().trim().ifEmpty { null }
-                SyncStorage.projectNum = projectNumInput.text.toString().trim().ifEmpty { null }
-                for ((cat, pair) in catCheckboxes) {
-                    SyncStorage.setBackupEnabled(cat, pair.first.isChecked)
-                    SyncStorage.setRestoreEnabled(cat, pair.second.isChecked)
+        }
+        val syncSpinner = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(dpToPx(ctx, 22), dpToPx(ctx, 22))
+        }
+        val syncLabel = AppCompatTextView(ctx).apply {
+            text = "Guardar y sincronizar"
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            textSize = 15f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        syncRow.addView(syncSpinner)
+        syncRow.addView(syncLabel)
+        root.addView(syncRow)
+
+        fun setSyncing(syncing: Boolean) {
+            syncSpinner.visibility = if (syncing) View.VISIBLE else View.GONE
+            syncLabel.text = if (syncing) "Sincronizando..." else "Guardar y sincronizar"
+            syncRow.isEnabled = !syncing
+            syncRow.isClickable = !syncing
+            syncRow.alpha = if (syncing) 0.7f else 1f
+        }
+
+        syncRow.setOnClickListener {
+            SyncStorage.token = tokenInput.text.toString().trim().ifEmpty { null }
+            SyncStorage.projectNum = projectNumInput.text.toString().trim().ifEmpty { null }
+            for ((cat, pair) in catCheckboxes) {
+                SyncStorage.setBackupEnabled(cat, pair.first.isChecked)
+                SyncStorage.setRestoreEnabled(cat, pair.second.isChecked)
+            }
+            SyncStorage.projectId = null
+            SyncStorage.ownItemId = null
+            SyncStorage.ownContentId = null
+            SyncStorage.ownChunkContentIds = emptyMap()
+            if (!SyncStorage.isLoggedIn()) {
+                plugin.activity?.let {
+                    android.widget.Toast.makeText(
+                        it, "Completa el token y número de proyecto", android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
-                SyncStorage.projectId = null
-                SyncStorage.ownItemId = null
-                SyncStorage.ownContentId = null
-                SyncStorage.ownChunkContentIds = emptyMap()
-                if (!SyncStorage.isLoggedIn()) {
-                    plugin.activity?.let {
-                        android.widget.Toast.makeText(
-                            it, "Completa el token y número de proyecto", android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                    return@setOnClickListener
-                }
-                plugin.forceSync(showToastResult = true) {
-                    statusView.text = plugin.lastStatus
-                    val err = plugin.lastError
-                    errorView.text = if (err == null) "" else "Último error: $err"
-                    errorView.visibility = if (err == null) View.GONE else View.VISIBLE
-                }
+                return@setOnClickListener
+            }
+            setSyncing(true)
+            plugin.forceSync(showToastResult = true)
+        }
+
+        val handler = Handler(Looper.getMainLooper())
+        val statusRunnable = object : Runnable {
+            override fun run() {
+                setSyncing(plugin.isSyncing)
+                statusView.text = plugin.lastStatus
+                val err = plugin.lastError
+                errorView.text = if (err == null) "" else "Último error: $err"
+                errorView.visibility = if (err == null) View.GONE else View.VISIBLE
+                handler.postDelayed(this, 250L)
             }
         }
-        root.addView(save)
+        handler.post(statusRunnable)
 
-        AlertDialog.Builder(activity)
+        val dialog = AlertDialog.Builder(activity)
             .setTitle("CloudStream Sync")
             .setView(scroll)
             .setNegativeButton("Cancelar", null)
             .show()
+        dialog.setOnDismissListener {
+            handler.removeCallbacks(statusRunnable)
+        }
     }
 }

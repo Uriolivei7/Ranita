@@ -1,7 +1,10 @@
 package com.example
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -30,12 +33,14 @@ class SyncPlugin : Plugin() {
     private var debounceJob: Job? = null
     private var bookmarksObserver: (Boolean) -> Unit = {}
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
-    private val pollMs = 30_000L
+    private val pollMs = 15_000L
 
     @Volatile var lastStatus = "Sin sincronizar"
     @Volatile var lastError: String? = null
+    @Volatile var isSyncing = false
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -55,6 +60,7 @@ class SyncPlugin : Plugin() {
             if (act != null) SyncSettings(this).show(act)
         }
         registerListeners()
+        registerLifecycle()
         startPolling()
         if (SyncStorage.isLoggedIn()) {
             scope.launch { runSync() }
@@ -65,6 +71,7 @@ class SyncPlugin : Plugin() {
         pollingJob?.cancel()
         debounceJob?.cancel()
         unregisterListeners()
+        unregisterLifecycle()
         scope.cancel()
     }
 
@@ -100,18 +107,49 @@ class SyncPlugin : Plugin() {
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
         synchronized(dirtyCategories) {
-            if (dirtyCategories.add(cat)) {
-                scheduleDebouncedSync()
-            }
+            dirtyCategories.add(cat)
         }
+        scheduleDebouncedSync()
     }
 
     private fun scheduleDebouncedSync() {
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(2_000L)
-            if (SyncStorage.isLoggedIn()) runSync()
+            if (SyncStorage.isLoggedIn()) {
+                try { runSync() } catch (_: Exception) {}
+            }
         }
+    }
+
+    private fun registerLifecycle() {
+        val appCtx = appContext ?: return
+        val application = appCtx.applicationContext as? Application ?: return
+        lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: Activity) {
+                if (SyncStorage.isLoggedIn()) {
+                    debounceJob?.cancel()
+                    debounceJob = scope.launch {
+                        delay(1_500L)
+                        try { runSync() } catch (_: Exception) {}
+                    }
+                }
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        }
+        application.registerActivityLifecycleCallbacks(lifecycleCallbacks)
+    }
+
+    private fun unregisterLifecycle() {
+        val appCtx = appContext ?: return
+        val application = appCtx.applicationContext as? Application ?: return
+        lifecycleCallbacks?.let { application.unregisterActivityLifecycleCallbacks(it) }
+        lifecycleCallbacks = null
     }
 
     private fun startPolling() {
@@ -130,6 +168,7 @@ class SyncPlugin : Plugin() {
 
     suspend fun runSync() {
         if (isRestoring || !SyncStorage.isLoggedIn()) return
+        isSyncing = true
         lastError = null
         lastStatus = "Sincronizando..."
         try {
@@ -138,6 +177,8 @@ class SyncPlugin : Plugin() {
             lastStatus = "Error de sync"
             lastError = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "runSync", e)
+        } finally {
+            isSyncing = false
         }
     }
 
@@ -292,6 +333,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.lastPushedHash = hash
                         SyncStorage.forceReRegister = false
+                        clearDirtyCategories()
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
                     } else {
@@ -305,6 +347,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownContentId = updated[0]
                         SyncStorage.ownItemId = null
                         SyncStorage.lastPushedHash = hash
+                        clearDirtyCategories()
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
                     } else {
@@ -337,6 +380,12 @@ class SyncPlugin : Plugin() {
             if (onDone != null) {
                 Handler(Looper.getMainLooper()).post { onDone() }
             }
+        }
+    }
+
+    private fun clearDirtyCategories() {
+        synchronized(dirtyCategories) {
+            dirtyCategories.clear()
         }
     }
 
