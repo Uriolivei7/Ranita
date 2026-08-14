@@ -218,7 +218,7 @@ class SyncPlugin : Plugin() {
             lastError = SyncNetwork.lastError
             return
         }
-        log("proyecto $projectId, ${devices.size} dispositivo(s)")
+        log("proyecto $projectId, ${devices.size} item(s), ${SyncNetwork.mainDrafts(devices).size} dispositivo(s)")
 
         val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
@@ -310,9 +310,9 @@ class SyncPlugin : Plugin() {
                                 SyncCategory.RESUME_WATCHING -> restoredResume = true
                                 else -> {}
                             }
+                            SyncStorage.setCategoryTimestamp(cat, source.updatedAt)
+                            restoredSources[cat] = source
                         }
-                        SyncStorage.setCategoryTimestamp(cat, source.updatedAt)
-                        restoredSources[cat] = source
                     }
                 } finally {
                     isRestoring = false

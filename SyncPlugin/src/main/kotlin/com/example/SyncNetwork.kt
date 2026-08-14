@@ -116,6 +116,16 @@ object SyncNetwork {
         val androidId =
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         if (!androidId.isNullOrEmpty()) return md5(packageName + androidId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val serial = Build.getSerial()
+                if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
+            } catch (_: SecurityException) {
+            }
+        } else {
+            val serial = Build.SERIAL
+            if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
+        }
         val deviceInfo = "${Build.BRAND}_${Build.MODEL}_${Build.DEVICE}"
         return md5(packageName + UUID.nameUUIDFromBytes(deviceInfo.toByteArray()).toString())
     }
