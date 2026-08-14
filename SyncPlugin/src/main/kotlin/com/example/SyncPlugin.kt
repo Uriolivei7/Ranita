@@ -342,6 +342,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
+                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, chunks.size, removeAll = true)
                     } else {
                         lastStatus = "No se pudo crear el draft"
                         lastError = SyncNetwork.lastError
@@ -357,6 +358,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
+                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, chunks.size)
                     } else {
                         SyncStorage.ownContentId = null
                         SyncStorage.ownItemId = null

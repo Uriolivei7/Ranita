@@ -43,7 +43,8 @@ data class GitHubGraphQLData(
     val viewer: GitHubViewer? = null,
     @SerialName("addProjectV2DraftIssue") val addDraft: AddDraftResult? = null,
     @SerialName("updateProjectV2DraftIssue") val updateDraft: UpdateDraftResult? = null,
-    @SerialName("node") val node: GitHubContent? = null
+    @SerialName("node") val node: GitHubContent? = null,
+    @SerialName("deleteProjectV2Item") val deleteItem: DeleteProjectV2ItemResult? = null
 )
 
 @Serializable
@@ -98,6 +99,11 @@ data class GitHubProjectItem(
 @Serializable
 data class UpdateDraftResult(
     val draftIssue: GitHubContent? = null
+)
+
+@Serializable
+data class DeleteProjectV2ItemResult(
+    val deletedItemId: String? = null
 )
 
 data class SyncDevice(

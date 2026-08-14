@@ -55,12 +55,21 @@ object SyncNetwork {
     suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return null
-        val total = (drafts.maxOf { it.chunkIndex }) + 1
-        val byIndex = HashMap<Int, SyncDevice>()
-        for (d in drafts.sortedByDescending { it.updatedAt }) {
-            if (byIndex[d.chunkIndex] == null) byIndex[d.chunkIndex] = d
+        val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return null
+        val gen = drafts.filter {
+            kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L
         }
-        if ((0 until total).any { byIndex[it] == null }) return null
+        val byIndex = HashMap<Int, SyncDevice>()
+        for (d in gen) {
+            val prev = byIndex[d.chunkIndex]
+            if (prev == null || d.updatedAt > prev.updatedAt) byIndex[d.chunkIndex] = d
+        }
+        val maxChunk = byIndex.keys.maxOrNull() ?: -1
+        val total = maxChunk + 1
+        if ((0 until total).any { byIndex[it] == null }) {
+            log("assemblePayload($deviceId): generación incompleta, chunks=${byIndex.keys.sorted()}")
+            return null
+        }
         val sb = StringBuilder()
         for (i in 0 until total) {
             val draft = byIndex[i] ?: return null
@@ -276,6 +285,40 @@ object SyncNetwork {
             return false
         }
         return true
+    }
+
+    suspend fun deleteDraft(token: String, projectId: String, itemId: String): Boolean {
+        val query = """
+            mutation { deleteProjectV2Item(input: {
+                projectId: "$projectId"
+                itemId: "$itemId"
+            }) { deletedItemId } }
+        """.trimIndent()
+        val resp = graphql(token, query)
+        val ok = resp?.data?.deleteItem?.deletedItemId != null
+        if (!ok) err("deleteDraft($itemId) fallo: ${resp?.errors?.joinToString() { it.message ?: "" }}")
+        else log("draft $itemId eliminado")
+        return ok
+    }
+
+    suspend fun cleanupStaleDrafts(
+        token: String,
+        projectId: String,
+        deviceId: String,
+        devices: List<SyncDevice>,
+        totalChunks: Int,
+        removeAll: Boolean = false
+    ) {
+        val stale = if (removeAll) {
+            devices.filter { it.deviceId == deviceId }
+        } else {
+            devices.filter { it.deviceId == deviceId && it.chunkIndex >= totalChunks }
+        }
+        if (stale.isEmpty()) return
+        log("limpieza: ${stale.size} trozo(s) obsoleto(s) -> eliminando")
+        for (draft in stale) {
+            deleteDraft(token, projectId, draft.itemId)
+        }
     }
 
     private fun err(msg: String) {
