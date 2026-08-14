@@ -220,8 +220,9 @@ class SyncPlugin : Plugin() {
         if (ownDevice != null && !SyncStorage.forceReRegister) {
             val ownChunks = devices.filter { it.deviceId == deviceId }
             SyncStorage.ownChunkContentIds = ownChunks
-                .mapNotNull { c -> if (c.itemContentId == null) null else c.chunkIndex to c.itemContentId }
-                .toMap()
+                .filter { it.itemContentId != null }
+                .groupBy { it.chunkIndex }
+                .mapValues { (_, ds) -> ds.maxByOrNull { it.updatedAt }!!.itemContentId!! }
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
             log("draft propio encontrado: ${ownChunks.size} trozo(s)")
@@ -342,7 +343,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
-                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, chunks.size, removeAll = true)
+                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                     } else {
                         lastStatus = "No se pudo crear el draft"
                         lastError = SyncNetwork.lastError
@@ -358,7 +359,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
-                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, chunks.size)
+                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                     } else {
                         SyncStorage.ownContentId = null
                         SyncStorage.ownItemId = null

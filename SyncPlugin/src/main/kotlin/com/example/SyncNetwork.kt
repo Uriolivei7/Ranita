@@ -51,6 +51,8 @@ object SyncNetwork {
 
     fun mainDrafts(devices: List<SyncDevice>): List<SyncDevice> =
         devices.filter { it.chunkIndex == 0 }
+            .groupBy { it.deviceId }
+            .mapNotNull { (_, gens) -> gens.maxByOrNull { it.updatedAt } }
 
     suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
         val drafts = devices.filter { it.deviceId == deviceId }
@@ -306,16 +308,21 @@ object SyncNetwork {
         projectId: String,
         deviceId: String,
         devices: List<SyncDevice>,
-        totalChunks: Int,
         removeAll: Boolean = false
     ) {
-        val stale = if (removeAll) {
-            devices.filter { it.deviceId == deviceId }
+        val drafts = devices.filter { it.deviceId == deviceId }
+        if (drafts.isEmpty()) return
+        val keep = if (removeAll) {
+            emptySet<String>()
         } else {
-            devices.filter { it.deviceId == deviceId && it.chunkIndex >= totalChunks }
+            val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return
+            drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
+                .map { it.itemId }
+                .toSet()
         }
+        val stale = drafts.filter { it.itemId !in keep }
         if (stale.isEmpty()) return
-        log("limpieza: ${stale.size} trozo(s) obsoleto(s) -> eliminando")
+        log("limpieza: ${stale.size} trozo(s) obsoleto(s) del dispositivo $deviceId -> eliminando")
         for (draft in stale) {
             deleteDraft(token, projectId, draft.itemId)
         }
