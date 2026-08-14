@@ -301,6 +301,28 @@ class SyncPlugin : Plugin() {
                                 "cambio=${merged != localCat}"
                         )
                         if (merged != localCat) {
+                            val localMaps = backupMaps(localCat)
+                            val cloudMaps = backupMaps(cloudCat)
+                            val allKeys = (localMaps.flatMap { it.keys } + cloudMaps.flatMap { it.keys }).toSet()
+                            val cloudOnly = mutableListOf<String>()
+                            val localOnly = mutableListOf<String>()
+                            val different = mutableListOf<String>()
+                            for (key in allKeys) {
+                                val lv = localMaps.firstNotNullOfOrNull { it[key] }
+                                val cv = cloudMaps.firstNotNullOfOrNull { it[key] }
+                                when {
+                                    cv == null -> localOnly.add(key)
+                                    lv == null -> cloudOnly.add(key)
+                                    lv != cv -> different.add(key)
+                                }
+                            }
+                            log(
+                                "    cambio $cat: cloudOnly=${cloudOnly.size} localOnly=${localOnly.size} " +
+                                    "distintos=${different.size}"
+                            )
+                            log("    cloudOnly: ${cloudOnly.take(3)}")
+                            log("    localOnly: ${localOnly.take(3)}")
+                            log("    distintos: ${different.take(3)}")
                             SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {
@@ -439,4 +461,20 @@ class SyncPlugin : Plugin() {
             settings = filterVars(backup.settings),
         )
     }
+
+    private fun backupMaps(backup: BackupFile): List<Map<String, *>> =
+        listOf(
+            backup.datastore.bool,
+            backup.datastore.int,
+            backup.datastore.string,
+            backup.datastore.float,
+            backup.datastore.long,
+            backup.datastore.stringSet,
+            backup.settings.bool,
+            backup.settings.int,
+            backup.settings.string,
+            backup.settings.float,
+            backup.settings.long,
+            backup.settings.stringSet,
+        ).filterNotNull()
 }

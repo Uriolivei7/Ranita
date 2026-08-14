@@ -295,13 +295,13 @@ object SyncBackup {
     private fun resumeSiblingTs(key: String, stringMap: Map<String, String>?): Long {
         if (stringMap == null) return 0L
         val parts = key.split("/")
-        if (parts.size < 3) return 0L
-        val parentId = parts[parts.size - 2]
+        if (parts.size < 2) return 0L
+        val episodeId = parts[parts.size - 1].toIntOrNull() ?: return 0L
         val account = if (parts[0].all { it.isDigit() }) parts[0] else ""
         val resumeKey = if (account.isEmpty()) {
-            "result_resume_watching_2/$parentId"
+            "result_resume_watching_2/$episodeId"
         } else {
-            "$account/result_resume_watching_2/$parentId"
+            "$account/result_resume_watching_2/$episodeId"
         }
         return SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(stringMap[resumeKey]))
     }
