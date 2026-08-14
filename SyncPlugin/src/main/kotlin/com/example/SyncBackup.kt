@@ -283,6 +283,9 @@ object SyncBackup {
         if (local == null) return cloud
         if (cloud == null) return local
 
+        val localEpisodeTs = buildEpisodeTimestampIndex(local)
+        val cloudEpisodeTs = buildEpisodeTimestampIndex(cloud)
+
         val merged = HashMap<String, String>()
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
@@ -293,8 +296,8 @@ object SyncBackup {
                     merged[key] = if (accountCount(cloudVal) >= accountCount(localVal)) cloudVal else localVal
                     continue
                 }
-                val localTs = SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, local)
-                val cloudTs = SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, cloud)
+                val localTs = episodeTimestampFor(key, local, localEpisodeTs)
+                val cloudTs = episodeTimestampFor(key, cloud, cloudEpisodeTs)
                 if (localTs > 0L || cloudTs > 0L) {
                     merged[key] = if (cloudTs > localTs) cloudVal else localVal
                 } else {
@@ -309,6 +312,48 @@ object SyncBackup {
         }
         return merged
     }
+
+    /** Builds a map episodeId -> latest updateTime from all resume watching entries. */
+    private fun buildEpisodeTimestampIndex(stringMap: Map<String, String>): Map<Int, Long> {
+        val result = HashMap<Int, Long>()
+        for ((key, value) in stringMap) {
+            val parts = key.split("/")
+            if (parts.size != 3) continue
+            if (parts[1] != "result_resume_watching_2") continue
+            val updateTime = SyncKeyPath.extractTimestamp(value)
+            if (updateTime <= 0L) continue
+            val episodeId = resumeEpisodeId(value) ?: continue
+            val prev = result[episodeId]
+            if (prev == null || updateTime > prev) result[episodeId] = updateTime
+        }
+        return result
+    }
+
+    /**
+     * PosDur (video_pos_dur) has no timestamp of its own, so it is resolved using the
+     * updateTime of its sibling result_resume_watching_2 entry (which bumps on every
+     * progress change). Otherwise the merge would pick whichever device pushed last,
+     * silently reverting progress updates on other devices.
+     */
+    private fun episodeTimestampFor(
+        key: String,
+        stringMap: Map<String, String>,
+        episodeTs: Map<Int, Long>,
+    ): Long {
+        if (!key.lowercase().contains("video_pos_dur")) {
+            return SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, stringMap)
+        }
+        val parts = key.split("/")
+        val episodeId = parts.getOrNull(parts.lastIndex)?.toIntOrNull() ?: return 0L
+        return episodeTs[episodeId] ?: 0L
+    }
+
+    private fun resumeEpisodeId(json: String): Int? =
+        try {
+            "\"episodeId\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toIntOrNull()
+        } catch (_: Exception) {
+            null
+        }
 
     fun getBackupFileKeys(backupFile: BackupFile): Set<String> {
         val keys = mutableSetOf<String>()
