@@ -101,4 +101,24 @@ object SyncStorage {
 
     fun setCategoryTimestamp(cat: SyncCategory, ts: Long) =
         set(keyFor("sync_ts", cat), ts.toString())
+
+    /**** Tombstones (key -> epoch seconds) ****/
+
+    fun tombstones(): Map<String, Long> {
+        val raw = get("sync_tombstones") ?: return emptyMap()
+        return raw.split(';')
+            .mapNotNull { seg ->
+                val parts = seg.split('|', limit = 2)
+                val k = parts.getOrNull(0)
+                val t = parts.getOrNull(1)?.toLongOrNull()
+                if (k.isNullOrEmpty() || t == null) null else k to t
+            }
+            .toMap()
+    }
+
+    fun setTombstones(map: Map<String, Long>) {
+        val raw = map.entries.sortedBy { it.key }
+            .joinToString(";") { "${it.key}|${it.value}" }
+        set("sync_tombstones", raw.ifEmpty { null })
+    }
 }

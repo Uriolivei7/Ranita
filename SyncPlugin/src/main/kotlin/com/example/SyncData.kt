@@ -24,7 +24,8 @@ data class BackupVars(
 @Serializable
 data class BackupFile(
     val datastore: BackupVars = BackupVars(),
-    val settings: BackupVars = BackupVars()
+    val settings: BackupVars = BackupVars(),
+    val deletions: Map<String, Long> = emptyMap()
 )
 
 @Serializable

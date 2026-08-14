@@ -82,10 +82,14 @@ class SyncPlugin : Plugin() {
 
     private fun registerListeners() {
         val appCtx = appContext ?: return
-        prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (!isRestoring && key != null) {
-                markDirty(key)
+        prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (isRestoring || key == null) return@OnSharedPreferenceChangeListener
+            if (prefs.contains(key)) {
+                SyncBackup.removeTombstone(key)
+            } else {
+                SyncBackup.recordDeletion(key)
             }
+            markDirty(key)
         }
         appCtx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
@@ -459,6 +463,7 @@ class SyncPlugin : Plugin() {
         return BackupFile(
             datastore = filterVars(backup.datastore),
             settings = filterVars(backup.settings),
+            deletions = backup.deletions.filterKeys { SyncBackup.classifyKey(it) == cat },
         )
     }
 
