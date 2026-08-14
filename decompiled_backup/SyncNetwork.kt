@@ -57,38 +57,30 @@ object SyncNetwork {
     suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return null
-        val byGen = drafts.groupBy { it.gen }
-        val gens: MutableList<Long?> = byGen.keys.filterNotNull().sortedDescending().toMutableList()
-        if (byGen.containsKey(null)) gens += null
-        for (gen in gens) {
-            val group = byGen[gen] ?: continue
-            val chosen = if (gen == null) {
-                val anchor = group.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: continue
-                group.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
-            } else group
-            val byIndex = HashMap<Int, SyncDevice>()
-            for (d in chosen) {
-                val prev = byIndex[d.chunkIndex]
-                if (prev == null || d.updatedAt > prev.updatedAt) byIndex[d.chunkIndex] = d
-            }
-            val maxChunk = byIndex.keys.maxOrNull() ?: -1
-            val total = maxChunk + 1
-            if ((0 until total).any { byIndex[it] == null }) {
-                log("assemblePayload($deviceId): generación ${gen ?: "legacy"} incompleta, chunks=${byIndex.keys.sorted()}")
-                continue
-            }
-            val sb = StringBuilder()
-            for (i in 0 until total) {
-                val draft = byIndex[i] ?: return null
-                val chunkId = draft.itemContentId ?: draft.itemId
-                val body = fetchChunkBody(token, chunkId) ?: return null
-                val data = stripChunkHeader(body, i, total) ?: return null
-                sb.append(data)
-            }
-            return sb.toString()
+        val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return null
+        val gen = drafts.filter {
+            kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L
         }
-        log("assemblePayload($deviceId): ninguna generación completa")
-        return null
+        val byIndex = HashMap<Int, SyncDevice>()
+        for (d in gen) {
+            val prev = byIndex[d.chunkIndex]
+            if (prev == null || d.updatedAt > prev.updatedAt) byIndex[d.chunkIndex] = d
+        }
+        val maxChunk = byIndex.keys.maxOrNull() ?: -1
+        val total = maxChunk + 1
+        if ((0 until total).any { byIndex[it] == null }) {
+            log("assemblePayload($deviceId): generación incompleta, chunks=${byIndex.keys.sorted()}")
+            return null
+        }
+        val sb = StringBuilder()
+        for (i in 0 until total) {
+            val draft = byIndex[i] ?: return null
+            val chunkId = draft.itemContentId ?: draft.itemId
+            val body = fetchChunkBody(token, chunkId) ?: return null
+            val data = stripChunkHeader(body, i, total) ?: return null
+            sb.append(data)
+        }
+        return sb.toString()
     }
 
     private suspend fun fetchChunkBody(token: String, itemId: String): String? {
@@ -181,8 +173,8 @@ object SyncNetwork {
             for (node in nodes) {
                 val content = node.content ?: continue
                 val title = content.title ?: continue
-                val baseId = parseDraftTitle(title).first
-                val (gen, chunk) = parseDraftTitle(title).second
+                val baseId = stripChunkSuffix(title)
+                val titleChunk = title.removePrefix(baseId).removePrefix("#").toIntOrNull()
                 val itemId = node.id ?: continue
                 if (itemId.isEmpty()) continue
                 all.add(
@@ -191,9 +183,8 @@ object SyncNetwork {
                         deviceId = baseId,
                         itemId = itemId,
                         updatedAt = parseIsoTime(content.updatedAt),
-                        chunkIndex = chunk,
+                        chunkIndex = titleChunk ?: 0,
                         itemContentId = content.id,
-                        gen = gen,
                     )
                 )
             }
@@ -205,39 +196,21 @@ object SyncNetwork {
         return all
     }
 
-    // Título -> (deviceId base, (gen, chunkIndex)); retrocompatible:
-    //  "deviceId"            -> (deviceId, (null, 0))
-    //  "deviceId#3"          -> (deviceId, (null, 3))
-    //  "deviceId#123.0"      -> (deviceId, (123, 0))
-    private fun parseDraftTitle(title: String): Pair<String, Pair<Long?, Int>> {
+    private fun stripChunkSuffix(title: String): String {
         val idx = title.lastIndexOf('#')
-        if (idx <= 0) return title to (null to 0)
-        val suffix = title.substring(idx + 1)
-        val baseId = title.substring(0, idx)
-        val dot = suffix.indexOf('.')
-        val gen: Long?
-        val chunk: Int?
-        if (dot >= 0) {
-            gen = suffix.substring(0, dot).toLongOrNull()
-            chunk = suffix.substring(dot + 1).toIntOrNull()
-        } else {
-            gen = null
-            chunk = suffix.toIntOrNull()
-        }
-        if (chunk == null) return title to (null to 0)
-        return baseId to (gen to chunk)
+        if (idx > 0 && title.substring(idx + 1).toIntOrNull() != null) return title.substring(0, idx)
+        return title
     }
 
     suspend fun registerDevice(
         token: String,
         projectId: String,
         deviceName: String,
-        chunks: List<String>,
-        gen: Long
+        chunks: List<String>
     ): List<String>? {
         val ids = mutableListOf<String>()
         for ((i, chunk) in chunks.withIndex()) {
-            val title = "$deviceName#$gen.$i"
+            val title = if (i == 0) deviceName else "$deviceName#$i"
             val body = makeChunkBody(i, chunks.size, chunk)
             val (itemId, contentId) = registerSingle(token, projectId, title, body)
             if (itemId == null || contentId == null) {
@@ -276,12 +249,11 @@ object SyncNetwork {
         projectId: String,
         deviceName: String,
         chunks: List<String>,
-        existing: Map<Int, String>,
-        gen: Long
+        existing: Map<Int, String>
     ): Map<Int, String>? {
         val result = existing.toMutableMap()
         for ((i, chunk) in chunks.withIndex()) {
-            val title = "$deviceName#$gen.$i"
+            val title = if (i == 0) deviceName else "$deviceName#$i"
             val body = makeChunkBody(i, chunks.size, chunk)
             val contentId = result[i]
             if (contentId != null) {
@@ -344,14 +316,9 @@ object SyncNetwork {
             emptySet<String>()
         } else {
             val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return
-            val anchorGen = anchor.gen
-            if (anchorGen != null) {
-                drafts.filter { it.gen == anchorGen }.map { it.itemId }.toSet()
-            } else {
-                drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
-                    .map { it.itemId }
-                    .toSet()
-            }
+            drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
+                .map { it.itemId }
+                .toSet()
         }
         val stale = drafts.filter { it.itemId !in keep }
         if (stale.isEmpty()) return

@@ -113,5 +113,4 @@ data class SyncDevice(
     val updatedAt: Long,
     val chunkIndex: Int = 0,
     val itemContentId: String? = null,
-    val gen: Long? = null,
 )

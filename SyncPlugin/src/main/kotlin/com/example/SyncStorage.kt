@@ -69,6 +69,10 @@ object SyncStorage {
         get() = get("sync_last_pushed_hash")
         set(value) = set("sync_last_pushed_hash", value)
 
+    var syncGen: Long?
+        get() = get("sync_gen")?.toLongOrNull()
+        set(value) = set("sync_gen", value?.toString())
+
     var forceReRegister: Boolean
         get() = get("sync_force_register") == "true"
         set(value) = set("sync_force_register", value.toString())

@@ -21,8 +21,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 @CloudstreamPlugin
 class SyncPlugin : Plugin() {
@@ -39,7 +37,6 @@ class SyncPlugin : Plugin() {
 
     @Volatile private var isRestoring = false
     private val pollMs = 15_000L
-    private val syncMutex = Mutex()
 
     @Volatile var lastStatus = "Sin sincronizar"
     @Volatile var lastError: String? = null
@@ -170,21 +167,18 @@ class SyncPlugin : Plugin() {
     /***************** sync logic *****************/
 
     suspend fun runSync() {
-        if (!SyncStorage.isLoggedIn()) return
-        syncMutex.withLock {
-            if (isRestoring) return@withLock
-            isSyncing = true
-            lastError = null
-            lastStatus = "Sincronizando..."
-            try {
-                runSyncInternal()
-            } catch (e: Exception) {
-                lastStatus = "Error de sync"
-                lastError = e.message ?: e.javaClass.simpleName
-                Log.e(TAG, "runSync", e)
-            } finally {
-                isSyncing = false
-            }
+        if (isRestoring || !SyncStorage.isLoggedIn()) return
+        isSyncing = true
+        lastError = null
+        lastStatus = "Sincronizando..."
+        try {
+            runSyncInternal()
+        } catch (e: Exception) {
+            lastStatus = "Error de sync"
+            lastError = e.message ?: e.javaClass.simpleName
+            Log.e(TAG, "runSync", e)
+        } finally {
+            isSyncing = false
         }
     }
 
@@ -253,24 +247,6 @@ class SyncPlugin : Plugin() {
                 .sortedByDescending { it.updatedAt }
             log("restore: otros dispositivos = ${othersList.map { "${it.name}@${it.updatedAt}" }}")
             if (othersList.isNotEmpty()) {
-                val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
-                for (other in othersList) {
-                    val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
-                    val cloudBackup = if (payload == null) null else try {
-                        SyncNetwork.json.decodeFromString(
-                            BackupFile.serializer(),
-                            SyncNetwork.decompressData(payload)
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (cloudBackup == null) continue
-                    for (cat in enabledRestore) {
-                        val cloudCat = filterBackup(cloudBackup, cat)
-                        if (SyncBackup.isEmpty(cloudCat)) continue
-                        candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
-                    }
-                }
                 isRestoring = true
                 var restoredAny = false
                 var restoredSettings = false
@@ -279,40 +255,48 @@ class SyncPlugin : Plugin() {
                 var restoredResume = false
                 val restoredSources = mutableMapOf<SyncCategory, SyncDevice>()
                 try {
-                    for (cat in enabledRestore) {
-                        val list = candidates[cat] ?: continue
-                        val best = list.maxWithOrNull(
-                            compareBy<Pair<SyncDevice, BackupFile>> {
-                                SyncBackup.getBackupFileKeys(it.second).size
-                            }.thenBy { it.first.updatedAt }
-                        )
-                        if (best == null) continue
-                        val (source, cloudCat) = best
-                        val localCat = filterBackup(localBackup, cat)
-                        val merged = SyncBackup.mergeBackupFiles(
-                            localCat, cloudCat,
-                            localCategoryTs = SyncStorage.categoryTimestamp(cat),
-                            cloudPayloadTs = source.updatedAt,
-                        )
-                        log(
-                            "merge $cat: local=${SyncBackup.getBackupFileKeys(localCat).size} " +
-                                "cloud=${SyncBackup.getBackupFileKeys(cloudCat).size} " +
-                                "localTs=${SyncStorage.categoryTimestamp(cat)} cloudTs=${source.updatedAt} " +
-                                "cambio=${merged != localCat}"
-                        )
-                        if (merged != localCat) {
-                            SyncBackup.restore(appCtx, merged, setOf(cat))
-                            restoredAny = true
-                            when (cat) {
-                                SyncCategory.SETTINGS -> restoredSettings = true
-                                SyncCategory.EXTENSIONS -> restoredExtensions = true
-                                SyncCategory.BOOKMARKS -> restoredBookmarks = true
-                                SyncCategory.RESUME_WATCHING -> restoredResume = true
-                                else -> {}
-                            }
+                    for (other in othersList) {
+                        if (enabledRestore.all { it in restoredSources }) break
+                        val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
+                        val cloudBackup = if (payload == null) null else try {
+                            SyncNetwork.json.decodeFromString(
+                                BackupFile.serializer(),
+                                SyncNetwork.decompressData(payload)
+                            )
+                        } catch (_: Exception) {
+                            null
                         }
-                        SyncStorage.setCategoryTimestamp(cat, source.updatedAt)
-                        restoredSources[cat] = source
+                        if (cloudBackup == null) continue
+                        for (cat in enabledRestore) {
+                            if (cat in restoredSources) continue
+                            val localCat = filterBackup(localBackup, cat)
+                            val cloudCat = filterBackup(cloudBackup, cat)
+                            if (SyncBackup.isEmpty(cloudCat)) continue
+                            val merged = SyncBackup.mergeBackupFiles(
+                                localCat, cloudCat,
+                                localCategoryTs = SyncStorage.categoryTimestamp(cat),
+                                cloudPayloadTs = other.updatedAt,
+                            )
+                            log(
+                                "merge $cat: local=${SyncBackup.getBackupFileKeys(localCat).size} " +
+                                    "cloud=${SyncBackup.getBackupFileKeys(cloudCat).size} " +
+                                    "localTs=${SyncStorage.categoryTimestamp(cat)} cloudTs=${other.updatedAt} " +
+                                    "cambio=${merged != localCat}"
+                            )
+                            if (merged != localCat) {
+                                SyncBackup.restore(appCtx, merged, setOf(cat))
+                                restoredAny = true
+                                when (cat) {
+                                    SyncCategory.SETTINGS -> restoredSettings = true
+                                    SyncCategory.EXTENSIONS -> restoredExtensions = true
+                                    SyncCategory.BOOKMARKS -> restoredBookmarks = true
+                                    SyncCategory.RESUME_WATCHING -> restoredResume = true
+                                    else -> {}
+                                }
+                            }
+                            SyncStorage.setCategoryTimestamp(cat, other.updatedAt)
+                            restoredSources[cat] = other
+                        }
                     }
                 } finally {
                     isRestoring = false
@@ -348,13 +332,11 @@ class SyncPlugin : Plugin() {
                 log("payload: ${data.length} chars -> ${chunks.size} trozo(s)")
                 val ownIds = SyncStorage.ownChunkContentIds
                 if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
-                    val newGen = SyncTime.nowEpochSeconds()
-                    val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
+                    val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks)
                     if (ids != null) {
                         SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
                         SyncStorage.ownContentId = ids.getOrNull(0)
                         SyncStorage.ownItemId = null
-                        SyncStorage.syncGen = newGen
                         SyncStorage.lastPushedHash = hash
                         SyncStorage.forceReRegister = false
                         clearDirtyCategories()
@@ -367,8 +349,7 @@ class SyncPlugin : Plugin() {
                         lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
-                    val gen = SyncStorage.syncGen ?: SyncTime.nowEpochSeconds().also { SyncStorage.syncGen = it }
-                    val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
+                    val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds)
                     if (updated != null) {
                         SyncStorage.ownChunkContentIds = updated
                         SyncStorage.ownContentId = updated[0]
