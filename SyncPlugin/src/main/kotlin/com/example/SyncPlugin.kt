@@ -200,25 +200,32 @@ class SyncPlugin : Plugin() {
 
         // --- restore from cloud ---
         if (restoreEnabled) {
-            val others = SyncNetwork.mainDrafts(devices)
+            val othersList = SyncNetwork.mainDrafts(devices)
                 .filter { it.deviceId != deviceId }
-                .maxByOrNull { it.updatedAt }
-            if (others != null) {
-                val payload = SyncNetwork.assemblePayload(token, devices, others.deviceId)
-                val cloudBackup = if (payload == null) null else try {
-                    SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
-                } catch (_: Exception) {
-                    null
-                }
-                if (cloudBackup != null) {
-                    isRestoring = true
-                    var restoredAny = false
-                    var restoredSettings = false
-                    var restoredExtensions = false
-                    var restoredBookmarks = false
-                    var restoredResume = false
-                    try {
+                .sortedByDescending { it.updatedAt }
+            if (othersList.isNotEmpty()) {
+                isRestoring = true
+                var restoredAny = false
+                var restoredSettings = false
+                var restoredExtensions = false
+                var restoredBookmarks = false
+                var restoredResume = false
+                val restoredSources = mutableMapOf<SyncCategory, SyncDevice>()
+                try {
+                    for (other in othersList) {
+                        if (enabledRestore.all { it in restoredSources }) break
+                        val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
+                        val cloudBackup = if (payload == null) null else try {
+                            SyncNetwork.json.decodeFromString(
+                                BackupFile.serializer(),
+                                SyncNetwork.decompressData(payload)
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (cloudBackup == null) continue
                         for (cat in enabledRestore) {
+                            if (cat in restoredSources) continue
                             val localCat = filterBackup(localBackup, cat)
                             val cloudCat = filterBackup(cloudBackup, cat)
                             if (SyncBackup.isEmpty(cloudCat)) continue
@@ -226,7 +233,7 @@ class SyncPlugin : Plugin() {
                             val merged = SyncBackup.mergeBackupFiles(
                                 localCat, cloudCat,
                                 localCategoryTs = SyncStorage.categoryTimestamp(cat),
-                                cloudPayloadTs = others.updatedAt,
+                                cloudPayloadTs = other.updatedAt,
                                 isLocallyDirty = isDirty,
                             )
                             if (merged != localCat) {
@@ -240,27 +247,28 @@ class SyncPlugin : Plugin() {
                                     else -> {}
                                 }
                             }
-                            SyncStorage.setCategoryTimestamp(cat, others.updatedAt)
+                            SyncStorage.setCategoryTimestamp(cat, other.updatedAt)
+                            restoredSources[cat] = other
                         }
-                    } finally {
-                        isRestoring = false
                     }
-                    if (restoredAny) {
-                        lastStatus = "Restaurado desde ${others.name}"
-                        log("restaurado desde ${others.name} (${others.itemContentId})")
-                        Handler(Looper.getMainLooper()).post {
-                            if (restoredSettings) {
-                                MainActivity.reloadHomeEvent(true)
-                                MainActivity.reloadAccountEvent(true)
-                            } else if (restoredExtensions) {
-                                MainActivity.reloadHomeEvent(true)
-                            }
-                            if (restoredResume) {
-                                MainActivity.reloadHomeEvent(true)
-                            }
-                            if (restoredBookmarks) {
-                                MainActivity.reloadLibraryEvent(true)
-                            }
+                } finally {
+                    isRestoring = false
+                }
+                if (restoredAny) {
+                    lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
+                    log("restaurado: ${restoredSources.map { (cat, src) -> "${cat.key}:${src.name}" }.joinToString(", ")}")
+                    Handler(Looper.getMainLooper()).post {
+                        if (restoredSettings) {
+                            MainActivity.reloadHomeEvent(true)
+                            MainActivity.reloadAccountEvent(true)
+                        } else if (restoredExtensions) {
+                            MainActivity.reloadHomeEvent(true)
+                        }
+                        if (restoredResume) {
+                            MainActivity.reloadHomeEvent(true)
+                        }
+                        if (restoredBookmarks) {
+                            MainActivity.reloadLibraryEvent(true)
                         }
                     }
                 }

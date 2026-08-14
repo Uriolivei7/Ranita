@@ -20,6 +20,7 @@ object SyncBackup {
         "simkl_accounts", "simkl_active", "SIMKL_API_CACHE", "ANIWAVE_SIMKL_SYNC",
         "open_subtitles_user", "opensubtitles_accounts", "opensubtitles_active",
         "subdl_user", "subdl_accounts", "subdl_active",
+        "subtitle_settings", "subs_auto_select", "subs_auto_download", "chome_subtitle_settings",
         "biometric_key", "nginx_user",
         "download_path_key", "download_path_key_visual", "backup_path_key", "backup_dir_path_key",
         "cs3-votes", "last_sync_api", "last_click_action", "last_opened_id", "library_folder",
