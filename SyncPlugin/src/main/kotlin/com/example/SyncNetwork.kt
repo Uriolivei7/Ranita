@@ -52,15 +52,41 @@ object SyncNetwork {
     fun mainDrafts(devices: List<SyncDevice>): List<SyncDevice> =
         devices.filter { it.chunkIndex == 0 }
 
-    fun assemblePayload(devices: List<SyncDevice>, deviceId: String): String? {
-        val drafts = devices.filter { it.deviceId == deviceId && it.rawChunkData != null }
+    suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
+        val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return null
-        val main = drafts.firstOrNull { it.chunkIndex == 0 } ?: return null
-        val total = main.totalChunks
-        if (total < 1) return null
+        val total = (drafts.maxOf { it.chunkIndex }) + 1
         val byIndex = drafts.associateBy { it.chunkIndex }
         if ((0 until total).any { byIndex[it] == null }) return null
-        return (0 until total).map { byIndex[it]!!.rawChunkData.orEmpty() }.joinToString("")
+        val sb = StringBuilder()
+        for (i in 0 until total) {
+            val draft = byIndex[i] ?: return null
+            val chunkId = draft.itemContentId ?: draft.itemId
+            val body = fetchChunkBody(token, chunkId) ?: return null
+            val data = stripChunkHeader(body, i, total) ?: return null
+            sb.append(data)
+        }
+        return sb.toString()
+    }
+
+    private suspend fun fetchChunkBody(token: String, itemId: String): String? {
+        val query = """query { node(id: "$itemId") { ... on DraftIssue { id title bodyText updatedAt } } }"""
+        val resp = graphql(token, query)
+        val body = resp?.data?.node?.bodyText
+        if (body == null) err("fetchChunkBody($itemId): ${resp?.errors?.joinToString() { it.message ?: "" }}")
+        else log("chunk $itemId descargado (${body.length} chars)")
+        return body
+    }
+
+    private fun stripChunkHeader(body: String, index: Int, total: Int): String? {
+        if (!body.startsWith(CHUNK_PREFIX)) return body
+        val parts = body.split("|", limit = 3)
+        if (parts.size != 3) return null
+        val nums = parts[1].split("/")
+        val i = nums.getOrNull(0)?.toIntOrNull() ?: -1
+        val t = nums.getOrNull(1)?.toIntOrNull() ?: -1
+        if (i != index || t != total) return null
+        return parts[2]
     }
 
     @SuppressLint("HardwareIds")
@@ -106,59 +132,54 @@ object SyncNetwork {
     }
 
     suspend fun fetchDevices(token: String, projectNum: Int): List<SyncDevice>? {
-        val query = """
-            query { viewer { projectV2(number: $projectNum) {
-                id
-                items(first: 100) { nodes { id content {
-                    __typename
-                    ... on DraftIssue { id title bodyText updatedAt }
+        val all = mutableListOf<SyncDevice>()
+        var cursor: String? = null
+        while (true) {
+            val after = if (cursor == null) "" else ", after: \"$cursor\""
+            val query = """
+                query { viewer { projectV2(number: $projectNum) {
+                    id
+                    items(first: 100$after) { nodes { id content {
+                        __typename
+                        ... on DraftIssue { id title updatedAt }
+                    } } pageInfo { endCursor hasNextPage } }
                 } } }
-            } } }
-        """.trimIndent()
-        val resp = graphql(token, query)
-        if (resp == null) {
-            err("fetchDevices: falló la consulta del proyecto")
-            return null
-        }
-        if (resp.data?.viewer?.projectV2 == null) {
-            err("fetchDevices: proyecto no accesible con este token: ${resp.errors?.joinToString() { it.message ?: "" }}")
-            return null
-        }
-        val nodes = resp.data.viewer.projectV2.items?.nodes ?: return emptyList()
-        return nodes.mapNotNull { node ->
-            val content = node.content ?: return@mapNotNull null
-            val title = content.title ?: return@mapNotNull null
-            val body = content.bodyText ?: ""
-            val baseId = stripChunkSuffix(title)
-            val titleChunk = title.removePrefix(baseId).removePrefix("#").toIntOrNull()
-            var chunkIndex = 0
-            var totalChunks = 1
-            var chunkData: String? = null
-            if (body.startsWith(CHUNK_PREFIX)) {
-                val parts = body.split("|", limit = 3)
-                if (parts.size == 3) {
-                    val nums = parts[1].split("/")
-                    chunkIndex = nums.getOrNull(0)?.toIntOrNull() ?: 0
-                    totalChunks = nums.getOrNull(1)?.toIntOrNull() ?: 1
-                    chunkData = parts[2].ifEmpty { null }
-                }
-            } else {
-                chunkIndex = titleChunk ?: 0
-                chunkData = body.ifEmpty { null }
+            """.trimIndent()
+            val resp = graphql(token, query)
+            if (resp == null) {
+                err("fetchDevices: falló la consulta del proyecto")
+                return null
             }
-            SyncDevice(
-                name = title,
-                deviceId = baseId,
-                itemId = node.id ?: "",
-                updatedAt = parseIsoTime(content.updatedAt),
-                rawChunkData = chunkData,
-                chunkIndex = chunkIndex,
-                totalChunks = totalChunks,
-                itemContentId = content.id,
-            )
-        }.filter { it.itemId.isNotEmpty() }.also {
-            log("fetchDevices: ${it.size} item(s), ${mainDrafts(it).size} dispositivo(s)")
+            val project = resp.data?.viewer?.projectV2
+            if (project == null) {
+                err("fetchDevices: proyecto no accesible con este token: ${resp.errors?.joinToString() { it.message ?: "" }}")
+                return null
+            }
+            val nodes = project.items?.nodes ?: emptyList()
+            for (node in nodes) {
+                val content = node.content ?: continue
+                val title = content.title ?: continue
+                val baseId = stripChunkSuffix(title)
+                val titleChunk = title.removePrefix(baseId).removePrefix("#").toIntOrNull()
+                val itemId = node.id ?: continue
+                if (itemId.isEmpty()) continue
+                all.add(
+                    SyncDevice(
+                        name = title,
+                        deviceId = baseId,
+                        itemId = itemId,
+                        updatedAt = parseIsoTime(content.updatedAt),
+                        chunkIndex = titleChunk ?: 0,
+                        itemContentId = content.id,
+                    )
+                )
+            }
+            val pageInfo = project.items?.pageInfo
+            if (pageInfo?.hasNextPage != true || pageInfo.endCursor.isNullOrEmpty()) break
+            cursor = pageInfo.endCursor
         }
+        log("fetchDevices: ${all.size} item(s), ${mainDrafts(all).size} dispositivo(s)")
+        return all
     }
 
     private fun stripChunkSuffix(title: String): String {

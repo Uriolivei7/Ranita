@@ -201,10 +201,10 @@ class SyncPlugin : Plugin() {
         // --- restore from cloud ---
         if (restoreEnabled) {
             val others = SyncNetwork.mainDrafts(devices)
-                .filter { it.deviceId != deviceId && it.rawChunkData != null }
+                .filter { it.deviceId != deviceId }
                 .maxByOrNull { it.updatedAt }
             if (others != null) {
-                val payload = SyncNetwork.assemblePayload(devices, others.deviceId)
+                val payload = SyncNetwork.assemblePayload(token, devices, others.deviceId)
                 val cloudBackup = if (payload == null) null else try {
                     SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
                 } catch (_: Exception) {
