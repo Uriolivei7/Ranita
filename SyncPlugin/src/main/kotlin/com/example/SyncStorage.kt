@@ -121,4 +121,24 @@ object SyncStorage {
             .joinToString(";") { "${it.key}|${it.value}" }
         set("sync_tombstones", raw.ifEmpty { null })
     }
+
+    /**** Último draft consumido por dispositivo remoto (deviceId -> updatedAt) ****/
+
+    var lastRestoredFrom: Map<String, Long>
+        get() {
+            val raw = get("sync_last_restored_from") ?: return emptyMap()
+            return raw.split(';')
+                .mapNotNull { seg ->
+                    val parts = seg.split('|', limit = 2)
+                    val d = parts.getOrNull(0)
+                    val t = parts.getOrNull(1)?.toLongOrNull()
+                    if (d.isNullOrEmpty() || t == null) null else d to t
+                }
+                .toMap()
+        }
+        set(value) {
+            val raw = value.entries.sortedBy { it.key }
+                .joinToString(";") { "${it.key}|${it.value}" }
+            set("sync_last_restored_from", raw.ifEmpty { null })
+        }
 }

@@ -38,8 +38,11 @@ class SyncPlugin : Plugin() {
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
-    private val pollMs = 15_000L
+    private val pollMs = 20_000L
     private val syncMutex = Mutex()
+
+    // Solo se consulta GitHub mientras hay actividad en primer plano.
+    @Volatile private var foregroundActivities = 0
 
     @Volatile var lastStatus = "Sin sincronizar"
     @Volatile var lastError: String? = null
@@ -134,6 +137,7 @@ class SyncPlugin : Plugin() {
         val application = appCtx.applicationContext as? Application ?: return
         lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
+                foregroundActivities++
                 if (SyncStorage.isLoggedIn()) {
                     debounceJob?.cancel()
                     debounceJob = scope.launch {
@@ -144,7 +148,9 @@ class SyncPlugin : Plugin() {
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {}
-            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {
+                foregroundActivities = (foregroundActivities - 1).coerceAtLeast(0)
+            }
             override fun onActivityStopped(activity: Activity) {}
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
@@ -164,7 +170,7 @@ class SyncPlugin : Plugin() {
         pollingJob = scope.launch {
             while (isActive) {
                 delay(pollMs)
-                if (SyncStorage.isLoggedIn()) {
+                if (SyncStorage.isLoggedIn() && foregroundActivities > 0) {
                     try { runSync() } catch (_: Exception) {}
                 }
             }
@@ -173,7 +179,7 @@ class SyncPlugin : Plugin() {
 
     /***************** sync logic *****************/
 
-    suspend fun runSync() {
+    suspend fun runSync(forceRestore: Boolean = false) {
         if (!SyncStorage.isLoggedIn()) return
         syncMutex.withLock {
             if (isRestoring) return@withLock
@@ -181,7 +187,7 @@ class SyncPlugin : Plugin() {
             lastError = null
             lastStatus = "Sincronizando..."
             try {
-                runSyncInternal()
+                runSyncInternal(forceRestore)
             } catch (e: Exception) {
                 lastStatus = "Error de sync"
                 lastError = e.message ?: e.javaClass.simpleName
@@ -192,7 +198,7 @@ class SyncPlugin : Plugin() {
         }
     }
 
-    private suspend fun runSyncInternal() {
+    private suspend fun runSyncInternal(forceRestore: Boolean = false) {
         val backupEnabled = SyncCategory.entries.any { SyncStorage.isBackupEnabled(it) }
         val restoreEnabled = SyncCategory.entries.any { SyncStorage.isRestoreEnabled(it) }
         if (!backupEnabled && !restoreEnabled) {
@@ -252,12 +258,15 @@ class SyncPlugin : Plugin() {
 
         // --- restore from cloud ---
         if (restoreEnabled) {
+            val consumed = SyncStorage.lastRestoredFrom
             val othersList = SyncNetwork.mainDrafts(devices)
                 .filter { it.deviceId != deviceId }
+                .filter { forceRestore || it.updatedAt > (consumed[it.deviceId] ?: 0L) }
                 .sortedByDescending { it.updatedAt }
             log("restore: otros dispositivos = ${othersList.map { "${it.name}@${it.updatedAt}" }}")
             if (othersList.isNotEmpty()) {
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
+                val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
                     val cloudBackup = if (payload == null) null else try {
@@ -269,11 +278,17 @@ class SyncPlugin : Plugin() {
                         null
                     }
                     if (cloudBackup == null) continue
+                    consumedNow[other.deviceId] = other.updatedAt
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
                         candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
                     }
+                }
+                if (consumedNow.isNotEmpty()) {
+                    val mergedConsumed = HashMap(SyncStorage.lastRestoredFrom)
+                    consumedNow.forEach { (k, v) -> if (v > (mergedConsumed[k] ?: 0L)) mergedConsumed[k] = v }
+                    SyncStorage.lastRestoredFrom = mergedConsumed
                 }
                 isRestoring = true
                 var restoredAny = false
@@ -436,7 +451,7 @@ class SyncPlugin : Plugin() {
 
     fun forceSync(showToastResult: Boolean, onDone: (() -> Unit)? = null) {
         scope.launch {
-            runSync()
+            runSync(forceRestore = true)
             if (showToastResult) {
                 showToast(if (SyncStorage.isLoggedIn()) "Sync completado" else "Configura el plugin primero")
             }
