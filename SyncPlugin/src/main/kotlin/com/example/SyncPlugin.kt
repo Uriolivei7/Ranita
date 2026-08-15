@@ -327,6 +327,14 @@ class SyncPlugin : Plugin() {
                             log("    cloudOnly: ${cloudOnly.take(3)}")
                             log("    localOnly: ${localOnly.take(3)}")
                             log("    distintos: ${different.take(3)}")
+                            for (k in different.take(3)) {
+                                val lv = localMaps.firstNotNullOfOrNull { it[k] }
+                                val cv = cloudMaps.firstNotNullOfOrNull { it[k] }
+                                log(
+                                    "      $k localTs=${SyncBackup.debugTs(lv)} " +
+                                        "cloudTs=${SyncBackup.debugTs(cv)} diffSecs=${SyncBackup.debugTs(cv) - SyncBackup.debugTs(lv)}"
+                                )
+                            }
                             SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {

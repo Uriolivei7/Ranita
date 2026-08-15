@@ -496,6 +496,10 @@ object SyncBackup {
         return keys
     }
 
+    /** Diagnóstico: timestamp embebido (updateTime) del valor de una clave, en epoch seconds (0 si no tiene). */
+    fun debugTs(value: Any?): Long =
+        if (value is String) SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(value)) else 0L
+
     private fun accountCount(json: String?): Int {
         if (json.isNullOrBlank()) return 0
         return try {
