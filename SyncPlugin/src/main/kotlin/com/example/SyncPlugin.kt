@@ -33,6 +33,7 @@ class SyncPlugin : Plugin() {
     private val dirtyCategories = mutableSetOf<SyncCategory>()
     private var pollingJob: Job? = null
     private var debounceJob: Job? = null
+    private var stopSyncJob: Job? = null
     private var bookmarksObserver: (Boolean) -> Unit = {}
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
@@ -76,6 +77,7 @@ class SyncPlugin : Plugin() {
     override fun beforeUnload() {
         pollingJob?.cancel()
         debounceJob?.cancel()
+        stopSyncJob?.cancel()
         unregisterListeners()
         unregisterLifecycle()
         scope.cancel()
@@ -116,6 +118,7 @@ class SyncPlugin : Plugin() {
 
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
+        log("dirty: $key -> ${cat.key}")
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
@@ -138,6 +141,7 @@ class SyncPlugin : Plugin() {
         lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 foregroundActivities++
+                stopSyncJob?.cancel()
                 if (SyncStorage.isLoggedIn()) {
                     debounceJob?.cancel()
                     debounceJob = scope.launch {
@@ -151,7 +155,16 @@ class SyncPlugin : Plugin() {
             override fun onActivityPaused(activity: Activity) {
                 foregroundActivities = (foregroundActivities - 1).coerceAtLeast(0)
             }
-            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                if (!SyncStorage.isLoggedIn()) return
+                // Push final al salir del reproductor o cerrar la app, para no perder
+                // el último cambio antes de que el proceso muera.
+                stopSyncJob?.cancel()
+                stopSyncJob = scope.launch {
+                    delay(2_000L)
+                    try { runSync() } catch (_: Exception) {}
+                }
+            }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
         }
