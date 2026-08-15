@@ -701,10 +701,10 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "fileHash": "sha256-5590f9cb3d812c64c09183250ae19e9013224265119ca3fdd9e2dc8fc8da6a36",
+        "fileHash": "sha256-5100b4706ebeb67374d3cac3be57b26f66db0836fd5bdfe71365d0e3e02dd15a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 99542,
+        "fileSize": 101277,
         "status": 1,
         "language": "es",
         "authors": [
