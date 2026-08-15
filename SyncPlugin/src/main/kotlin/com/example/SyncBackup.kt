@@ -4,12 +4,15 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.security.MessageDigest
+import kotlin.math.abs
 
 object SyncBackup {
 
     private const val ACCOUNTS_KEY = "data_store_helper/account"
 
     private const val TOMBSTONE_TTL_SECONDS = 30L * 24 * 3600
+
+    private const val POSITION_LEAD_SECONDS = 2.0
 
     private val resumeMapper = ObjectMapper()
 
@@ -418,12 +421,12 @@ object SyncBackup {
                     merged[key] = if (accountCount(cloudVal) >= accountCount(localVal)) cloudVal else localVal
                     continue
                 }
-                val localTs = episodeTimestampFor(key, local, localEpisodeTs)
-                val cloudTs = episodeTimestampFor(key, cloud, cloudEpisodeTs)
-                if (localTs > 0L || cloudTs > 0L) {
-                    merged[key] = if (cloudTs > localTs) cloudVal else localVal
-                } else {
-                    merged[key] = if (cloudPayloadTs > localCategoryTs) cloudVal else localVal
+                merged[key] = when (resolveWinner(
+                    key, localVal, cloudVal, local, cloud,
+                    localEpisodeTs, cloudEpisodeTs, localCategoryTs, cloudPayloadTs,
+                )) {
+                    Winner.CLOUD -> cloudVal
+                    Winner.LOCAL -> localVal
                 }
             }
         }
@@ -455,9 +458,51 @@ object SyncBackup {
     }
 
     /**
+     * Position guard for resume data: an idle device refreshes its embedded updateTime
+     * without changing the position, which would let its stale resume win over the device
+     * that actually kept playing. When both sides report a position and one is meaningfully
+     */
+    private enum class Winner { CLOUD, LOCAL }
+
+    private fun resolveWinner(
+        key: String,
+        localVal: String,
+        cloudVal: String,
+        localMap: Map<String, String>,
+        cloudMap: Map<String, String>,
+        localEpisodeTs: Map<Int, Long>,
+        cloudEpisodeTs: Map<Int, Long>,
+        localCategoryTs: Long,
+        cloudPayloadTs: Long,
+    ): Winner {
+        val lower = key.lowercase()
+        val isPositionKey = lower.contains("video_pos_dur") || lower.contains("result_resume_watching")
+        if (isPositionKey) {
+            val localPos = resumePosition(localVal)
+            val cloudPos = resumePosition(cloudVal)
+            if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) > POSITION_LEAD_SECONDS) {
+                return if (cloudPos > localPos) Winner.CLOUD else Winner.LOCAL
+            }
+        }
+        val localTs = episodeTimestampFor(key, localMap, localEpisodeTs)
+        val cloudTs = episodeTimestampFor(key, cloudMap, cloudEpisodeTs)
+        if (localTs > 0L || cloudTs > 0L) return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
+        return if (cloudPayloadTs > localCategoryTs) Winner.CLOUD else Winner.LOCAL
+    }
+
+    private fun resumePosition(json: Any?): Double {
+        if (json !is String) return -1.0
+        return try {
+            "\"position\":\\s*([\\d.]+)".toRegex().find(json)?.groupValues?.get(1)?.toDouble() ?: -1.0
+        } catch (_: Exception) {
+            -1.0
+        }
+    }
+
+    /**
      * PosDur (video_pos_dur) has no timestamp of its own, so it is resolved using the
-     * updateTime of its sibling result_resume_watching_2 entry (which bumps on every)
-     * silently reverting progress updates on other devices.
+     * updateTime of its sibling result_resume_watching_2 entry. The position guard above
+     * already protects this path from the idle device bumping that updateTime on app open.
      */
     private fun episodeTimestampFor(
         key: String,
