@@ -48,9 +48,15 @@ class SyncPlugin : Plugin() {
     @Volatile var lastStatus = "Sin sincronizar"
     @Volatile var lastError: String? = null
     @Volatile var isSyncing = false
+    @Volatile private var lastResumeMs = 0L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
+    }
+
+    private fun toastSync(msg: String, onlyIfRecentlyResumed: Boolean = false) {
+        if (onlyIfRecentlyResumed && System.currentTimeMillis() - lastResumeMs > 10_000L) return
+        showToast(msg)
     }
 
     companion object {
@@ -141,6 +147,7 @@ class SyncPlugin : Plugin() {
         lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 foregroundActivities++
+                lastResumeMs = System.currentTimeMillis()
                 stopSyncJob?.cancel()
                 if (SyncStorage.isLoggedIn()) {
                     debounceJob?.cancel()
@@ -382,6 +389,7 @@ class SyncPlugin : Plugin() {
                 if (restoredAny) {
                     lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
                     log("restaurado: ${restoredSources.map { (cat, src) -> "${cat.key}:${src.name}" }.joinToString(", ")}")
+                    toastSync("Sincronizado: datos actualizados desde otro dispositivo")
                     Handler(Looper.getMainLooper()).post {
                         if (restoredSettings) {
                             MainActivity.reloadHomeEvent(true)
@@ -423,6 +431,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
+                        toastSync("Sincronizado: cambios subidos", onlyIfRecentlyResumed = true)
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                     } else {
                         lastStatus = "No se pudo crear el draft"
@@ -440,6 +449,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
+                        toastSync("Sincronizado: cambios subidos", onlyIfRecentlyResumed = true)
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                     } else {
                         SyncStorage.ownContentId = null
