@@ -264,12 +264,8 @@ class TokianimeProvider : MainAPI() {
                     }
 
                     entries.sortWith(compareBy<SeasonEntry> {
-                        when {
-                            it.name.contains("Temporada", ignoreCase = true) -> 0
-                            it.name.contains("Especial", ignoreCase = true) || it.name.contains("Special", ignoreCase = true) || it.name.contains("OVA", ignoreCase = true) -> 2
-                            else -> 1
-                        }
-                    }.thenBy { it.order })
+                        it.order
+                    })
                     for ((seasonNum, entry) in entries.withIndex()) {
                         val seasonEps = fetchEpisodes(entry.slug, seasonNum + 1)
                         episodes.addAll(seasonEps)
@@ -513,40 +509,40 @@ class TokianimeProvider : MainAPI() {
                 val quality = qualityStr.takeWhile { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
 
                 val cleanSrc = playSrc.replace("""\u0026""", "&")
-                val apiUrl = "$mainUrl$cleanSrc"
-                try {
-                    val respCall = app.get(apiUrl, headers = apiHeaders(watchUrl))
-                    val headBuf = ByteArray(10240)
-                    val headRead = respCall.body.byteStream().use { s -> s.read(headBuf) }
-                    val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
-                    val langLabel = labelFor(lang)
-                    Log.i("Tokianime", "loadLinks: match[$idx] code=${respCall.code} len=$headRead")
+                    val apiUrl = "$mainUrl$cleanSrc"
+                    try {
+                        val respCall = app.get(apiUrl, headers = apiHeaders(watchUrl))
+                        val headBuf = ByteArray(10240)
+                        val headRead = respCall.body.byteStream().use { s -> s.read(headBuf) }
+                        val headStr = if (headRead > 0) String(headBuf, 0, headRead) else ""
+                        val langLabel = labelFor(lang)
+                        Log.i("Tokianime", "loadLinks: match[$idx] code=${respCall.code} len=$headRead")
 
-                    if (headStr.trimStart().startsWith("#EXTM3U")) {
-                        callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.M3U8) {
-                            this.referer = mainUrl; this.quality = quality
-                        })
-                        found = true
-                        Log.i("Tokianime", "loadLinks: enlace M3U8 agregado [$langLabel] q=$quality")
-                    } else if (headStr.contains("ftyp")) {
-
-                        val iframeOk = tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
-                        if (!iframeOk) {
-                            callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.VIDEO) {
+                        if (headStr.trimStart().startsWith("#EXTM3U")) {
+                            callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.M3U8) {
                                 this.referer = mainUrl; this.quality = quality
                             })
                             found = true
+                            Log.i("Tokianime", "loadLinks: enlace M3U8 agregado [$langLabel] q=$quality")
+                        } else if (headStr.contains("ftyp")) {
+
+                            val iframeOk = tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
+                            if (!iframeOk) {
+                                callback.invoke(newExtractorLink("Tokianime", "Tokianime [$langLabel]", apiUrl, ExtractorLinkType.VIDEO) {
+                                    this.referer = mainUrl; this.quality = quality
+                                })
+                                found = true
+                            } else {
+                                found = true
+                            }
+                        } else if (headStr.contains("<!DOCTYPE html", ignoreCase = true) || headStr.contains("<html", ignoreCase = true)) {
+                            tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
                         } else {
-                            found = true
+                            Log.w("Tokianime", "loadLinks: respuesta no reconocida para match[$idx]: '${headStr.take(100)}'")
                         }
-                    } else if (headStr.contains("<!DOCTYPE html", ignoreCase = true) || headStr.contains("<html", ignoreCase = true)) {
-                        tryFallbackIframe(apiUrl, langLabel, quality, callback, mainUrl)
-                    } else {
-                        Log.w("Tokianime", "loadLinks: respuesta no reconocida para match[$idx]: '${headStr.take(100)}'")
+                    } catch (e: Exception) {
+                        Log.e("Tokianime", "loadLinks: error al consultar API player source match[$idx]: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e("Tokianime", "loadLinks: error al consultar API player source match[$idx]: ${e.message}")
-                }
             }
 
             val processedSids = matches.map { m ->
