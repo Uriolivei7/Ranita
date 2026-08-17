@@ -49,14 +49,21 @@ class SyncPlugin : Plugin() {
     @Volatile var lastError: String? = null
     @Volatile var isSyncing = false
     @Volatile private var lastResumeMs = 0L
+    private var lastPushToastMs = 0L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
     }
 
-    private fun toastSync(msg: String, onlyIfRecentlyResumed: Boolean = false) {
-        if (onlyIfRecentlyResumed && System.currentTimeMillis() - lastResumeMs > 10_000L) return
+    private fun toastSync(msg: String) {
         showToast(msg)
+    }
+
+    private fun toastPushSync() {
+        val now = System.currentTimeMillis()
+        if (now - lastPushToastMs < 45_000L) return
+        lastPushToastMs = now
+        showToast("Cambios guardados")
     }
 
     companion object {
@@ -431,7 +438,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
-                        toastSync("Sincronizado: cambios subidos", onlyIfRecentlyResumed = true)
+                        toastPushSync()
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                     } else {
                         lastStatus = "No se pudo crear el draft"
@@ -449,7 +456,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
-                        toastSync("Sincronizado: cambios subidos", onlyIfRecentlyResumed = true)
+                        toastPushSync()
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                     } else {
                         SyncStorage.ownContentId = null
