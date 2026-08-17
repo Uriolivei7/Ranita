@@ -54,7 +54,7 @@ object SyncNetwork {
     fun mainDrafts(devices: List<SyncDevice>): List<SyncDevice> =
         devices.filter { it.chunkIndex == 0 }
             .groupBy { it.deviceId }
-            .mapNotNull { (_, gens) -> gens.maxByOrNull { it.updatedAt } }
+            .mapNotNull { (_, gens) -> gens.maxByOrNull { it.gen ?: it.updatedAt } }
 
     suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
         val drafts = devices.filter { it.deviceId == deviceId }

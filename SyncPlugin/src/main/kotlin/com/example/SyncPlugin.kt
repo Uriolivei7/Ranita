@@ -259,13 +259,13 @@ class SyncPlugin : Plugin() {
 
         val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
-            .maxByOrNull { it.updatedAt }
+            .maxByOrNull { it.gen ?: it.updatedAt }
         if (ownDevice != null && !SyncStorage.forceReRegister) {
             val ownChunks = devices.filter { it.deviceId == deviceId }
             SyncStorage.ownChunkContentIds = ownChunks
                 .filter { it.itemContentId != null }
                 .groupBy { it.chunkIndex }
-                .mapValues { (_, ds) -> ds.maxByOrNull { it.updatedAt }!!.itemContentId!! }
+                .mapValues { (_, ds) -> ds.maxByOrNull { it.gen ?: it.updatedAt }!!.itemContentId!! }
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
             log("draft propio encontrado: ${ownChunks.size} trozo(s)")
@@ -291,12 +291,13 @@ class SyncPlugin : Plugin() {
             log("restore: mi deviceId=$deviceId, consumed=$consumed")
             for (d in allOthers) {
                 val gate = consumed[d.deviceId] ?: 0L
-                log("restore: ${d.deviceId} updatedAt=${d.updatedAt} consumed=$gate pasa=${d.updatedAt > gate}")
+                val ver = d.gen ?: d.updatedAt
+                log("restore: ${d.deviceId} gen=${d.gen} updatedAt=${d.updatedAt} consumed=$gate pasa=${ver > gate}")
             }
             val othersList = allOthers
-                .filter { forceRestore || it.updatedAt > (consumed[it.deviceId] ?: 0L) }
-                .sortedByDescending { it.updatedAt }
-            log("restore: otros dispositivos = ${othersList.map { "${it.name}@${it.updatedAt}" }}")
+                .filter { forceRestore || (it.gen ?: it.updatedAt) > (consumed[it.deviceId] ?: 0L) }
+                .sortedByDescending { it.gen ?: it.updatedAt }
+            log("restore: otros dispositivos = ${othersList.map { "${it.name}@gen=${it.gen}" }}")
             if (othersList.isNotEmpty()) {
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
                 val consumedNow = mutableMapOf<String, Long>()
@@ -311,7 +312,7 @@ class SyncPlugin : Plugin() {
                         null
                     }
                     if (cloudBackup == null) continue
-                    consumedNow[other.deviceId] = other.updatedAt
+                    consumedNow[other.deviceId] = other.gen ?: other.updatedAt
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
@@ -451,12 +452,13 @@ class SyncPlugin : Plugin() {
                         lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
-                    val gen = SyncStorage.syncGen ?: SyncTime.nowEpochSeconds().also { SyncStorage.syncGen = it }
+                    val gen = SyncTime.nowEpochSeconds()
                     val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
                     if (updated != null) {
                         SyncStorage.ownChunkContentIds = updated
                         SyncStorage.ownContentId = updated[0]
                         SyncStorage.ownItemId = null
+                        SyncStorage.syncGen = gen
                         SyncStorage.lastPushedHash = hash
                         clearDirtyCategories()
                         updateCategoryTimestamps(enabledBackup)
