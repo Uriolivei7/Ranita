@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Base64
 import com.lagradost.cloudstream3.app
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
 import kotlinx.serialization.decodeFromString
@@ -134,24 +135,42 @@ object SyncNetwork {
         MessageDigest.getInstance("MD5").digest(input.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
-    private suspend fun graphql(token: String, query: String): GitHubGraphQLResponse? {
+    private suspend fun graphql(
+        token: String,
+        query: String,
+        maxRetries: Int = 3
+    ): GitHubGraphQLResponse? {
         val headers = mapOf(
             "Content-Type" to "application/json",
             "Authorization" to "Bearer $token",
             "Accept" to "application/vnd.github+json",
         )
-        return try {
-            val res = app.post(API_URL, headers = headers, json = mapOf("query" to query))
-            if (res.isSuccessful) {
-                json.decodeFromString<GitHubGraphQLResponse>(res.text)
-            } else {
-                err("graphql HTTP ${res.code}")
+        for (attempt in 0..maxRetries) {
+            val resp = try {
+                val res = app.post(API_URL, headers = headers, json = mapOf("query" to query))
+                if (res.isSuccessful) {
+                    json.decodeFromString<GitHubGraphQLResponse>(res.text)
+                } else {
+                    if (res.code == 503 && attempt < maxRetries) {
+                        log("graphql 503, reintento ${attempt + 1}/$maxRetries")
+                        delay(3000L * (1 shl attempt))
+                        continue
+                    }
+                    err("graphql HTTP ${res.code}")
+                    null
+                }
+            } catch (e: Exception) {
+                if (attempt < maxRetries) {
+                    log("graphql error, reintento ${attempt + 1}/$maxRetries: ${e.message}")
+                    delay(3000L * (1 shl attempt))
+                    continue
+                }
+                err("graphql failed: ${e.message}")
                 null
             }
-        } catch (e: Exception) {
-            err("graphql failed: ${e.message}")
-            null
+            return resp
         }
+        return null
     }
 
     suspend fun fetchProjectId(token: String, projectNum: Int): String? {
