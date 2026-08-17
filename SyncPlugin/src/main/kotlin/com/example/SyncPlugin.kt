@@ -61,7 +61,7 @@ class SyncPlugin : Plugin() {
 
     private fun toastPushSync() {
         val now = System.currentTimeMillis()
-        if (now - lastPushToastMs < 45_000L) return
+        if (now - lastPushToastMs < 180_000L) return
         lastPushToastMs = now
         showToast("Cambios guardados")
     }

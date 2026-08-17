@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Base64
 import com.lagradost.cloudstream3.app
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
@@ -159,6 +160,8 @@ object SyncNetwork {
                     err("graphql HTTP ${res.code}")
                     null
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (attempt < maxRetries) {
                     log("graphql error, reintento ${attempt + 1}/$maxRetries: ${e.message}")
