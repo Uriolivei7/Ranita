@@ -286,8 +286,14 @@ class SyncPlugin : Plugin() {
         // --- restore from cloud ---
         if (restoreEnabled) {
             val consumed = SyncStorage.lastRestoredFrom
-            val othersList = SyncNetwork.mainDrafts(devices)
+            val allOthers = SyncNetwork.mainDrafts(devices)
                 .filter { it.deviceId != deviceId }
+            log("restore: mi deviceId=$deviceId, consumed=$consumed")
+            for (d in allOthers) {
+                val gate = consumed[d.deviceId] ?: 0L
+                log("restore: ${d.deviceId} updatedAt=${d.updatedAt} consumed=$gate pasa=${d.updatedAt > gate}")
+            }
+            val othersList = allOthers
                 .filter { forceRestore || it.updatedAt > (consumed[it.deviceId] ?: 0L) }
                 .sortedByDescending { it.updatedAt }
             log("restore: otros dispositivos = ${othersList.map { "${it.name}@${it.updatedAt}" }}")
