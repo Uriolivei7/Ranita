@@ -54,6 +54,7 @@ class SyncPlugin : Plugin() {
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
     @Volatile private var lastPositionUpdateMs = 0L
+    private val recentVideoPosTimes = mutableListOf<Long>()
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -144,12 +145,25 @@ class SyncPlugin : Plugin() {
         log("dirty: $key -> ${cat.key}")
         pendingPushToast = true
         if (cat == SyncCategory.RESUME_WATCHING && key.contains("video_pos_dur")) {
-            lastPositionUpdateMs = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            lastPositionUpdateMs = now
+            synchronized(recentVideoPosTimes) {
+                recentVideoPosTimes.add(now)
+                recentVideoPosTimes.removeAll { now - it > 30_000L }
+            }
         }
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
         scheduleDebouncedSync()
+    }
+
+    private fun isActivelyPlaying(): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(recentVideoPosTimes) {
+            recentVideoPosTimes.removeAll { now - it > 30_000L }
+            return recentVideoPosTimes.size >= 3
+        }
     }
 
     private fun scheduleDebouncedSync() {
@@ -451,20 +465,18 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                val isPlayerActive = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 10_000L
-                if (isPlayerActive) {
+                val activelyPlaying = !forcePush && onlyResumeWatching && isActivelyPlaying()
+                if (activelyPlaying) {
                     lastStatus = "En reproducción; push pendiente"
-                    log("push omite: solo RESUME_WATCHING dirty, esperando salida del player")
+                    log("push omite: player activo (>=3 events/30s), esperando salida del player")
                     return
                 }
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
                 val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
                 log("payload: ${data.length} chars -> ${chunks.size} trozo(s)")
-                fun isPlayerStillActive(): Boolean = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 15_000L
                 val ownIds = SyncStorage.ownChunkContentIds
                 if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
-                    if (isPlayerStillActive()) { log("push cancelado: player todavía activo antes de register"); return }
                     val newGen = SyncTime.nowEpochSeconds()
                     val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                     if (ids != null) {
@@ -485,7 +497,6 @@ class SyncPlugin : Plugin() {
                         lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
-                    if (isPlayerStillActive()) { log("push cancelado: player todavía activo antes de update"); return }
                     val gen = SyncTime.nowEpochSeconds()
                     val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
                     if (updated != null) {
