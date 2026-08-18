@@ -22,10 +22,10 @@
         "name": "Animeav1Provider"
     },
     {
-        "fileHash": "sha256-ce8cc30522c05c04ba72444295a996ed165fc7d361180e09bbebe86f0bb04101",
+        "fileHash": "sha256-bad5fa16da6ebedfd2a61b282bb7a1308381f9c10a2cff1e9657b17c9165f1de",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 47186,
+        "fileSize": 47199,
         "status": 1,
         "language": "es",
         "authors": [
@@ -41,10 +41,10 @@
         "name": "AnimeflvnetProvider"
     },
     {
-        "fileHash": "sha256-c1a9f09e885f3ca045723bc9d2523d665a1bfecc9774a5820da693ccd6f71b6c",
+        "fileHash": "sha256-ead61ebb7b2e177a07692d9ebef126cfd917c655edbdecc118c051d0b407eec1",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35532,
+        "fileSize": 35531,
         "status": 1,
         "language": "en",
         "authors": [
@@ -62,10 +62,10 @@
         "name": "AnimeonsenProvider"
     },
     {
-        "fileHash": "sha256-4aa063ddd4925cc94ef992096e52c1839899a5409a022a675ed3416fc011aa63",
+        "fileHash": "sha256-84aa2dda0b70501cd478a673d6bf9efc74f204a33c530796b4b14b994f235e10",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35972,
+        "fileSize": 35984,
         "status": 1,
         "language": "en",
         "authors": [
@@ -101,10 +101,10 @@
     },
     {
         "iconUrl": "https://asialiveaction.com/favicon.ico",
-        "fileHash": "sha256-d4a1342fc1958491d73aff6b07ea51b204e1b525e3927119d7e781525b1b1937",
+        "fileHash": "sha256-d4f0a524c96d0269fcb55e5968ec7a66a16b7a7867d91250a4f72891d62ed1e0",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 31713,
+        "fileSize": 31716,
         "status": 1,
         "language": "es",
         "authors": [
@@ -120,10 +120,10 @@
     },
     {
         "iconUrl": "https://atalayas21.com/favicon.ico",
-        "fileHash": "sha256-eaaba863f54559437bd59f8e8b2042b1b167b62993e7266bf54cb0774fa688f9",
+        "fileHash": "sha256-6c57c21fc59ad8989f544e70cc45e1859db69147f232f0aca2f4d4b7d6b754bc",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 32107,
+        "fileSize": 32117,
         "status": 1,
         "language": "es",
         "authors": [
@@ -181,10 +181,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
-        "fileHash": "sha256-6f22ebab26d5d5fda3a52ab4ee2c63f3fdc6f2452c2a9bf1f95462cbf4c98aaf",
+        "fileHash": "sha256-aae7dadc92cdef9923780db5047bb904d600a4b16c0bc4e27e66275d6e85d224",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 42983,
+        "fileSize": 42995,
         "status": 1,
         "language": "es",
         "authors": [
@@ -259,10 +259,10 @@
         "name": "GloboViewProvider"
     },
     {
-        "fileHash": "sha256-03fcb98584b65c42b7b49b3fb91caff98b99dc9539cf789ac6b6eb1087bb7485",
+        "fileHash": "sha256-1bb94b2c154381b4e61c1ddd250a824ad533eca1c0a188a804df81562358874d",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 64541,
+        "fileSize": 64529,
         "status": 1,
         "language": "es",
         "authors": [
@@ -305,10 +305,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
-        "fileHash": "sha256-22155da97bf6e39cc199c95a2fdb8971fd18b90b5788d8e8659adbddf8b6515a",
+        "fileHash": "sha256-485364034d1b9b17d5930e654d6fb2840dfd07a93c5a2fae8517b44ede81c4f4",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38777,
+        "fileSize": 38801,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -324,10 +324,10 @@
         "name": "JkanimeProvider"
     },
     {
-        "fileHash": "sha256-5c5cc7d7f10df1b7e5438bef8175e3813d8e1887e38d9aac313d325986fc5558",
+        "fileHash": "sha256-5d4ed8c08cbca46883db9a387d3ef23cd6f5c5753f3e66d783e2c1199497f294",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35664,
+        "fileSize": 35670,
         "status": 1,
         "language": "es",
         "authors": [
@@ -371,10 +371,10 @@
     },
     {
         "iconUrl": "https://cinehdplus.org/wp-content/uploads/2021/11/favicon.png",
-        "fileHash": "sha256-97d6bcab8fe0f608da5d8c5667c3baf8f122e2fbe365d4c27e528e5c14742343",
+        "fileHash": "sha256-07d3bef49a3a228876eeaf789d88683c65029ee8f84ae7e5bc5084c8ef5049e8",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 44939,
+        "fileSize": 44951,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -411,10 +411,10 @@
         "name": "LatanimeProvider"
     },
     {
-        "fileHash": "sha256-1aec826712c7b429908d86a67ba7949a6b11b9b303d4543765790d8fb1c03c22",
+        "fileHash": "sha256-85ab174367628110b7d61d7108682183f858dcf5d35d9de1ae2b806751098d3b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 58702,
+        "fileSize": 58718,
         "status": 1,
         "language": "es",
         "authors": [
@@ -523,10 +523,10 @@
         "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
-        "fileHash": "sha256-33473bb6c15a3ab197a4fdb7720c16684794b0b5e28904fe0d19438ce7a3b450",
+        "fileHash": "sha256-ea48ad6f9afd000e0685f02207cbe679fce8f33e1c8ff0eec5932e66d92530b8",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 59748,
+        "fileSize": 59757,
         "status": 1,
         "language": "es",
         "authors": [
@@ -547,10 +547,10 @@
         "name": "PlayhubProvider"
     },
     {
-        "fileHash": "sha256-4ce1877a56baa3c5bf1d2034d859a9f64da9f4522b5a1a509e548bac5450be00",
+        "fileHash": "sha256-f2dc44d10e41a8b34379428e94bc7e7e8aba45d3d5a34229288cda106fd7b50c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35454,
+        "fileSize": 35457,
         "status": 1,
         "language": "es",
         "authors": [
@@ -571,10 +571,10 @@
         "name": "PlushdProvider"
     },
     {
-        "fileHash": "sha256-0dc741e857882aa4d0b824723d0ca3da6847ee4782c5935b66dd4a0060253b4a",
+        "fileHash": "sha256-9e8b2fcf12c97fcd9ceb14cb1db8d2a06f775d3b84bcecc32b1ebdaf27c11100",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 50012,
+        "fileSize": 50023,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -636,7 +636,7 @@
         "name": "SeriesbiblicasProvider"
     },
     {
-        "fileHash": "sha256-d3461d4a1c20fa351228a1b2db9aba6ae0ccbefdd823b448e9d9fa4cd3a98292",
+        "fileHash": "sha256-3db13f393bb3362cf70682952d746c691fdcc097f3122f573b0ab6ec681422e1",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 32297,
@@ -677,10 +677,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-693e9a230d6f22241883e85654fba868fb33add53eaa65c6d3730fe4a172a00a",
+        "fileHash": "sha256-6cf487ebf87c573c934dc871623e76f710abab2b31bfe9a87dc78501f642e5f1",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 45359,
+        "fileSize": 45343,
         "status": 1,
         "language": "es",
         "authors": [
@@ -701,10 +701,10 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "fileHash": "sha256-04df64d2dace276fc3130f1badd925aa5203c016dd8d3450f301219ef5b78d43",
+        "fileHash": "sha256-b1da971da1408e6e95496257f6ddf5c9cfb838d37d026187240bb1d65e59f0d9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 103520,
+        "fileSize": 104302,
         "status": 1,
         "language": "es",
         "authors": [
@@ -740,10 +740,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=tioanime.com&sz=%size%",
-        "fileHash": "sha256-aee2295997101a6a9be9be378ea4d06a6904d81f4906f8198545ecccfaa7c15c",
+        "fileHash": "sha256-7b95f70b76010ddee1525ba4e0c34c1631ba701fd08798443ec9427343cb190d",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24634,
+        "fileSize": 24630,
         "status": 1,
         "language": "es",
         "authors": [
@@ -817,10 +817,10 @@
     },
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-7c15dd0a9c6e769c90d8162fa3e50a01ad88f7e7c6f39009ac97df6afa72bed3",
+        "fileHash": "sha256-0fea26d4a1380fc123cf64f8f9fed834478d38f9b295d30ef76ae829698f1be3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 90506,
+        "fileSize": 90519,
         "status": 1,
         "language": "es",
         "authors": [
@@ -838,10 +838,10 @@
         "name": "UniquestreamProvider"
     },
     {
-        "fileHash": "sha256-61e77fbb5be13d9225c649fd101b4294e3b3839b300b69b911f6a25d3735b0f4",
+        "fileHash": "sha256-92a260bbb8582c881cd7bff06afa46a992e67bc547ebe66121e5bd60b020922a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25844,
+        "fileSize": 25841,
         "status": 1,
         "language": "es",
         "authors": [
@@ -861,10 +861,10 @@
         "name": "VerseriesonlineProvider"
     },
     {
-        "fileHash": "sha256-ad86cbf9f7542c97142a83197a2387d06715ff14c188ac486e3ea199d192f969",
+        "fileHash": "sha256-2afffbc4b7247c005c5f061f0a2afd31434cf905509949660050828d75a2c9a5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 157902,
+        "fileSize": 157911,
         "status": 3,
         "authors": [
             "Ranita"
