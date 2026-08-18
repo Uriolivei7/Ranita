@@ -221,8 +221,9 @@ class SyncPlugin : Plugin() {
         pollingJob = scope.launch {
             while (isActive) {
                 delay(pollMs)
-                if (SyncStorage.isLoggedIn() && foregroundActivities > 0) {
-                    try { runSync() } catch (_: Exception) {}
+                if (SyncStorage.isLoggedIn()) {
+                    val inForeground = foregroundActivities > 0
+                    try { runSync(forcePush = !inForeground) } catch (_: Exception) {}
                 }
             }
         }
