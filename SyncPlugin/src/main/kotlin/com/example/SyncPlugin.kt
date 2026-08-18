@@ -53,8 +53,8 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastResumeMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
-    @Volatile private var lastPositionUpdateMs = 0L
-    private val recentVideoPosTimes = mutableListOf<Long>()
+    @Volatile private var lastPushTimeMs = 0L
+    private val pushRateLimitMs = 120_000L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -144,26 +144,10 @@ class SyncPlugin : Plugin() {
         val cat = SyncBackup.classifyKey(key) ?: return
         log("dirty: $key -> ${cat.key}")
         pendingPushToast = true
-        if (cat == SyncCategory.RESUME_WATCHING && key.contains("video_pos_dur")) {
-            val now = System.currentTimeMillis()
-            lastPositionUpdateMs = now
-            synchronized(recentVideoPosTimes) {
-                recentVideoPosTimes.add(now)
-                recentVideoPosTimes.removeAll { now - it > 30_000L }
-            }
-        }
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
         scheduleDebouncedSync()
-    }
-
-    private fun isActivelyPlaying(): Boolean {
-        val now = System.currentTimeMillis()
-        synchronized(recentVideoPosTimes) {
-            recentVideoPosTimes.removeAll { now - it > 30_000L }
-            return recentVideoPosTimes.size >= 3
-        }
     }
 
     private fun scheduleDebouncedSync() {
@@ -201,12 +185,10 @@ class SyncPlugin : Plugin() {
             }
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
-                pendingPushToast = true
                 stopSyncJob?.cancel()
                 stopSyncJob = scope.launch {
                     delay(2_000L)
                     try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
-                    maybePushToast()
                 }
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
@@ -464,10 +446,12 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                val activelyPlaying = !forcePush && onlyResumeWatching && isActivelyPlaying()
-                if (activelyPlaying) {
-                    lastStatus = "En reproducción; push pendiente"
-                    log("push omite: player activo (>=3 events/30s), esperando salida del player")
+                val nowMs = System.currentTimeMillis()
+                val withinRateLimit = !forcePush && onlyResumeWatching && (nowMs - lastPushTimeMs) < pushRateLimitMs
+                if (withinRateLimit) {
+                    val remaining = (pushRateLimitMs - (nowMs - lastPushTimeMs)) / 1000
+                    lastStatus = "Rate limit; push en ~${remaining}s"
+                    log("push omite: rate limit (${remaining}s restantes)")
                     return
                 }
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
@@ -484,6 +468,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.syncGen = newGen
                         SyncStorage.lastPushedHash = hash
+                        lastPushTimeMs = System.currentTimeMillis()
                         SyncStorage.forceReRegister = false
                         clearDirtyCategories()
                         updateCategoryTimestamps(enabledBackup)
@@ -504,6 +489,7 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.syncGen = gen
                         SyncStorage.lastPushedHash = hash
+                        lastPushTimeMs = System.currentTimeMillis()
                         clearDirtyCategories()
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
