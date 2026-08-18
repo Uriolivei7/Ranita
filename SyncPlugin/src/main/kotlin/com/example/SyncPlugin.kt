@@ -336,11 +336,11 @@ class SyncPlugin : Plugin() {
                     } catch (_: Exception) {
                         null
                     }
-                    consumedNow[other.deviceId] = other.gen ?: other.updatedAt
                     if (cloudBackup == null) {
-                        log("restore: ${other.deviceId} payload=${payload?.length} cloudBackup=null, se salta")
+                        log("restore: ${other.deviceId} payload=${payload?.length} cloudBackup=null, se salta (se reintentará)")
                         continue
                     }
+                    consumedNow[other.deviceId] = other.gen ?: other.updatedAt
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue

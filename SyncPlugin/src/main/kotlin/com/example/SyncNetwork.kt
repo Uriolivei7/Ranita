@@ -83,8 +83,16 @@ object SyncNetwork {
             for (i in 0 until total) {
                 val draft = byIndex[i] ?: return null
                 val chunkId = draft.itemContentId ?: draft.itemId
-                val body = fetchChunkBody(token, chunkId) ?: return null
-                val data = stripChunkHeader(body, i, total) ?: return null
+                val body = fetchChunkBody(token, chunkId)
+                if (body == null) {
+                    log("assemblePayload($deviceId): chunk $i/$total id=$chunkId fetchChunkBody falló")
+                    return null
+                }
+                val data = stripChunkHeader(body, i, total)
+                if (data == null) {
+                    log("assemblePayload($deviceId): chunk $i/$total stripChunkHeader falló, body inicio='${body.take(50)}'")
+                    return null
+                }
                 sb.append(data)
             }
             return sb.toString()
