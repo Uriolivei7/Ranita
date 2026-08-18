@@ -53,8 +53,6 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastResumeMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
-    @Volatile private var lastPushTimeMs = 0L
-    private val pushRateLimitMs = 120_000L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -143,11 +141,13 @@ class SyncPlugin : Plugin() {
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
         log("dirty: $key -> ${cat.key}")
-        pendingPushToast = true
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
-        scheduleDebouncedSync()
+        if (cat != SyncCategory.RESUME_WATCHING) {
+            pendingPushToast = true
+            scheduleDebouncedSync()
+        }
     }
 
     private fun scheduleDebouncedSync() {
@@ -185,10 +185,13 @@ class SyncPlugin : Plugin() {
             }
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
+                val hasDirty = synchronized(dirtyCategories) { dirtyCategories.isNotEmpty() }
+                if (hasDirty) pendingPushToast = true
                 stopSyncJob?.cancel()
                 stopSyncJob = scope.launch {
                     delay(2_000L)
                     try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
+                    maybePushToast()
                 }
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
@@ -446,12 +449,9 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                val nowMs = System.currentTimeMillis()
-                val withinRateLimit = !forcePush && onlyResumeWatching && (nowMs - lastPushTimeMs) < pushRateLimitMs
-                if (withinRateLimit) {
-                    val remaining = (pushRateLimitMs - (nowMs - lastPushTimeMs)) / 1000
-                    lastStatus = "Rate limit; push en ~${remaining}s"
-                    log("push omite: rate limit (${remaining}s restantes)")
+                if (!forcePush && onlyResumeWatching) {
+                    lastStatus = "Esperando cierre de app para push"
+                    log("push omite: solo resume_watching, esperando cierre de app")
                     return
                 }
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
@@ -468,7 +468,6 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.syncGen = newGen
                         SyncStorage.lastPushedHash = hash
-                        lastPushTimeMs = System.currentTimeMillis()
                         SyncStorage.forceReRegister = false
                         clearDirtyCategories()
                         updateCategoryTimestamps(enabledBackup)
@@ -489,7 +488,6 @@ class SyncPlugin : Plugin() {
                         SyncStorage.ownItemId = null
                         SyncStorage.syncGen = gen
                         SyncStorage.lastPushedHash = hash
-                        lastPushTimeMs = System.currentTimeMillis()
                         clearDirtyCategories()
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
