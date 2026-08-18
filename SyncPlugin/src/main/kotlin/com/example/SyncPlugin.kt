@@ -23,6 +23,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 @CloudstreamPlugin
 class SyncPlugin : Plugin() {
@@ -50,6 +52,7 @@ class SyncPlugin : Plugin() {
     @Volatile var isSyncing = false
     @Volatile private var lastResumeMs = 0L
     private var lastPushToastMs = 0L
+    @Volatile private var pendingPushToast = false
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -64,6 +67,12 @@ class SyncPlugin : Plugin() {
         if (now - lastPushToastMs < 180_000L) return
         lastPushToastMs = now
         showToast("Cambios guardados")
+    }
+
+    private fun maybePushToast() {
+        if (!pendingPushToast) return
+        pendingPushToast = false
+        toastPushSync()
     }
 
     companion object {
@@ -132,6 +141,7 @@ class SyncPlugin : Plugin() {
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
         log("dirty: $key -> ${cat.key}")
+        if (cat != SyncCategory.RESUME_WATCHING) pendingPushToast = true
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
@@ -143,7 +153,9 @@ class SyncPlugin : Plugin() {
         debounceJob = scope.launch {
             delay(2_000L)
             if (SyncStorage.isLoggedIn()) {
-                try { runSync() } catch (_: Exception) {}
+                withContext(NonCancellable) {
+                    try { runSync() } catch (_: Exception) {}
+                }
             }
         }
     }
@@ -171,8 +183,7 @@ class SyncPlugin : Plugin() {
             }
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
-                // Push final al salir del reproductor o cerrar la app, para no perder
-                // el último cambio antes de que el proceso muera.
+                pendingPushToast = true
                 stopSyncJob?.cancel()
                 stopSyncJob = scope.launch {
                     delay(2_000L)
@@ -278,8 +289,8 @@ class SyncPlugin : Plugin() {
             log("draft propio NO encontrado -> se registrará uno nuevo")
         }
 
-        val enabledBackup = SyncCategory.entries.filter { SyncStorage.isBackupEnabled(it) }.toSet()
-        val enabledRestore = SyncCategory.entries.filter { SyncStorage.isRestoreEnabled(it) }.toSet()
+        val enabledBackup = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isBackupEnabled(it) }.toSet()
+        val enabledRestore = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isRestoreEnabled(it) }.toSet()
 
         val localBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
 
@@ -311,8 +322,11 @@ class SyncPlugin : Plugin() {
                     } catch (_: Exception) {
                         null
                     }
-                    if (cloudBackup == null) continue
                     consumedNow[other.deviceId] = other.gen ?: other.updatedAt
+                    if (cloudBackup == null) {
+                        log("restore: ${other.deviceId} payload=${payload?.length} cloudBackup=null, se salta")
+                        continue
+                    }
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
@@ -445,7 +459,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
                         log("nuevo draft registrado: ${ids.size} trozo(s)")
-                        toastPushSync()
+                        maybePushToast()
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                     } else {
                         lastStatus = "No se pudo crear el draft"
@@ -464,7 +478,7 @@ class SyncPlugin : Plugin() {
                         updateCategoryTimestamps(enabledBackup)
                         lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
                         log("draft actualizado: ${updated.size} trozo(s)")
-                        toastPushSync()
+                        maybePushToast()
                         SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                     } else {
                         SyncStorage.ownContentId = null

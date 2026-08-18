@@ -160,6 +160,7 @@ class SyncSettings(private val plugin: SyncPlugin) {
         addSectionTitle("Categorías")
         val catCheckboxes = mutableMapOf<SyncCategory, Pair<CheckBox, CheckBox>>()
         for (cat in SyncCategory.entries) {
+            if (cat == SyncCategory.SEARCH_HISTORY) continue
             val title = when (cat) {
                 SyncCategory.SETTINGS -> "Ajustes"
                 SyncCategory.BOOKMARKS -> "Favoritos (marcadores)"
