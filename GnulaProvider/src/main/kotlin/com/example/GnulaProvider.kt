@@ -319,8 +319,8 @@ class GnulaProvider : MainAPI() {
                         this.episode = eNum.toIntOrNull()
                         this.posterUrl = ep.image ?: fixImageUrl(ep.images.poster) ?: mainPoster
                     }
-                }
-            }.toList()
+                }.toList()
+            }
 
             Log.d(TAG, "load: Total ${episodes.size} episodios generados")
 
