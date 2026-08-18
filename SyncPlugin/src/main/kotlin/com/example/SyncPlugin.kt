@@ -187,7 +187,8 @@ class SyncPlugin : Plugin() {
                 stopSyncJob?.cancel()
                 stopSyncJob = scope.launch {
                     delay(2_000L)
-                    try { runSync() } catch (_: Exception) {}
+                    try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
+                    maybePushToast()
                 }
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
@@ -217,7 +218,7 @@ class SyncPlugin : Plugin() {
 
     /***************** sync logic *****************/
 
-    suspend fun runSync(forceRestore: Boolean = false) {
+    suspend fun runSync(forceRestore: Boolean = false, forcePush: Boolean = false) {
         if (!SyncStorage.isLoggedIn()) return
         syncMutex.withLock {
             if (isRestoring) return@withLock
@@ -225,7 +226,7 @@ class SyncPlugin : Plugin() {
             lastError = null
             lastStatus = "Sincronizando..."
             try {
-                runSyncInternal(forceRestore)
+                runSyncInternal(forceRestore, forcePush)
             } catch (e: Exception) {
                 lastStatus = "Error de sync"
                 lastError = e.message ?: e.javaClass.simpleName
@@ -236,7 +237,7 @@ class SyncPlugin : Plugin() {
         }
     }
 
-    private suspend fun runSyncInternal(forceRestore: Boolean = false) {
+    private suspend fun runSyncInternal(forceRestore: Boolean = false, forcePush: Boolean = false) {
         val backupEnabled = SyncCategory.entries.any { SyncStorage.isBackupEnabled(it) }
         val restoreEnabled = SyncCategory.entries.any { SyncStorage.isRestoreEnabled(it) }
         if (!backupEnabled && !restoreEnabled) {
@@ -440,6 +441,14 @@ class SyncPlugin : Plugin() {
         if (backupEnabled) {
             val toPush = SyncBackup.buildBackup(appCtx, enabledBackup)
             if (!SyncBackup.isEmpty(toPush)) {
+                val onlyResumeWatching = synchronized(dirtyCategories) {
+                    dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
+                }
+                if (!forcePush && onlyResumeWatching) {
+                    lastStatus = "En reproducción; push pendiente"
+                    log("push omite: solo RESUME_WATCHING dirty, esperando salida del player")
+                    return
+                }
                 val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
                 val hash = SyncBackup.computeHash(data)
                 val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
