@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 @CloudstreamPlugin
@@ -100,6 +101,12 @@ class SyncPlugin : Plugin() {
         pollingJob?.cancel()
         debounceJob?.cancel()
         stopSyncJob?.cancel()
+        val hasDirty = synchronized(dirtyCategories) { dirtyCategories.isNotEmpty() }
+        if (hasDirty && SyncStorage.isLoggedIn()) {
+            try {
+                runBlocking { runSync(forceRestore = false, forcePush = true) }
+            } catch (_: Exception) {}
+        }
         unregisterListeners()
         unregisterLifecycle()
         scope.cancel()
@@ -186,12 +193,14 @@ class SyncPlugin : Plugin() {
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
                 val hasDirty = synchronized(dirtyCategories) { dirtyCategories.isNotEmpty() }
-                if (hasDirty) pendingPushToast = true
-                stopSyncJob?.cancel()
-                stopSyncJob = scope.launch {
-                    delay(2_000L)
-                    try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
-                    maybePushToast()
+                if (hasDirty) {
+                    pendingPushToast = true
+                    scope.launch {
+                        withContext(NonCancellable) {
+                            try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
+                            maybePushToast()
+                        }
+                    }
                 }
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
