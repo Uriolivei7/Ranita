@@ -41,7 +41,7 @@ class SyncPlugin : Plugin() {
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
-    private val pollMs = 20_000L
+    private val pollMs = 10_000L
     private val syncMutex = Mutex()
 
     // Solo se consulta GitHub mientras hay actividad en primer plano.
@@ -422,7 +422,10 @@ class SyncPlugin : Plugin() {
                 if (restoredAny) {
                     lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
                     log("restaurado: ${restoredSources.map { (cat, src) -> "${cat.key}:${src.name}" }.joinToString(", ")}")
-                    toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    val hasRealChanges = restoredSettings || restoredExtensions || restoredBookmarks
+                    if (hasRealChanges) {
+                        toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    }
                     Handler(Looper.getMainLooper()).post {
                         if (restoredSettings) {
                             MainActivity.reloadHomeEvent(true)
