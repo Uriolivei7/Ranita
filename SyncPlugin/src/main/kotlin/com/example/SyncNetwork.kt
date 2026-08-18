@@ -74,14 +74,37 @@ object SyncNetwork {
                 if (prev == null || d.updatedAt > prev.updatedAt) byIndex[d.chunkIndex] = d
             }
             val maxChunk = byIndex.keys.maxOrNull() ?: -1
-            val total = maxChunk + 1
-            if ((0 until total).any { byIndex[it] == null }) {
+            val listedTotal = maxChunk + 1
+            if ((0 until listedTotal).any { byIndex[it] == null }) {
                 log("assemblePayload($deviceId): generación ${gen ?: "legacy"} incompleta, chunks=${byIndex.keys.sorted()}")
                 continue
             }
+            val draft0 = byIndex[0] ?: continue
+            val chunkId0 = draft0.itemContentId ?: draft0.itemId
+            val body0 = fetchChunkBody(token, chunkId0)
+            if (body0 == null) {
+                log("assemblePayload($deviceId): chunk 0 id=$chunkId0 fetchChunkBody falló")
+                return null
+            }
+            val realTotal = parseChunkTotal(body0)
+            if (realTotal != null && realTotal != listedTotal) {
+                log("assemblePayload($deviceId): gen ${gen ?: "legacy"} total mismatch: listed=$listedTotal real=$realTotal, se omite")
+                continue
+            }
+            val total = realTotal ?: listedTotal
             val sb = StringBuilder()
-            for (i in 0 until total) {
-                val draft = byIndex[i] ?: return null
+            val data0 = stripChunkHeader(body0, 0, total)
+            if (data0 == null) {
+                log("assemblePayload($deviceId): chunk 0/$total stripChunkHeader falló, body inicio='${body0.take(50)}'")
+                return null
+            }
+            sb.append(data0)
+            for (i in 1 until total) {
+                val draft = byIndex[i]
+                if (draft == null) {
+                    log("assemblePayload($deviceId): chunk $i/$total no está en devices list (otro dispositivo a mitad de push?)")
+                    return null
+                }
                 val chunkId = draft.itemContentId ?: draft.itemId
                 val body = fetchChunkBody(token, chunkId)
                 if (body == null) {
@@ -99,6 +122,14 @@ object SyncNetwork {
         }
         log("assemblePayload($deviceId): ninguna generación completa")
         return null
+    }
+
+    private fun parseChunkTotal(body: String): Int? {
+        if (!body.startsWith(CHUNK_PREFIX)) return null
+        val parts = body.split("|", limit = 3)
+        if (parts.size != 3) return null
+        val nums = parts[1].split("/")
+        return nums.getOrNull(1)?.toIntOrNull()
     }
 
     private suspend fun fetchChunkBody(token: String, itemId: String): String? {
