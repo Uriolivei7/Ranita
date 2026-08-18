@@ -61,14 +61,14 @@ class SyncPlugin : Plugin() {
     }
 
     private fun toastSync(msg: String) {
-        showToast(msg)
+        Handler(Looper.getMainLooper()).post { showToast(msg) }
     }
 
     private fun toastPushSync() {
         val now = System.currentTimeMillis()
         if (now - lastPushToastMs < 180_000L) return
         lastPushToastMs = now
-        showToast("Cambios guardados")
+        Handler(Looper.getMainLooper()).post { showToast("Cambios guardados") }
     }
 
     private fun maybePushToast() {
@@ -436,8 +436,7 @@ class SyncPlugin : Plugin() {
                 if (restoredAny) {
                     lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
                     log("restaurado: ${restoredSources.map { (cat, src) -> "${cat.key}:${src.name}" }.joinToString(", ")}")
-                    val hasRealChanges = restoredSettings || restoredExtensions || restoredBookmarks
-                    if (hasRealChanges) {
+                    if (restoredAny) {
                         toastSync("Sincronizado: datos actualizados desde otro dispositivo")
                     }
                     Handler(Looper.getMainLooper()).post {
