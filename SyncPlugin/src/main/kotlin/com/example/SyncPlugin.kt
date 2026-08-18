@@ -53,6 +53,7 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastResumeMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
+    @Volatile private var playingVideo = false
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -141,7 +142,10 @@ class SyncPlugin : Plugin() {
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
         log("dirty: $key -> ${cat.key}")
-        if (cat != SyncCategory.RESUME_WATCHING) pendingPushToast = true
+        pendingPushToast = true
+        if (cat == SyncCategory.RESUME_WATCHING && key.contains("video_pos_dur")) {
+            playingVideo = true
+        }
         synchronized(dirtyCategories) {
             dirtyCategories.add(cat)
         }
@@ -184,6 +188,7 @@ class SyncPlugin : Plugin() {
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
                 pendingPushToast = true
+                playingVideo = false
                 stopSyncJob?.cancel()
                 stopSyncJob = scope.launch {
                     delay(2_000L)
@@ -444,7 +449,7 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                if (!forcePush && onlyResumeWatching) {
+                if (!forcePush && playingVideo && onlyResumeWatching) {
                     lastStatus = "En reproducción; push pendiente"
                     log("push omite: solo RESUME_WATCHING dirty, esperando salida del player")
                     return
