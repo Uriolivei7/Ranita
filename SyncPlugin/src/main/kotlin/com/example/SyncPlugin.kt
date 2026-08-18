@@ -448,7 +448,8 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                if (!forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 10_000L) {
+                val isPlayerActive = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 15_000L
+                if (isPlayerActive) {
                     lastStatus = "En reproducción; push pendiente"
                     log("push omite: solo RESUME_WATCHING dirty, esperando salida del player")
                     return
@@ -457,8 +458,10 @@ class SyncPlugin : Plugin() {
                 val hash = SyncBackup.computeHash(data)
                 val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
                 log("payload: ${data.length} chars -> ${chunks.size} trozo(s)")
+                fun isPlayerStillActive(): Boolean = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 15_000L
                 val ownIds = SyncStorage.ownChunkContentIds
                 if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
+                    if (isPlayerStillActive()) { log("push cancelado: player todavía activo antes de register"); return }
                     val newGen = SyncTime.nowEpochSeconds()
                     val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                     if (ids != null) {
@@ -479,6 +482,7 @@ class SyncPlugin : Plugin() {
                         lastError = SyncNetwork.lastError
                     }
                 } else if (hash != SyncStorage.lastPushedHash) {
+                    if (isPlayerStillActive()) { log("push cancelado: player todavía activo antes de update"); return }
                     val gen = SyncTime.nowEpochSeconds()
                     val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
                     if (updated != null) {
