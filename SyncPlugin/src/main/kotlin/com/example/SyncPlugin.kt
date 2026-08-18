@@ -451,7 +451,7 @@ class SyncPlugin : Plugin() {
                 val onlyResumeWatching = synchronized(dirtyCategories) {
                     dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
                 }
-                val isPlayerActive = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 15_000L
+                val isPlayerActive = !forcePush && onlyResumeWatching && System.currentTimeMillis() - lastPositionUpdateMs < 10_000L
                 if (isPlayerActive) {
                     lastStatus = "En reproducción; push pendiente"
                     log("push omite: solo RESUME_WATCHING dirty, esperando salida del player")
