@@ -426,7 +426,7 @@ class SyncPlugin : Plugin() {
                         }
                     }
                 } finally {
-                    isRestoring = false
+                    if (!restoredAny) isRestoring = false
                 }
                 if (restoredAny) {
                     lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
@@ -435,17 +435,21 @@ class SyncPlugin : Plugin() {
                         toastSync("Sincronizado: datos actualizados desde otro dispositivo")
                     }
                     Handler(Looper.getMainLooper()).post {
-                        if (restoredSettings) {
-                            MainActivity.reloadHomeEvent(true)
-                            MainActivity.reloadAccountEvent(true)
-                        } else if (restoredExtensions) {
-                            MainActivity.reloadHomeEvent(true)
-                        }
-                        if (restoredResume) {
-                            MainActivity.reloadHomeEvent(true)
-                        }
-                        if (restoredBookmarks) {
-                            MainActivity.reloadLibraryEvent(true)
+                        try {
+                            if (restoredSettings) {
+                                MainActivity.reloadHomeEvent(true)
+                                MainActivity.reloadAccountEvent(true)
+                            } else if (restoredExtensions) {
+                                MainActivity.reloadHomeEvent(true)
+                            }
+                            if (restoredResume) {
+                                MainActivity.reloadHomeEvent(true)
+                            }
+                            if (restoredBookmarks) {
+                                MainActivity.reloadLibraryEvent(true)
+                            }
+                        } finally {
+                            isRestoring = false
                         }
                     }
                 }
