@@ -20,6 +20,7 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -168,23 +169,28 @@ class AnizoneProvider : MainAPI() {
                 mapOf("type" to request.data), mutableListOf(), this.cookies, this.wireData, true
             )
             var doc = getHtmlFromWire(responseJson)
+            var items = parseItemsJson(findItemsXData(doc) ?: "")
 
             for (i in 1 until page) {
-                if (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") == null) break
+                val xData = findItemsXData(doc)
+                val nextCursor = extractNextCursor(xData)
+                if (nextCursor.isBlank() || !extractHasMore(xData)) break
 
                 responseJson = liveWireBuilder(
                     mutableMapOf(), mutableListOf(
-                        mapOf("path" to "", "method" to "loadMore", "params" to listOf<String>())
+                        mapOf("path" to "", "method" to "loadPage", "params" to listOf(nextCursor))
                     ), this.cookies, this.wireData, true
                 )
-                doc = getHtmlFromWire(responseJson)
+                val dispatchParams = getItemsLoadedParams(responseJson) ?: break
+                val newItems = dispatchParams.optJSONArray("items")
+                items = if (newItems != null) {
+                    (0 until newItems.length()).map { newItems.getJSONObject(it) }
+                } else break
             }
 
-            val home: List<Element> = doc.select("div[wire:key]")
-
             return newHomePageResponse(
-                HomePageList(request.name, home.mapNotNull { toResult(it) }, isHorizontalImages = false),
-                hasNext = (doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null)
+                HomePageList(request.name, items.mapNotNull { toResult(it) }, isHorizontalImages = false),
+                hasNext = extractHasMore(findItemsXData(doc))
             )
         } catch (e: Exception) {
             Log.e("AniZone", "Fallo al procesar LiveWire en getMainPage: ${e.message}")
@@ -195,41 +201,90 @@ class AnizoneProvider : MainAPI() {
         }
     }
 
-    private fun extractTitle(xData: String): String {
-        Log.d("AniZone", "extractTitle: xData starts with: ${xData.take(100)}")
-        val jsonStr = Regex("JSON\\.parse\\('([^']+)'\\)").find(xData)?.groupValues?.getOrNull(1)
-            ?.replace("\\u0022", "\"")?.replace("\\u0027", "'") ?: ""
-        Log.d("AniZone", "extractTitle: jsonStr from regex: ${jsonStr.take(100)}")
-        val title = if (jsonStr.isNotBlank()) {
-            try {
-                val json = JSONObject(jsonStr)
-                val t = json.optString("5", json.optString("1", ""))
-                Log.d("AniZone", "extractTitle: parsed JSON, title='$t'")
-                t
-            } catch (e: Exception) {
-                Log.e("AniZone", "extractTitle: JSON parse error: ${e.message}")
-                ""
+    private fun unescapeJsString(s: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                when (val n = s[i + 1]) {
+                    '\\' -> { sb.append('\\'); i += 2 }
+                    '/' -> { sb.append('/'); i += 2 }
+                    '\'' -> { sb.append('\''); i += 2 }
+                    '"' -> { sb.append('"'); i += 2 }
+                    'b' -> { sb.append('\b'); i += 2 }
+                    'f' -> { sb.append('\u000C'); i += 2 }
+                    'n' -> { sb.append('\n'); i += 2 }
+                    'r' -> { sb.append('\r'); i += 2 }
+                    't' -> { sb.append('\t'); i += 2 }
+                    'u' -> {
+                        if (i + 5 < s.length) {
+                            val hex = s.substring(i + 2, i + 6)
+                            try { sb.append(hex.toInt(16).toChar()) } catch (e: Exception) { sb.append(n) }
+                            i += 6
+                        } else { sb.append(n); i += 2 }
+                    }
+                    else -> { sb.append(n); i += 2 }
+                }
+            } else {
+                sb.append(c); i++
             }
-        } else ""
-        if (title.isBlank()) {
-            val fallback = Regex("window\\.getTitle\\(this\\.anmTitles,\\s*'([^']+)'\\)")
-                .find(xData)?.groupValues?.getOrNull(1) ?: ""
-            Log.d("AniZone", "extractTitle: fallback='$fallback'")
-            return fallback
         }
-        return title
+        return sb.toString()
     }
 
-    private fun toResult(post: Element): SearchResponse? {
-        val xData = post.attr("x-data")
-        Log.d("AniZone", "toResult: x-data empty=${xData.isBlank()}, wire:key=${post.attr("wire:key")}")
-        val title = extractTitle(xData)
-        val url = post.selectFirst("a")?.attr("href") ?: ""
-        Log.d("AniZone", "toResult: title='$title' url='$url'")
-        if (title.isBlank() || url.isBlank()) return null
-        return newMovieSearchResponse(title, url, TvType.Movie) {
-            this.posterUrl = post.selectFirst("img")
-                ?.attr("src")
+    private fun parseItemsJson(xData: String): List<JSONObject> {
+        val raw = Regex("items:\\s*JSON\\.parse\\('(.*?)'\\)", setOf(RegexOption.DOT_MATCHES_ALL))
+            .find(xData)?.groupValues?.getOrNull(1) ?: return emptyList()
+        val jsonText = unescapeJsString(raw)
+        return try {
+            val arr = JSONArray(jsonText)
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        } catch (e: Exception) {
+            Log.e("AniZone", "parseItemsJson error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun findItemsXData(doc: Document): String? {
+        return doc.select("[x-data]").firstOrNull { it.attr("x-data").contains("items: JSON.parse") }
+            ?.attr("x-data")
+    }
+
+    private fun extractNextCursor(xData: String?): String {
+        if (xData.isNullOrBlank()) return ""
+        return Regex("nextCursor:\\s*'([^']*)'").find(xData)?.groupValues?.getOrNull(1) ?: ""
+    }
+
+    private fun extractHasMore(xData: String?): Boolean {
+        if (xData.isNullOrBlank()) return false
+        return Regex("hasMore:\\s*(true|false)").find(xData)?.groupValues?.getOrNull(1) == "true"
+    }
+
+    private fun getItemsLoadedParams(json: JSONObject): JSONObject? {
+        return try {
+            val effects = json.getJSONArray("components").getJSONObject(0).optJSONObject("effects") ?: return null
+            val dispatches = effects.optJSONArray("dispatches") ?: return null
+            for (i in 0 until dispatches.length()) {
+                val d = dispatches.getJSONObject(i)
+                if (d.optString("name") == "items-loaded") return d.optJSONObject("params")
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun toResult(item: JSONObject): SearchResponse? {
+        val url = item.optString("url").ifBlank { return null }
+        val titleList = item.optJSONObject("title_list")
+        val title = titleList?.optString("1")?.takeIf { it.isNotBlank() }
+            ?: item.optString("main_title").trim('"')
+        if (title.isBlank()) return null
+        val type = if (item.optString("type") == "Movie") TvType.AnimeMovie else TvType.Anime
+        return newMovieSearchResponse(title, url, type) {
+            this.posterUrl = item.optString("cover").ifBlank { null }
+            this.year = item.optInt("start_year", 0).takeIf { it > 0 }
         }
     }
 
@@ -238,8 +293,8 @@ class AnizoneProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         Log.d("AniZone", "search: query='$query'")
         val doc = app.get("$mainUrl/anime?search=$query").document
-        val items = doc.select("div[wire:key]")
-        Log.d("AniZone", "search: found ${items.size} div[wire:key] elements via URL")
+        val items = findItemsXData(doc)?.let { parseItemsJson(it) } ?: emptyList()
+        Log.d("AniZone", "search: found ${items.size} items via URL x-data")
         return items.mapNotNull { toResult(it) }
     }
 
@@ -278,25 +333,30 @@ class AnizoneProvider : MainAPI() {
         Log.d("AniZoneIMDB", "IMDB ID encontrado en LOAD: $imdbId")
 
         var currentDoc = doc
-        var attempts = 0
         val maxAttempts = 100
+        var page = 1
 
-        while (currentDoc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null && attempts < maxAttempts) {
-            attempts++
-            try {
-                val responseJson = liveWireBuilder(
-                    mutableMapOf(), mutableListOf(
-                        mapOf("path" to "", "method" to "loadMore", "params" to listOf<String>())
-                    ), cookie, wireData, true
+        val allEpiElms = mutableListOf<Element>()
+        allEpiElms.addAll(currentDoc.select("li[x-data]"))
+
+        while (page < maxAttempts) {
+            val responseJson = try {
+                liveWireBuilder(
+                    mapOf("paginators.page" to "${page + 1}"), mutableListOf(), cookie, wireData, true
                 )
-                currentDoc = getHtmlFromWire(responseJson)
             } catch (e: Exception) {
-                Log.e("AniZone Load", "Error al cargar más episodios en el intento $attempts: ${e.message}")
+                Log.e("AniZone Load", "Error al paginar episodios (página ${page + 1}): ${e.message}")
                 break
             }
+            val nextDoc = getHtmlFromWire(responseJson)
+            val newEpiElms = nextDoc.select("li[x-data]")
+            if (newEpiElms.isEmpty()) break
+            allEpiElms.addAll(newEpiElms)
+            currentDoc = nextDoc
+            page++
         }
 
-        val epiElms = currentDoc.select("li[x-data]")
+        val epiElms = allEpiElms
 
         val episodes = epiElms.map{ elt ->
             newEpisode(
@@ -352,22 +412,39 @@ class AnizoneProvider : MainAPI() {
         val webReq = app.get(episodeUrl)
         val web = webReq.document
         val cookie = webReq.cookies
-        val sourceName = web.selectFirst("span.truncate")?.text() ?: ""
-        val mediaPlayer = web.selectFirst("media-player")
-        val masterUrl = mediaPlayer?.attr("src") ?: ""
+        val sourceName = web.selectFirst("div:containsOwn(Source:)")?.nextElementSibling()?.text() ?: "Web"
+        val playerData = web.select("[x-data]").firstOrNull { it.attr("x-data").contains("vidstackPlayer") }
+            ?.attr("x-data") ?: return false
+        val rawJson = Regex("vidstackPlayer\\(JSON\\.parse\\('(.*?)'\\)\\)", setOf(RegexOption.DOT_MATCHES_ALL))
+            .find(playerData)?.groupValues?.getOrNull(1) ?: return false
+        val masterUrl = try {
+            JSONObject(unescapeJsString(rawJson)).optString("src")
+        } catch (e: Exception) {
+            Log.e("AniZoneSub", "Error parseando vidstackPlayer JSON: ${e.message}")
+            ""
+        }
 
         Log.d("AniZoneSub", "-> Source: $sourceName, M3U8: $masterUrl")
 
         if (masterUrl.isBlank()) return false
 
-        mediaPlayer?.select("track")?.forEach {
-            Log.d("AniZoneSub", "-> [AniZone] Subtítulo encontrado: ${it.attr("label")}")
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    it.attr("label"),
-                    it.attr("src")
-                )
-            )
+        try {
+            val subs = JSONObject(unescapeJsString(rawJson)).optJSONArray("subtitles")
+            if (subs != null) {
+                for (i in 0 until subs.length()) {
+                    val s = subs.getJSONObject(i)
+                    val file = s.optString("file").ifBlank { continue }
+                    Log.d("AniZoneSub", "-> [AniZone] Subtítulo encontrado: ${s.optString("title")}")
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            s.optString("title").ifBlank { s.optString("language") },
+                            file
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("AniZoneSub", "Error parseando subtítulos: ${e.message}")
         }
 
         val baseHeaders = mapOf(
