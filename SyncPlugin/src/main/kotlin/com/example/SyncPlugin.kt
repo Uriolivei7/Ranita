@@ -303,6 +303,7 @@ class SyncPlugin : Plugin() {
         val enabledRestore = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isRestoreEnabled(it) }.toSet()
 
         val localBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
+        var justRestored = false
 
         // --- restore from cloud ---
         if (restoreEnabled) {
@@ -384,6 +385,10 @@ class SyncPlugin : Plugin() {
                     lastStatus = "Restaurado desde $src"
                     log("[restore] OK: $cats desde $src")
                     toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    justRestored = true
+                    val freshBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
+                    val freshData = SyncNetwork.json.encodeToString(BackupFile.serializer(), freshBackup)
+                    SyncStorage.lastPushedHash = SyncBackup.computeHash(freshData)
                     Handler(Looper.getMainLooper()).post {
                         try {
                             if (restoredSettings) {
@@ -414,6 +419,11 @@ class SyncPlugin : Plugin() {
         }
 
         // --- push to cloud ---
+        if (justRestored) {
+            lastStatus = "Restaurado (push diferido)"
+            log("[push] omitido: se acaba de restaurar, no se sube")
+            return
+        }
         if (backupEnabled) {
             val toPush = SyncBackup.buildBackup(appCtx, enabledBackup)
             if (SyncBackup.isEmpty(toPush)) {
