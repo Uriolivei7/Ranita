@@ -45,7 +45,6 @@ class SyncPlugin : Plugin() {
     private val pollMs = 10_000L
     private val syncMutex = Mutex()
 
-    // Solo se consulta GitHub mientras hay actividad en primer plano.
     @Volatile private var foregroundActivities = 0
 
     @Volatile var lastStatus = "Sin sincronizar"
@@ -147,9 +146,10 @@ class SyncPlugin : Plugin() {
 
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
-        log("dirty: $key -> ${cat.key}")
         synchronized(dirtyCategories) {
-            dirtyCategories.add(cat)
+            if (dirtyCategories.add(cat)) {
+                log("[dirty] $cat")
+            }
         }
         if (cat != SyncCategory.RESUME_WATCHING) {
             pendingPushToast = true
@@ -234,7 +234,6 @@ class SyncPlugin : Plugin() {
     suspend fun runSync(forceRestore: Boolean = false, forcePush: Boolean = false) {
         if (!SyncStorage.isLoggedIn()) return
         syncMutex.withLock {
-            if (isRestoring) return@withLock
             isSyncing = true
             lastError = null
             lastStatus = "Sincronizando..."
@@ -280,7 +279,7 @@ class SyncPlugin : Plugin() {
             lastError = SyncNetwork.lastError
             return
         }
-        log("proyecto $projectId, ${devices.size} item(s), ${SyncNetwork.mainDrafts(devices).size} dispositivo(s)")
+        log("[sync] fetchDevices: ${devices.size} items, ${SyncNetwork.mainDrafts(devices).size} device(s)")
 
         val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
@@ -293,14 +292,11 @@ class SyncPlugin : Plugin() {
                 .mapValues { (_, ds) -> ds.maxByOrNull { it.gen ?: it.updatedAt }!!.itemContentId!! }
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
-            log("draft propio encontrado: ${ownChunks.size} trozo(s)")
         } else if (ownDevice == null) {
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
             SyncStorage.ownChunkContentIds = emptyMap()
             SyncStorage.forceReRegister = false
-            lastStatus = "Draft propio no encontrado; se creará uno nuevo"
-            log("draft propio NO encontrado -> se registrará uno nuevo")
         }
 
         val enabledBackup = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isBackupEnabled(it) }.toSet()
@@ -311,33 +307,24 @@ class SyncPlugin : Plugin() {
         // --- restore from cloud ---
         if (restoreEnabled) {
             val consumed = SyncStorage.lastRestoredFrom
-            val allOthers = SyncNetwork.mainDrafts(devices)
-                .filter { it.deviceId != deviceId }
-            log("restore: mi deviceId=$deviceId, consumed=$consumed")
-            for (d in allOthers) {
-                val gate = consumed[d.deviceId] ?: 0L
-                val ver = d.gen ?: d.updatedAt
-                log("restore: ${d.deviceId} gen=${d.gen} updatedAt=${d.updatedAt} consumed=$gate pasa=${ver > gate}")
-            }
+            val allOthers = SyncNetwork.mainDrafts(devices).filter { it.deviceId != deviceId }
             val othersList = allOthers
                 .filter { forceRestore || (it.gen ?: it.updatedAt) > (consumed[it.deviceId] ?: 0L) }
                 .sortedByDescending { it.gen ?: it.updatedAt }
-            log("restore: otros dispositivos = ${othersList.map { "${it.name}@gen=${it.gen}" }}")
-            if (othersList.isNotEmpty()) {
+
+            if (othersList.isEmpty()) {
+                log("[restore] sin cambios pendientes")
+            } else {
+                isRestoring = true
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
                     val cloudBackup = if (payload == null) null else try {
-                        SyncNetwork.json.decodeFromString(
-                            BackupFile.serializer(),
-                            SyncNetwork.decompressData(payload)
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
+                        SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
+                    } catch (_: Exception) { null }
                     if (cloudBackup == null) {
-                        log("restore: ${other.deviceId} payload=${payload?.length} cloudBackup=null, se salta (se reintentará)")
+                        log("[restore] ${other.name}: payload incompleto, se reintentará")
                         continue
                     }
                     consumedNow[other.deviceId] = other.gen ?: other.updatedAt
@@ -352,7 +339,6 @@ class SyncPlugin : Plugin() {
                     consumedNow.forEach { (k, v) -> if (v > (mergedConsumed[k] ?: 0L)) mergedConsumed[k] = v }
                     SyncStorage.lastRestoredFrom = mergedConsumed
                 }
-                isRestoring = true
                 var restoredAny = false
                 var restoredSettings = false
                 var restoredExtensions = false
@@ -366,8 +352,7 @@ class SyncPlugin : Plugin() {
                             compareBy<Pair<SyncDevice, BackupFile>> {
                                 SyncBackup.getBackupFileKeys(it.second).size
                             }.thenBy { it.first.updatedAt }
-                        )
-                        if (best == null) continue
+                        ) ?: continue
                         val (source, cloudCat) = best
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
@@ -375,43 +360,8 @@ class SyncPlugin : Plugin() {
                             localCategoryTs = SyncStorage.categoryTimestamp(cat),
                             cloudPayloadTs = source.updatedAt,
                         )
-                        log(
-                            "merge $cat: local=${SyncBackup.getBackupFileKeys(localCat).size} " +
-                                "cloud=${SyncBackup.getBackupFileKeys(cloudCat).size} " +
-                                "localTs=${SyncStorage.categoryTimestamp(cat)} cloudTs=${source.updatedAt} " +
-                                "cambio=${merged != localCat}"
-                        )
                         if (merged != localCat) {
-                            val localMaps = backupMaps(localCat)
-                            val cloudMaps = backupMaps(cloudCat)
-                            val allKeys = (localMaps.flatMap { it.keys } + cloudMaps.flatMap { it.keys }).toSet()
-                            val cloudOnly = mutableListOf<String>()
-                            val localOnly = mutableListOf<String>()
-                            val different = mutableListOf<String>()
-                            for (key in allKeys) {
-                                val lv = localMaps.firstNotNullOfOrNull { it[key] }
-                                val cv = cloudMaps.firstNotNullOfOrNull { it[key] }
-                                when {
-                                    cv == null -> localOnly.add(key)
-                                    lv == null -> cloudOnly.add(key)
-                                    lv != cv -> different.add(key)
-                                }
-                            }
-                            log(
-                                "    cambio $cat: cloudOnly=${cloudOnly.size} localOnly=${localOnly.size} " +
-                                    "distintos=${different.size}"
-                            )
-                            log("    cloudOnly: ${cloudOnly.take(3)}")
-                            log("    localOnly: ${localOnly.take(3)}")
-                            log("    distintos: ${different.take(3)}")
-                            for (k in different.take(3)) {
-                                val lv = localMaps.firstNotNullOfOrNull { it[k] }
-                                val cv = cloudMaps.firstNotNullOfOrNull { it[k] }
-                                log(
-                                    "      $k localTs=${SyncBackup.debugTs(lv)} " +
-                                        "cloudTs=${SyncBackup.debugTs(cv)} diffSecs=${SyncBackup.debugTs(cv) - SyncBackup.debugTs(lv)}"
-                                )
-                            }
+                            log("[restore] $cat: cambio detectado desde ${source.name}")
                             SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {
@@ -429,11 +379,11 @@ class SyncPlugin : Plugin() {
                     if (!restoredAny) isRestoring = false
                 }
                 if (restoredAny) {
-                    lastStatus = "Restaurado desde ${restoredSources.values.map { it.name }.joinToString(",")}"
-                    log("restaurado: ${restoredSources.map { (cat, src) -> "${cat.key}:${src.name}" }.joinToString(", ")}")
-                    if (restoredAny) {
-                        toastSync("Sincronizado: datos actualizados desde otro dispositivo")
-                    }
+                    val cats = restoredSources.keys.joinToString { it.key }
+                    val src = restoredSources.values.joinToString { it.name }
+                    lastStatus = "Restaurado desde $src"
+                    log("[restore] OK: $cats desde $src")
+                    toastSync("Sincronizado: datos actualizados desde otro dispositivo")
                     Handler(Looper.getMainLooper()).post {
                         try {
                             if (restoredSettings) {
@@ -450,8 +400,15 @@ class SyncPlugin : Plugin() {
                             }
                         } finally {
                             isRestoring = false
+                            synchronized(dirtyCategories) {
+                                for (cat in restoredSources.keys) {
+                                    dirtyCategories.remove(cat)
+                                }
+                            }
                         }
                     }
+                } else {
+                    log("[restore] sin cambios")
                 }
             }
         }
@@ -459,68 +416,71 @@ class SyncPlugin : Plugin() {
         // --- push to cloud ---
         if (backupEnabled) {
             val toPush = SyncBackup.buildBackup(appCtx, enabledBackup)
-            if (!SyncBackup.isEmpty(toPush)) {
-                val onlyResumeWatching = synchronized(dirtyCategories) {
-                    dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
-                }
-                if (!forcePush && onlyResumeWatching) {
-                    lastStatus = "Esperando cierre de app para push"
-                    log("push omite: solo resume_watching, esperando cierre de app")
-                    return
-                }
-                val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
-                val hash = SyncBackup.computeHash(data)
-                val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
-                log("payload: ${data.length} chars -> ${chunks.size} trozo(s)")
-                val ownIds = SyncStorage.ownChunkContentIds
-                if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
-                    val newGen = SyncTime.nowEpochSeconds()
-                    val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
-                    if (ids != null) {
-                        SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
-                        SyncStorage.ownContentId = ids.getOrNull(0)
-                        SyncStorage.ownItemId = null
-                        SyncStorage.syncGen = newGen
-                        SyncStorage.lastPushedHash = hash
-                        SyncStorage.forceReRegister = false
-                        clearDirtyCategories()
-                        updateCategoryTimestamps(enabledBackup)
-                        lastStatus = "Draft(s) creado(s): sync OK (${ids.size} trozo/s)"
-                        log("nuevo draft registrado: ${ids.size} trozo(s)")
-                        maybePushToast()
-                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
-                    } else {
-                        lastStatus = "No se pudo crear el draft"
-                        lastError = SyncNetwork.lastError
-                    }
-                } else if (hash != SyncStorage.lastPushedHash) {
-                    val gen = SyncTime.nowEpochSeconds()
-                    val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
-                    if (updated != null) {
-                        SyncStorage.ownChunkContentIds = updated
-                        SyncStorage.ownContentId = updated[0]
-                        SyncStorage.ownItemId = null
-                        SyncStorage.syncGen = gen
-                        SyncStorage.lastPushedHash = hash
-                        clearDirtyCategories()
-                        updateCategoryTimestamps(enabledBackup)
-                        lastStatus = "Draft(s) actualizado(s): sync OK (${updated.size} trozo/s)"
-                        log("draft actualizado: ${updated.size} trozo(s)")
-                        maybePushToast()
-                        SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
-                    } else {
-                        SyncStorage.ownContentId = null
-                        SyncStorage.ownItemId = null
-                        SyncStorage.ownChunkContentIds = emptyMap()
-                        SyncStorage.forceReRegister = true
-                        lastStatus = "Fallo al actualizar el draft; se reintentará crearlo"
-                        lastError = SyncNetwork.lastError
-                    }
+            if (SyncBackup.isEmpty(toPush)) {
+                lastStatus = "Backup vacío"
+                return
+            }
+            val onlyResumeWatching = synchronized(dirtyCategories) {
+                dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
+            }
+            if (!forcePush && onlyResumeWatching) {
+                lastStatus = "Esperando cierre de app para push"
+                log("[push] omitido: solo RESUME_WATCHING, esperando background")
+                return
+            }
+            val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
+            val hash = SyncBackup.computeHash(data)
+            val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
+            val ownIds = SyncStorage.ownChunkContentIds
+
+            if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
+                val newGen = SyncTime.nowEpochSeconds()
+                val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
+                if (ids != null) {
+                    SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
+                    SyncStorage.ownContentId = ids.getOrNull(0)
+                    SyncStorage.ownItemId = null
+                    SyncStorage.syncGen = newGen
+                    SyncStorage.lastPushedHash = hash
+                    SyncStorage.forceReRegister = false
+                    clearDirtyCategories()
+                    updateCategoryTimestamps(enabledBackup)
+                    lastStatus = "Sync OK (${ids.size} trozo/s)"
+                    log("[push] draft creado: ${ids.size} trozo(s)")
+                    maybePushToast()
+                    SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                 } else {
-                    lastStatus = "Sin cambios que subir"
+                    lastStatus = "No se pudo crear draft"
+                    lastError = SyncNetwork.lastError
+                    log("[push] ERROR: registerDevice: ${lastError}")
+                }
+            } else if (hash != SyncStorage.lastPushedHash) {
+                val gen = SyncTime.nowEpochSeconds()
+                val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
+                if (updated != null) {
+                    SyncStorage.ownChunkContentIds = updated
+                    SyncStorage.ownContentId = updated[0]
+                    SyncStorage.ownItemId = null
+                    SyncStorage.syncGen = gen
+                    SyncStorage.lastPushedHash = hash
+                    clearDirtyCategories()
+                    updateCategoryTimestamps(enabledBackup)
+                    lastStatus = "Sync OK (${updated.size} trozo/s)"
+                    log("[push] draft actualizado: ${updated.size} trozo(s)")
+                    maybePushToast()
+                    SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
+                } else {
+                    SyncStorage.ownContentId = null
+                    SyncStorage.ownItemId = null
+                    SyncStorage.ownChunkContentIds = emptyMap()
+                    SyncStorage.forceReRegister = true
+                    lastStatus = "Fallo al actualizar draft"
+                    lastError = SyncNetwork.lastError
+                    log("[push] ERROR: updateDevice: ${lastError}")
                 }
             } else {
-                lastStatus = "Backup vacío (nada que subir)"
+                lastStatus = "Sin cambios que subir"
+                log("[push] omitido: sin cambios")
             }
         }
 
