@@ -120,8 +120,56 @@ object SyncNetwork {
             }
             return sb.toString()
         }
-        log("[restore] $deviceId: ninguna gen completa")
-        return null
+        log("[restore] $deviceId: ninguna gen completa, intentando best-effort")
+        return assembleBestEffort(token, drafts, deviceId)
+    }
+
+    private suspend fun assembleBestEffort(
+        token: String,
+        drafts: List<SyncDevice>,
+        deviceId: String
+    ): String? {
+        val latestChunk0 = drafts.filter { it.chunkIndex == 0 }
+            .maxByOrNull { it.gen ?: it.updatedAt } ?: return null
+        val body0 = fetchChunkBody(token, latestChunk0.itemContentId ?: latestChunk0.itemId)
+            ?: return null
+        val realTotal = parseChunkTotal(body0) ?: return null
+
+        val allByIndex = HashMap<Int, SyncDevice>()
+        for (d in drafts) {
+            val prev = allByIndex[d.chunkIndex]
+            if (prev == null) {
+                allByIndex[d.chunkIndex] = d
+            } else {
+                val dGen = d.gen ?: 0L
+                val prevGen = prev.gen ?: 0L
+                if (dGen > prevGen || (dGen == prevGen && d.updatedAt > prev.updatedAt)) {
+                    allByIndex[d.chunkIndex] = d
+                }
+            }
+        }
+
+        for (i in 0 until realTotal) {
+            if (allByIndex[i] == null) {
+                log("[restore] $deviceId: best-effort falta chunk $i/$realTotal")
+                return null
+            }
+        }
+
+        val sb = StringBuilder()
+        val data0 = stripChunkHeader(body0, 0, realTotal) ?: return null
+        sb.append(data0)
+        for (i in 1 until realTotal) {
+            val draft = allByIndex[i]!!
+            val chunkId = draft.itemContentId ?: draft.itemId
+            val body = fetchChunkBody(token, chunkId) ?: return null
+            val data = stripChunkHeader(body, i, realTotal) ?: return null
+            sb.append(data)
+        }
+
+        val result = sb.toString()
+        log("[restore] $deviceId: best-effort armado ok (${result.length} chars)")
+        return result
     }
 
     private fun parseChunkTotal(body: String): Int? {
