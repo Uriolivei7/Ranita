@@ -69,12 +69,10 @@ class CloudSyncProvider : MainAPI() {
     private suspend fun performFullSync(context: Context, creds: CloudSyncCreds) {
         try { registerDevice(creds) } catch (e: Exception) { Log.w("CloudSync", "registerDevice failed: ${e.message}") }
         val manifestHashes = fetchManifest(creds)
-        Log.d("CloudSync", "manifest hashes: $manifestHashes")
 
         for (category in SyncCategory.values()) {
             val backupEnabled = creds.isBackupEnabled(category)
             val restoreEnabled = creds.isRestoreEnabled(category)
-            Log.d("CloudSync", "Category ${category.key}: backup=$backupEnabled restore=$restoreEnabled")
             if (!backupEnabled && !restoreEnabled) continue
 
             val remoteHash = manifestHashes[category.key]
@@ -93,15 +91,11 @@ class CloudSyncProvider : MainAPI() {
                             BackupFile.mergeBackupFiles(local, remote, CloudSyncStorage.getCategoryTimestamp(category), System.currentTimeMillis()/1000)
                         } else remote
                         CloudSyncBackup.restoreCategory(context, category, toRestore, creds)
-                        Log.d("CloudSync", "Pulled & merged ${category.key}: local=${local?.allKeys()?.size?:0} remote=${remote.allKeys().size} merged=${toRestore.allKeys().size} keys")
-                    } else {
-                        Log.d("CloudSync", "No remote data for ${category.key}")
+                        Log.d("CloudSync", "Pulled & restored ${category.key}: local=${local?.allKeys()?.size?:0} remote=${remote.allKeys().size} merged=${toRestore.allKeys().size} keys")
                     }
                 } catch (e: Exception) {
                     Log.e("CloudSync", "pull ${category.key} failed: ${e.message}")
                 }
-            } else if (restoreEnabled) {
-                Log.d("CloudSync", "Skip pull ${category.key}: remoteHash==localHash")
             }
 
             if (backupEnabled) {
@@ -110,8 +104,6 @@ class CloudSyncProvider : MainAPI() {
                     if (backup != null) {
                         val force = remote == null && manifestHashes[category.key] == null
                         pushCategory(category, backup, creds, force = force)
-                    } else {
-                        Log.d("CloudSync", "No local data for ${category.key}, skip push")
                     }
                 } catch (e: Exception) {
                     Log.e("CloudSync", "push ${category.key} failed: ${e.message}")
@@ -127,11 +119,9 @@ class CloudSyncProvider : MainAPI() {
         val hash = CloudSyncBackup.computeHash(json)
         val cur = CloudSyncStorage.getCategoryHash(category)
         if (!force && hash == cur) {
-            Log.d("CloudSync", "No changes for ${category.key}, skip push (force=$force)")
             return
         }
         val url = "${creds.activeUrl()}sync/${creds.syncKey}/${category.key}.json"
-        Log.d("CloudSync", "PUT $url hash=$hash force=$force")
         val res = app.put(url, json = backup.toMap())
         if (!res.isSuccessful) throw Exception("PUT ${category.key} failed: ${res.code} ${res.text.take(200)}")
         CloudSyncStorage.setCategoryHash(category, hash)
@@ -141,7 +131,6 @@ class CloudSyncProvider : MainAPI() {
 
     private suspend fun pullCategory(category: SyncCategory, creds: CloudSyncCreds): BackupFile? {
         val url = "${creds.activeUrl()}sync/${creds.syncKey}/${category.key}.json"
-        Log.d("CloudSync", "GET $url")
         val res = app.get(url)
         if (!res.isSuccessful) {
             if (res.code == 404) return null
@@ -149,7 +138,6 @@ class CloudSyncProvider : MainAPI() {
         }
         val text = res.text.trim()
         if (text == "null" || text.isBlank()) return null
-        Log.d("CloudSync", "GET ${category.key} got ${text.length} chars")
 
         val map: Map<String, Any> = mapper.readValue(text)
         return BackupFile.fromMap(map)
@@ -164,7 +152,6 @@ class CloudSyncProvider : MainAPI() {
         )
         try {
             app.put(url, json = data)
-            Log.d("CloudSync", "registerDevice OK")
         } catch (e: Exception) {
             Log.w("CloudSync", "registerDevice failed: ${e.message}")
         }

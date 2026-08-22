@@ -224,7 +224,6 @@ object CloudSyncBackup {
     fun buildBackupForCategory(context: Context, category: SyncCategory, creds: CloudSyncCreds): BackupFile? {
         val dsAll = getDatastorePrefs(context).all
         val setAll = getSettingsPrefs(context).all
-        Log.d(TAG, "buildBackup ${category.key}: ds=${dsAll.size} set=${setAll.size} sample=${(dsAll.keys+setAll.keys).take(5)}")
         val resumeIndex = buildResumeIndex(dsAll)
         val pruned = pruneTombstones(CloudSyncStorage.tombstones())
 
@@ -238,7 +237,6 @@ object CloudSyncBackup {
         val defaultPrefs = setAll.filter { (k, _) ->
             isTransferable(k) && classifyKey(k) == category && isKeyBackupEnabled(k, category, creds) && isResumeRelevant(k, resumeIndex)
         }.toMap() as Map<String, Any>
-        Log.d(TAG, "buildBackup ${category.key}: matched ds=${dataStorePrefs.size} set=${defaultPrefs.size} dels=${dels.size}")
         if (dataStorePrefs.isEmpty() && defaultPrefs.isEmpty() && dels.isEmpty()) return null
         return BackupFile(
             datastore = BackupVars.from(dataStorePrefs),
