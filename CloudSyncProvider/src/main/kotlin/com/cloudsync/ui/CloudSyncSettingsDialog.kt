@@ -240,12 +240,19 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         Log.d("CloudSync", "saveAndSync: starting - creds.syncKey=${creds.syncKey}, loggedIn=${creds.isLoggedIn()}")
         showProgress("Sincronizando...")
 
-        val generatedSyncKey = syncKeyInput?.text.toString().trim().takeIf { it.isNotBlank() }
-            ?: java.util.UUID.randomUUID().toString()
+        // Fix: solo generar UUID si el usuario NO ingresó nada Y no hay syncKey previo
+        val userEnteredSyncKey = syncKeyInput?.text.toString().trim()
+        val finalSyncKey = if (userEnteredSyncKey.isNotBlank()) {
+            userEnteredSyncKey                    // Usuario ingresó uno nuevo -> usarlo
+        } else if (creds.syncKey?.isNotBlank() == true) {
+            creds.syncKey!!                         // Usuario no tocó campo -> mantener el actual
+        } else {
+            java.util.UUID.randomUUID().toString() // No hay nada -> generar nuevo
+        }
 
         var newCreds = creds.copyWith(
             firebaseUrl = firebaseUrlInput?.text.toString().trim().ifEmpty { creds.firebaseUrl },
-            syncKey = generatedSyncKey,
+            syncKey = finalSyncKey,
             deviceName = deviceNameInput?.text.toString().trim().ifEmpty { creds.deviceName },
         )
 
@@ -290,8 +297,8 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         Log.d("CloudSync", "Settings saved - new syncKey=${creds.syncKey}")
 
         activity.runOnUiThread {
-            val msg = if (creds.syncKey != null && creds.syncKey != creds.syncKey) {
-                "Sync Key generada: ${creds.syncKey}\nCópiala en el otro dispositivo"
+            val msg = if (creds.syncKey?.isNotBlank() == true) {
+                "Sync Key: ${creds.syncKey}\nCópiala en el otro dispositivo"
             } else {
                 "Guardando y sincronizando..."
             }
