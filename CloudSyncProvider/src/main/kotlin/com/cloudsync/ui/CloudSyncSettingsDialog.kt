@@ -240,9 +240,12 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         Log.d("CloudSync", "saveAndSync: starting - creds.syncKey=${creds.syncKey}, loggedIn=${creds.isLoggedIn()}")
         showProgress("Sincronizando...")
 
+        val generatedSyncKey = syncKeyInput?.text.toString().trim().takeIf { it.isNotBlank() }
+            ?: java.util.UUID.randomUUID().toString()
+
         var newCreds = creds.copyWith(
             firebaseUrl = firebaseUrlInput?.text.toString().trim().ifEmpty { creds.firebaseUrl },
-            syncKey = syncKeyInput?.text.toString().trim().takeIf { it.isNotBlank() },
+            syncKey = generatedSyncKey,
             deviceName = deviceNameInput?.text.toString().trim().ifEmpty { creds.deviceName },
         )
 
@@ -287,7 +290,12 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         Log.d("CloudSync", "Settings saved - new syncKey=${creds.syncKey}")
 
         activity.runOnUiThread {
-            Toast.makeText(activity, "Guardando y sincronizando...", Toast.LENGTH_SHORT).show()
+            val msg = if (creds.syncKey != null && creds.syncKey != creds.syncKey) {
+                "Sync Key generada: ${creds.syncKey}\nCópiala en el otro dispositivo"
+            } else {
+                "Guardando y sincronizando..."
+            }
+            Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
         }
 
         showProgress("Sincronizando...")
