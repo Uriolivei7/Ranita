@@ -300,8 +300,8 @@ class GnulaProvider : MainAPI() {
 
         return if (!post.seasons.isNullOrEmpty()) {
             Log.d(TAG, "load: Es serie — ${post.seasons.size} temporadas")
-            val episodes = post.seasons.flatMap { season: Season ->
-                season.episodes.map { ep: SeasonEpisode ->
+            val episodes: List<Episode> = post.seasons.flatMap { season ->
+                season.episodes.map { ep ->
                     val sNum = ep.slug.season ?: season.number?.toString() ?: "1"
                     val eNum = ep.slug.episode ?: ep.number?.toString() ?: "1"
                     val epSlug = ep.slug.name ?: slugRaw
@@ -319,7 +319,7 @@ class GnulaProvider : MainAPI() {
                         this.episode = eNum.toIntOrNull()
                         this.posterUrl = ep.image ?: fixImageUrl(ep.images.poster) ?: mainPoster
                     }
-                }.toList()
+                }
             }
 
             Log.d(TAG, "load: Total ${episodes.size} episodios generados")
