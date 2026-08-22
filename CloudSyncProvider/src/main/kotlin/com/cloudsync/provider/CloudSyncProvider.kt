@@ -63,19 +63,16 @@ class CloudSyncProvider : MainAPI() {
             Log.d("CloudSync", "Category ${category.key}: backup=$backupEnabled restore=$restoreEnabled")
             if (!backupEnabled && !restoreEnabled) continue
 
-            // 1) PULL primero para no sobreescribir datos remotos más nuevos
+            // 1) PULL primero
+            var remote: BackupFile? = null
             if (restoreEnabled) {
                 try {
-                    val remote = pullCategory(category, creds)
+                    remote = pullCategory(category, creds)
                     if (remote != null) {
                         val local = CloudSyncBackup.buildBackupForCategory(context, category, creds)
                         val toRestore = if (local != null) {
-                            val localTs = CloudSyncStorage.getCategoryTimestamp(category)
-                            // remote timestamp viene de Firebase? usamos 0 si no hay, comparar hash
-                            val useRemote = remote != local
-                            if (useRemote) remote else local
+                            if (remote != local) remote else local
                         } else remote
-                        // si había local, merge simple: si remote tiene keys que local no tiene, restaurar
                         CloudSyncBackup.restoreCategory(context, category, toRestore, creds)
                         Log.d("CloudSync", "Pulled & restored ${category.key}: ${toRestore.allKeys().size} keys")
                     } else {
@@ -86,12 +83,13 @@ class CloudSyncProvider : MainAPI() {
                 }
             }
 
-            // 2) PUSH después (incluye lo recién restaurado si hubo merge)
+            // 2) PUSH después - forzar si remoto estaba vacío y hay datos locales
             if (backupEnabled) {
                 try {
                     val backup = CloudSyncBackup.buildBackupForCategory(context, category, creds)
                     if (backup != null) {
-                        pushCategory(category, backup, creds)
+                        val force = remote == null // proyecto nuevo → subir sí o sí
+                        pushCategory(category, backup, creds, force = force)
                     } else {
                         Log.d("CloudSync", "No local data for ${category.key}, skip push")
                     }
@@ -105,16 +103,16 @@ class CloudSyncProvider : MainAPI() {
         Log.d("CloudSync", "performFullSync completed")
     }
 
-    private suspend fun pushCategory(category: SyncCategory, backup: BackupFile, creds: CloudSyncCreds) {
+    private suspend fun pushCategory(category: SyncCategory, backup: BackupFile, creds: CloudSyncCreds, force: Boolean = false) {
         val json = mapper.writeValueAsString(backup)
         val hash = CloudSyncBackup.computeHash(json)
         val cur = CloudSyncStorage.getCategoryHash(category)
-        if (hash == cur) {
-            Log.d("CloudSync", "No changes for ${category.key}, skip push")
+        if (!force && hash == cur) {
+            Log.d("CloudSync", "No changes for ${category.key}, skip push (force=$force)")
             return
         }
         val url = "${creds.activeUrl()}sync/${creds.syncKey}/${category.key}.json"
-        Log.d("CloudSync", "PUT $url hash=$hash")
+        Log.d("CloudSync", "PUT $url hash=$hash force=$force")
         val res = app.put(url, json = backup.toMap())
         if (!res.isSuccessful) throw Exception("PUT ${category.key} failed: ${res.code} ${res.text.take(200)}")
         CloudSyncStorage.setCategoryHash(category, hash)
