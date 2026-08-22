@@ -63,8 +63,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         
         mainLayout.addView(mkSection("Settings Subcategories (Restore)"))
         addSubCategoryToggles(mainLayout, false)
-        
-        // Botones: Cancel (izquierda) | Save & Sync (derecha)
+
         val buttonLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -239,15 +238,14 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
     private fun saveAndSync() {
         Log.d("CloudSync", "saveAndSync: starting - creds.syncKey=${creds.syncKey}, loggedIn=${creds.isLoggedIn()}")
         showProgress("Sincronizando...")
-        
-        // Fix: solo generar UUID si el usuario NO ingresó nada Y no hay syncKey previo
+
         val userEnteredSyncKey = syncKeyInput?.text.toString().trim()
         val finalSyncKey = if (userEnteredSyncKey.isNotBlank()) {
-            userEnteredSyncKey                    // Usuario ingresó uno nuevo -> usarlo
+            userEnteredSyncKey
         } else if (creds.syncKey?.isNotBlank() == true) {
-            creds.syncKey!!                         // Usuario no tocó campo -> mantener el actual
+            creds.syncKey!!
         } else {
-            java.util.UUID.randomUUID().toString() // No hay nada -> generar nuevo
+            java.util.UUID.randomUUID().toString()
         }
         
         var newCreds = creds.copyWith(

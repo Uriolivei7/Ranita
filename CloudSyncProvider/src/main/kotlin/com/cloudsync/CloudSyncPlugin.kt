@@ -84,9 +84,9 @@ class CloudSyncPlugin : Plugin() {
                 synchronized(dirtyCategories) { dirtyCategories.clear() }
             }
         }
-        // pull primero, push después está dentro de Provider
+
         CloudSyncProvider().startSync(ctx, cb)
-        // pequeño delay para que Firebase propague
+
         delay(300)
     }
 

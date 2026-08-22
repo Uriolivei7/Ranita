@@ -41,7 +41,6 @@ class CloudSyncProvider : MainAPI() {
             onComplete(false, "No credentials")
             return
         }
-        // launch in IO
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 performFullSync(context, creds)
@@ -53,9 +52,24 @@ class CloudSyncProvider : MainAPI() {
         }
     }
 
+    private suspend fun fetchManifest(creds: CloudSyncCreds): Map<String, String?> {
+        return try {
+            val url = "${creds.activeUrl()}sync/${creds.syncKey}/manifest.json"
+            val res = app.get(url)
+            if (!res.isSuccessful || res.text.trim() == "null") emptyMap()
+            else {
+                val m: Map<String, Any> = mapper.readValue(res.text)
+                @Suppress("UNCHECKED_CAST")
+                val cats = (m["categories"] as? Map<String, Map<String, Any?>>) ?: emptyMap()
+                cats.mapValues { it.value["hash"] as? String }
+            }
+        } catch (_: Exception) { emptyMap() }
+    }
+
     private suspend fun performFullSync(context: Context, creds: CloudSyncCreds) {
-        // register device via REST (fire-and-forget)
         try { registerDevice(creds) } catch (e: Exception) { Log.w("CloudSync", "registerDevice failed: ${e.message}") }
+        val manifestHashes = fetchManifest(creds)
+        Log.d("CloudSync", "manifest hashes: $manifestHashes")
 
         for (category in SyncCategory.values()) {
             val backupEnabled = creds.isBackupEnabled(category)
@@ -63,9 +77,13 @@ class CloudSyncProvider : MainAPI() {
             Log.d("CloudSync", "Category ${category.key}: backup=$backupEnabled restore=$restoreEnabled")
             if (!backupEnabled && !restoreEnabled) continue
 
-            // 1) PULL primero
+            val remoteHash = manifestHashes[category.key]
+            val localHash = CloudSyncStorage.getCategoryHash(category)
+            val needsPull = restoreEnabled && remoteHash != null && remoteHash != localHash
+            val needsPushCheck = backupEnabled
+
             var remote: BackupFile? = null
-            if (restoreEnabled) {
+            if (needsPull) {
                 try {
                     remote = pullCategory(category, creds)
                     if (remote != null) {
@@ -81,14 +99,15 @@ class CloudSyncProvider : MainAPI() {
                 } catch (e: Exception) {
                     Log.e("CloudSync", "pull ${category.key} failed: ${e.message}")
                 }
+            } else if (restoreEnabled) {
+                Log.d("CloudSync", "Skip pull ${category.key}: remoteHash==localHash")
             }
 
-            // 2) PUSH después - forzar si remoto estaba vacío y hay datos locales
             if (backupEnabled) {
                 try {
                     val backup = CloudSyncBackup.buildBackupForCategory(context, category, creds)
                     if (backup != null) {
-                        val force = remote == null // proyecto nuevo → subir sí o sí
+                        val force = remote == null && manifestHashes[category.key] == null
                         pushCategory(category, backup, creds, force = force)
                     } else {
                         Log.d("CloudSync", "No local data for ${category.key}, skip push")
@@ -98,7 +117,6 @@ class CloudSyncProvider : MainAPI() {
                 }
             }
         }
-        // update manifest
         try { updateManifest(creds) } catch (e: Exception) { Log.w("CloudSync", "manifest failed: ${e.message}") }
         Log.d("CloudSync", "performFullSync completed")
     }
@@ -131,7 +149,7 @@ class CloudSyncProvider : MainAPI() {
         val text = res.text.trim()
         if (text == "null" || text.isBlank()) return null
         Log.d("CloudSync", "GET ${category.key} got ${text.length} chars")
-        // Firebase devuelve objeto con keys bool/int/... o  null
+
         val map: Map<String, Any> = mapper.readValue(text)
         return BackupFile.fromMap(map)
     }
