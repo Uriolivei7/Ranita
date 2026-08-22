@@ -159,10 +159,10 @@
         "name": "CinemacityProvider"
     },
     {
-        "fileHash": "sha256-b7d14b3834ab7d9b3b5c71b29689d6b0cceaafbc4674f54f28bd261defddea98",
+        "fileHash": "sha256-cb40a3f3dafdd09fad5eef9ce01ebdb646aee072f6a4d676e346f94fee1411ca",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 36480,
+        "fileSize": 36654,
         "status": 3,
         "authors": [
             "Ranita"
