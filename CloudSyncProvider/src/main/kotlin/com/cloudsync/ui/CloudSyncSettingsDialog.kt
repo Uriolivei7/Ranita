@@ -1,6 +1,7 @@
 package com.cloudsync.ui
 
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -17,21 +18,28 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.cloudsync.model.*
+import com.cloudsync.provider.CloudSyncProvider
 import com.cloudsync.storage.CloudSyncStorage
 import com.lagradost.api.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
-    
+
     private var creds: CloudSyncCreds = CloudSyncStorage.getCreds() ?: CloudSyncCreds()
     private var firebaseUrlInput: android.widget.EditText? = null
     private var syncKeyInput: android.widget.EditText? = null
     private var deviceNameInput: android.widget.EditText? = null
-    
+
     private val categorySwitches = mutableMapOf<SyncCategory, Switch>()
     private val categoryRestoreSwitches = mutableMapOf<SyncCategory, Switch>()
     private val subCategorySwitches = mutableMapOf<SettingsSubCategory, Switch>()
     private val subCategoryRestoreSwitches = mutableMapOf<SettingsSubCategory, Switch>()
-    
+
+    private var progressDialog: ProgressDialog? = null
+
     fun show() {
         val scrollView = ScrollView(activity)
         val mainLayout = LinearLayout(activity).apply {
@@ -39,44 +47,53 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             setPadding(32, 32, 32, 32)
         }
         scrollView.addView(mainLayout)
-        
+
         mainLayout.addView(mkTitle("CloudSync Settings"))
         mainLayout.addView(mkSection("Connection"))
         addConnectionFields(mainLayout)
-        
+
         mainLayout.addView(mkSection("Categories to Backup"))
         addCategoryToggles(mainLayout, true)
-        
+
         mainLayout.addView(mkSection("Categories to Restore"))
         addCategoryToggles(mainLayout, false)
-        
+
         mainLayout.addView(mkSection("Settings Subcategories (Backup)"))
         addSubCategoryToggles(mainLayout, true)
-        
+
         mainLayout.addView(mkSection("Settings Subcategories (Restore)"))
         addSubCategoryToggles(mainLayout, false)
-        
+
+        // Botones: Cancel (izquierda) | Save & Sync (derecha)
         val buttonLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(0, 32, 0, 0)
+            weightSum = 2f
         }
-        
-        val saveButton = mkButton("Save & Sync") { saveAndSync() }
+
         val cancelButton = mkButton("Cancel") { }
-        
-        buttonLayout.addView(saveButton)
+        cancelButton.layoutParams = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { gravity = Gravity.LEFT }
+
+        val saveButton = mkButton("Save & Sync") { saveAndSync() }
+        saveButton.layoutParams = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { gravity = Gravity.RIGHT }
+
         buttonLayout.addView(cancelButton)
+        buttonLayout.addView(saveButton)
         mainLayout.addView(buttonLayout)
-        
+
         val dialog = AlertDialog.Builder(activity)
             .setView(scrollView)
             .setCancelable(true)
             .create()
-        
+
         dialog.show()
     }
-    
+
     private fun mkTitle(titleText: String): TextView {
         return TextView(activity).apply {
             text = titleText
@@ -87,7 +104,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
     }
-    
+
     private fun mkSection(sectionText: String): TextView {
         return TextView(activity).apply {
             text = sectionText
@@ -97,18 +114,21 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
     }
-    
+
     private fun addConnectionFields(layout: LinearLayout) {
-        firebaseUrlInput = mkInput("Firebase URL", creds.firebaseUrl, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
-        layout.addView(mkLabeled("Firebase Realtime Database URL:", firebaseUrlInput!!))
-        
-        syncKeyInput = mkInput("Sync Key", creds.syncKey ?: "", InputType.TYPE_CLASS_TEXT).apply { hint = "Leave empty to generate new" }
-        layout.addView(mkLabeled("Sync Key (shared secret):", syncKeyInput!!))
-        
-        deviceNameInput = mkInput("Device Name", creds.deviceName ?: "Device-${creds.deviceId.take(8)}", InputType.TYPE_CLASS_TEXT)
-        layout.addView(mkLabeled("Device Name:", deviceNameInput!!))
+        val firebaseUrl = mkInput("Firebase URL", creds.firebaseUrl, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
+        firebaseUrlInput = firebaseUrl
+        layout.addView(mkLabeled("URL de la base de datos en tiempo real de Firebase:", firebaseUrl))
+
+        val syncKey = mkInput("Clave de sincronización", creds.syncKey ?: "", InputType.TYPE_CLASS_TEXT).apply { hint = "Dejar vacío para generar nuevo" }
+        syncKeyInput = syncKey
+        layout.addView(mkLabeled("Clave de sincronización (shared secret):", syncKey))
+
+        val deviceName = mkInput("Nombre del dispositivo", creds.deviceName ?: "Device-${creds.deviceId.take(8)}", InputType.TYPE_CLASS_TEXT)
+        deviceNameInput = deviceName
+        layout.addView(mkLabeled("Nombre del dispositivo:", deviceName))
     }
-    
+
     private fun mkInput(hint: String, text: String, inputType: Int): EditText {
         return EditText(activity).apply {
             this.hint = hint
@@ -126,7 +146,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
     }
-    
+
     private fun mkLabeled(label: String, field: EditText): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -140,14 +160,14 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             addView(field)
         }
     }
-    
+
     private fun addCategoryToggles(layout: LinearLayout, isBackup: Boolean) {
         val map = if (isBackup) categorySwitches else categoryRestoreSwitches
-        val enabledMap = if (isBackup) 
-            { cat: SyncCategory -> creds.isBackupEnabled(cat) } 
-        else 
+        val enabledMap = if (isBackup)
+            { cat: SyncCategory -> creds.isBackupEnabled(cat) }
+        else
             { cat: SyncCategory -> creds.isRestoreEnabled(cat) }
-        
+
         SyncCategory.values().forEach { cat ->
             val enabled = enabledMap(cat)
             val switch = mkSwitch(cat.key.replace("_", " ").capitalize(), enabled)
@@ -155,14 +175,14 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             layout.addView(switch)
         }
     }
-    
+
     private fun addSubCategoryToggles(layout: LinearLayout, isBackup: Boolean) {
         val map = if (isBackup) subCategorySwitches else subCategoryRestoreSwitches
-        val enabledMap = if (isBackup) 
-            { sub: SettingsSubCategory -> creds.isSettingsBackupEnabled(sub) } 
-        else 
+        val enabledMap = if (isBackup)
+            { sub: SettingsSubCategory -> creds.isSettingsBackupEnabled(sub) }
+        else
             { sub: SettingsSubCategory -> creds.isSettingsRestoreEnabled(sub) }
-        
+
         SettingsSubCategory.values().forEach { sub ->
             val enabled = enabledMap(sub)
             val switch = mkSwitch(sub.name.capitalize(), enabled)
@@ -170,7 +190,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             layout.addView(switch)
         }
     }
-    
+
     private fun mkSwitch(switchText: String, checked: Boolean): Switch {
         return Switch(activity).apply {
             text = switchText
@@ -181,7 +201,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
     }
-    
+
     private fun mkButton(buttonText: String, onClick: () -> Unit): Button {
         return android.widget.Button(activity).apply {
             text = buttonText
@@ -197,14 +217,32 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
             setOnClickListener { onClick() }
         }
     }
-    
+
+    private fun showProgress(message: String) {
+        progressDialog?.dismiss()
+        progressDialog = ProgressDialog(activity).apply {
+            setMessage(message)
+            setCancelable(false)
+            setProgressStyle(ProgressDialog.STYLE_SPINNER)
+            setIndeterminate(true)
+        }
+        progressDialog?.show()
+    }
+
+    private fun hideProgress() {
+        progressDialog?.dismiss()
+        progressDialog = null
+    }
+
     private fun saveAndSync() {
+        showProgress("Sincronizando...")
+
         var newCreds = creds.copyWith(
             firebaseUrl = firebaseUrlInput?.text.toString().trim().ifEmpty { creds.firebaseUrl },
             syncKey = syncKeyInput?.text.toString().trim().takeIf { it.isNotBlank() },
             deviceName = deviceNameInput?.text.toString().trim().ifEmpty { creds.deviceName },
         )
-        
+
         categorySwitches.forEach { (cat, switch) ->
             newCreds = when (cat) {
                 SyncCategory.BOOKMARKS -> newCreds.copy(backupBookmarks = switch.isChecked)
@@ -222,7 +260,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
                 else -> newCreds
             }
         }
-        
+
         categoryRestoreSwitches.forEach { (cat, switch) ->
             newCreds = when (cat) {
                 SyncCategory.BOOKMARKS -> newCreds.copy(restoreBookmarks = switch.isChecked)
@@ -240,13 +278,30 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
                 else -> newCreds
             }
         }
-        
+
         creds = newCreds
         CloudSyncStorage.setCreds(creds)
         com.lagradost.api.Log.d("CloudSync", "Settings saved")
-        
-        activity.runOnUiThread(Runnable { 
-            Toast.makeText(activity, "Settings saved", Toast.LENGTH_SHORT).show()
-        })
+
+        activity.runOnUiThread {
+            Toast.makeText(activity, "Guardando y sincronizando...", Toast.LENGTH_SHORT).show()
+        }
+
+        showProgress("Sincronizando...")
+
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                CloudSyncProvider().startSync(activity)
+                activity.runOnUiThread {
+                    hideProgress()
+                    Toast.makeText(activity, "✅ Sincronización completada", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                activity.runOnUiThread {
+                    hideProgress()
+                    Toast.makeText(activity, "❌ Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 }
