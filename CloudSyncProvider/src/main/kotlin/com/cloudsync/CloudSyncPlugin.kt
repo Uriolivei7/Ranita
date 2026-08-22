@@ -28,7 +28,8 @@ class CloudSyncPlugin : Plugin() {
     private var pollingJob: Job? = null
     private var debounceJob: Job? = null
     private val dirtyCategories = mutableSetOf<SyncCategory>()
-    private var isRestoring = false
+    var isRestoring = false
+    companion object { var isRestoringGlobal = false }
     private var foregroundActivities = 0
     private var lastPushToastMs = 0L
 
@@ -56,7 +57,7 @@ class CloudSyncPlugin : Plugin() {
     }
 
     private fun markDirty(key: String) {
-        if (isRestoring) return
+        if (isRestoring || isRestoringGlobal) return
         val cat = CloudSyncBackup.classifyKey(key) ?: return
         synchronized(dirtyCategories) { dirtyCategories.add(cat) }
         if (cat != SyncCategory.RESUME_WATCHING) scheduleDebouncedSync()
