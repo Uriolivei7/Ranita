@@ -159,20 +159,6 @@
         "name": "CinemacityProvider"
     },
     {
-        "fileHash": "sha256-b0b22b639f25fff7bf4dc5b48529f014a7d907adaab6be3322b3fdc390e6a936",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 63782,
-        "status": 3,
-        "authors": [
-            "Ranita"
-        ],
-        "version": -1,
-        "internalName": "CloudSyncProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/CloudSyncProvider.cs3",
-        "name": "CloudSyncProvider"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=mundodonghua.com&sz=%size%",
         "fileHash": "sha256-53edf0a864756163e50926132fa47ac4a755e543c8d7142030cf3ac69aea7982",
         "apiVersion": 1,
