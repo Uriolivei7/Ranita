@@ -110,8 +110,8 @@ data class BackupFile(
         fun fromMap(map: Map<String, Any>): BackupFile {
             val datastoreMap = map["datastore"] as? Map<String, Any>
             val settingsMap = map["settings"] as? Map<String, Any>
-            val datastore = datastoreMap?.let { BackupVars.from(it) } ?: BackupVars()
-            val settings = settingsMap?.let { BackupVars.from(it) } ?: BackupVars()
+            val datastore = datastoreMap?.let { BackupVars.fromSanitized(it) } ?: BackupVars()
+            val settings = settingsMap?.let { BackupVars.fromSanitized(it) } ?: BackupVars()
             return BackupFile(datastore, settings)
         }
         
@@ -141,8 +141,8 @@ data class BackupFile(
     
     fun toMap(): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
-        result["datastore"] = datastore.toMap()
-        result["settings"] = settings.toMap()
+        result["datastore"] = datastore.toMap(sanitize = true)
+        result["settings"] = settings.toMap(sanitize = true)
         return result
     }
 }
@@ -157,15 +157,16 @@ data class BackupVars(
     @JsonProperty("stringSet") val stringSet: Map<String, Set<String>>? = null,
 ) {
     companion object {
-        fun from(map: Map<String, Any>): BackupVars {
+        fun from(map: Map<String, Any>, desanitize: Boolean = false): BackupVars {
             val bool = mutableMapOf<String, Boolean>()
             val int = mutableMapOf<String, Int>()
             val long = mutableMapOf<String, Long>()
             val float = mutableMapOf<String, Float>()
             val string = mutableMapOf<String, String>()
             val stringSet = mutableMapOf<String, Set<String>>()
-            
-            map.forEach { (k, v) ->
+            fun dk(k: String) = if (desanitize) k.replace("__SLASH__","/").replace("__RB__","]").replace("__LB__","[").replace("__HASH__","#").replace("__DOL__","$").replace("__DOT__",".") else k
+            map.forEach { (kRaw, v) ->
+                val k = dk(kRaw)
                 when (v) {
                     is Boolean -> bool[k] = v
                     is Int -> int[k] = v
@@ -177,16 +178,18 @@ data class BackupVars(
             }
             return BackupVars(bool, int, long, float, string, stringSet)
         }
+        fun fromSanitized(map: Map<String, Any>): BackupVars = from(map, desanitize = true)
     }
     
-    fun toMap(): Map<String, Any> {
+    fun toMap(sanitize: Boolean = false): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
-        bool?.forEach { result[it.key] = it.value }
-        int?.forEach { result[it.key] = it.value }
-        long?.forEach { result[it.key] = it.value }
-        float?.forEach { result[it.key] = it.value }
-        string?.forEach { result[it.key] = it.value }
-        stringSet?.forEach { result[it.key] = it.value }
+        fun sk(k: String) = if (sanitize) k.replace(".","__DOT__").replace("$","__DOL__").replace("#","__HASH__").replace("[","__LB__").replace("]","__RB__").replace("/","__SLASH__") else k
+        bool?.forEach { result[sk(it.key)] = it.value }
+        int?.forEach { result[sk(it.key)] = it.value }
+        long?.forEach { result[sk(it.key)] = it.value }
+        float?.forEach { result[sk(it.key)] = it.value }
+        string?.forEach { result[sk(it.key)] = it.value }
+        stringSet?.forEach { result[sk(it.key)] = it.value }
         return result
     }
 }

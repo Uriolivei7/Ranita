@@ -98,24 +98,50 @@ object CloudSyncBackup {
             .joinToString("") { "%02x".format(it) }
     }
     
+    // Firebase no permite . $ # [ ] / en keys → sanitizar
+    fun sanitizeKey(key: String): String = key
+        .replace(".", "__DOT__").replace("$", "__DOL__").replace("#", "__HASH__")
+        .replace("[", "__LB__").replace("]", "__RB__").replace("/", "__SLASH__")
+    fun desanitizeKey(key: String): String = key
+        .replace("__SLASH__", "/").replace("__RB__", "]").replace("__LB__", "[")
+        .replace("__HASH__", "#").replace("__DOL__", "$").replace("__DOT__", ".")
+
     private fun getDatastorePrefs(context: Context): SharedPreferences {
+        // 1) Intenta via DataStore API oficial (soporta prerelease/debug)
+        try {
+            val dsClass = Class.forName("com.lagradost.cloudstream3.utils.DataStore")
+            val inst = dsClass.getDeclaredField("INSTANCE").get(null)
+            val m = inst.javaClass.getMethod("getSharedPrefs", Context::class.java)
+            return m.invoke(inst, context) as SharedPreferences
+        } catch (_: Exception) {}
+        // 2) Fallback archivos directos
         return context.getSharedPreferences(PREF_DATASTORE, Context.MODE_PRIVATE)
     }
-    
+
     private fun getSettingsPrefs(context: Context): SharedPreferences {
+        try {
+            val dsClass = Class.forName("com.lagradost.cloudstream3.utils.DataStore")
+            val inst = dsClass.getDeclaredField("INSTANCE").get(null)
+            val m = inst.javaClass.getMethod("getDefaultSharedPrefs", Context::class.java)
+            return m.invoke(inst, context) as SharedPreferences
+        } catch (_: Exception) {}
+        // fallback dinámico según packageName (prerelease vs release)
+        val fallbackName = context.packageName + "_preferences"
+        try {
+            val prefs = context.getSharedPreferences(fallbackName, Context.MODE_PRIVATE)
+            if (prefs.all.isNotEmpty()) return prefs
+        } catch (_: Exception) {}
         return context.getSharedPreferences(PREF_SETTINGS, Context.MODE_PRIVATE)
     }
     
     fun buildBackupForCategory(context: Context, category: SyncCategory, creds: CloudSyncCreds): BackupFile? {
-        val dataStorePrefs = getDatastorePrefs(context).all
-            .filter { (k: String, _) -> isTransferable(k) && classifyKey(k) == category && isKeyBackupEnabled(k, category, creds) }
-            .toMap() as Map<String, Any>
-        val defaultPrefs = getSettingsPrefs(context).all
-            .filter { (k: String, _) -> isTransferable(k) && classifyKey(k) == category && isKeyBackupEnabled(k, category, creds) }
-            .toMap() as Map<String, Any>
-        
+        val dsAll = getDatastorePrefs(context).all
+        val setAll = getSettingsPrefs(context).all
+        Log.d(TAG, "buildBackup ${category.key}: ds=${dsAll.size} set=${setAll.size} sample=${(dsAll.keys+setAll.keys).take(5)}")
+        val dataStorePrefs = dsAll.filter { (k, _) -> isTransferable(k) && classifyKey(k) == category && isKeyBackupEnabled(k, category, creds) }.toMap() as Map<String, Any>
+        val defaultPrefs = setAll.filter { (k, _) -> isTransferable(k) && classifyKey(k) == category && isKeyBackupEnabled(k, category, creds) }.toMap() as Map<String, Any>
+        Log.d(TAG, "buildBackup ${category.key}: matched ds=${dataStorePrefs.size} set=${defaultPrefs.size}")
         if (dataStorePrefs.isEmpty() && defaultPrefs.isEmpty()) return null
-        
         return BackupFile(
             datastore = BackupVars.from(dataStorePrefs),
             settings = BackupVars.from(defaultPrefs)
@@ -211,8 +237,8 @@ object CloudSyncBackup {
     
     private fun BackupFile.allKeys(): Set<String> {
         val keys = mutableSetOf<String>()
-        datastore.toMap().keys.forEach { keys.add(it) }
-        settings.toMap().keys.forEach { keys.add(it) }
+        datastore.toMap(sanitize = false).keys.forEach { keys.add(it) }
+        settings.toMap(sanitize = false).keys.forEach { keys.add(it) }
         return keys
     }
 }
