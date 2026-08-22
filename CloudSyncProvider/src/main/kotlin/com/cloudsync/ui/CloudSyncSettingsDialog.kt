@@ -310,7 +310,7 @@ class CloudSyncSettingsDialog(private val activity: AppCompatActivity) {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
             try {
                 Log.d("CloudSync", "Starting CloudSyncProvider().startSync()")
-                CloudSyncProvider().startSync(activity)
+                CloudSyncProvider().startSync(activity)  // now suspend, will wait
                 activity.runOnUiThread {
                     hideProgress()
                     Toast.makeText(activity, "✅ Sincronización completada", Toast.LENGTH_LONG).show()
