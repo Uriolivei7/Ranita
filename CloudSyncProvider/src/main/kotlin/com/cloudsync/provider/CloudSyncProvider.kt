@@ -89,10 +89,11 @@ class CloudSyncProvider : MainAPI() {
                     if (remote != null) {
                         val local = CloudSyncBackup.buildBackupForCategory(context, category, creds)
                         val toRestore = if (local != null) {
-                            if (remote != local) remote else local
+
+                            BackupFile.mergeBackupFiles(local, remote, CloudSyncStorage.getCategoryTimestamp(category), System.currentTimeMillis()/1000)
                         } else remote
                         CloudSyncBackup.restoreCategory(context, category, toRestore, creds)
-                        Log.d("CloudSync", "Pulled & restored ${category.key}: ${toRestore.allKeys().size} keys")
+                        Log.d("CloudSync", "Pulled & merged ${category.key}: local=${local?.allKeys()?.size?:0} remote=${remote.allKeys().size} merged=${toRestore.allKeys().size} keys")
                     } else {
                         Log.d("CloudSync", "No remote data for ${category.key}")
                     }
