@@ -37,8 +37,6 @@ android {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.core:core-ktx:1.12.0")
-    implementation("com.google.firebase:firebase-database-ktx:20.3.0")
-    implementation("com.google.firebase:firebase-auth:22.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.4")

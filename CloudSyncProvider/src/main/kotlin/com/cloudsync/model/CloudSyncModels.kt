@@ -105,7 +105,47 @@ enum class SettingsSubCategory {
 data class BackupFile(
     @JsonProperty("datastore") val datastore: BackupVars,
     @JsonProperty("settings") val settings: BackupVars,
-)
+) {
+    companion object {
+        fun fromMap(map: Map<String, Any>): BackupFile {
+            val datastoreMap = map["datastore"] as? Map<String, Any>
+            val settingsMap = map["settings"] as? Map<String, Any>
+            val datastore = datastoreMap?.let { BackupVars.from(it) } ?: BackupVars()
+            val settings = settingsMap?.let { BackupVars.from(it) } ?: BackupVars()
+            return BackupFile(datastore, settings)
+        }
+        
+        fun mergeBackupFiles(
+            local: BackupFile,
+            remote: BackupFile,
+            localCategoryTs: Long,
+            cloudPayloadTs: Long
+        ): BackupFile {
+            val mergedDatastore = mergeVars(local.datastore, remote.datastore, localCategoryTs, cloudPayloadTs)
+            val mergedSettings = mergeVars(local.settings, remote.settings, localCategoryTs, cloudPayloadTs)
+            return BackupFile(mergedDatastore, mergedSettings)
+        }
+        
+        private fun mergeVars(local: BackupVars, remote: BackupVars, localTs: Long, cloudTs: Long): BackupVars {
+            val useRemote = cloudTs > localTs
+            return BackupVars(
+                bool = if (useRemote) remote.bool else local.bool,
+                int = if (useRemote) remote.int else local.int,
+                long = if (useRemote) remote.long else local.long,
+                float = if (useRemote) remote.float else local.float,
+                string = if (useRemote) remote.string else local.string,
+                stringSet = if (useRemote) remote.stringSet else local.stringSet,
+            )
+        }
+    }
+    
+    fun toMap(): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+        result["datastore"] = datastore.toMap()
+        result["settings"] = settings.toMap()
+        return result
+    }
+}
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class BackupVars(

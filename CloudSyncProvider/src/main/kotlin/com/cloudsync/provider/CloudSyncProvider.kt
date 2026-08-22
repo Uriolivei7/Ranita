@@ -1,83 +1,175 @@
 package com.cloudsync.provider
 
+import android.content.Context
 import com.cloudsync.backup.CloudSyncBackup
 import com.cloudsync.model.*
 import com.cloudsync.storage.CloudSyncStorage
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newHomePageResponse
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.lagradost.cloudstream3.utils.AppUtils
+import kotlinx.coroutines.*
 
 class CloudSyncProvider : MainAPI() {
 
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
     override val hasMainPage = true
     override val hasQuickSearch = false
-    
+
     private val mapper = jacksonObjectMapper()
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        return withContext(Dispatchers.IO) {
-            newHomePageResponse(
-                HomePageList(request.name, emptyList(), isHorizontalImages = false),
-                hasNext = false
-            )
+        return newHomePageResponse(
+            HomePageList(request.name, emptyList(), isHorizontalImages = false),
+            hasNext = false
+        )
+    }
+
+    fun startSync(context: Context, onComplete: (Boolean, String?) -> Unit) {
+        val creds = CloudSyncStorage.getCreds()
+        val desc = if (creds != null) "present (syncKey=${creds.syncKey})" else "null"
+        Log.d("CloudSync", "startSync: creds=$desc, loggedIn=${creds?.isLoggedIn()}")
+        if (creds == null || !creds.isLoggedIn()) {
+            Log.w("CloudSync", "startSync: No creds or not logged in")
+            onComplete(false, "No credentials")
+            return
+        }
+        // launch in IO
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                performFullSync(context, creds)
+                withContext(Dispatchers.Main) { onComplete(true, null) }
+            } catch (e: Exception) {
+                Log.e("CloudSync", "performFullSync exception: ${e.message}")
+                withContext(Dispatchers.Main) { onComplete(false, e.message) }
+            }
         }
     }
 
-    fun startSync(context: android.content.Context) {
-        val creds = CloudSyncStorage.getCreds()
-        if (creds == null || !creds.isLoggedIn()) return
-        
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                if (!CloudSyncStorage.isDeviceRegistered()) {
-                    CloudSyncStorage.setDeviceRegistered(true)
-                }
-                
-                performFullSync(context, creds)
-                
-            } catch (e: Exception) {
-                com.lagradost.api.Log.e("CloudSync", "Sync error: ${e.message}")
-            }
-        }
-    }
-    
-    private fun performFullSync(context: android.content.Context, creds: CloudSyncCreds) {
-        val categories = SyncCategory.values()
-        
-        for (category in categories) {
+    private suspend fun performFullSync(context: Context, creds: CloudSyncCreds) {
+        // register device via REST (fire-and-forget)
+        try { registerDevice(creds) } catch (e: Exception) { Log.w("CloudSync", "registerDevice failed: ${e.message}") }
+
+        for (category in SyncCategory.values()) {
             val backupEnabled = creds.isBackupEnabled(category)
-            if (!backupEnabled) continue
-            
-            val backup = CloudSyncBackup.buildBackupForCategory(context, category, creds)
-            if (backup != null) {
-                pushCategory(category, backup)
+            val restoreEnabled = creds.isRestoreEnabled(category)
+            Log.d("CloudSync", "Category ${category.key}: backup=$backupEnabled restore=$restoreEnabled")
+            if (!backupEnabled && !restoreEnabled) continue
+
+            // 1) PULL primero para no sobreescribir datos remotos más nuevos
+            if (restoreEnabled) {
+                try {
+                    val remote = pullCategory(category, creds)
+                    if (remote != null) {
+                        val local = CloudSyncBackup.buildBackupForCategory(context, category, creds)
+                        val toRestore = if (local != null) {
+                            val localTs = CloudSyncStorage.getCategoryTimestamp(category)
+                            // remote timestamp viene de Firebase? usamos 0 si no hay, comparar hash
+                            val useRemote = remote != local
+                            if (useRemote) remote else local
+                        } else remote
+                        // si había local, merge simple: si remote tiene keys que local no tiene, restaurar
+                        CloudSyncBackup.restoreCategory(context, category, toRestore, creds)
+                        Log.d("CloudSync", "Pulled & restored ${category.key}: ${toRestore.allKeys().size} keys")
+                    } else {
+                        Log.d("CloudSync", "No remote data for ${category.key}")
+                    }
+                } catch (e: Exception) {
+                    Log.e("CloudSync", "pull ${category.key} failed: ${e.message}")
+                }
             }
-            
-            pullCategory(context, category, creds)
+
+            // 2) PUSH después (incluye lo recién restaurado si hubo merge)
+            if (backupEnabled) {
+                try {
+                    val backup = CloudSyncBackup.buildBackupForCategory(context, category, creds)
+                    if (backup != null) {
+                        pushCategory(category, backup, creds)
+                    } else {
+                        Log.d("CloudSync", "No local data for ${category.key}, skip push")
+                    }
+                } catch (e: Exception) {
+                    Log.e("CloudSync", "push ${category.key} failed: ${e.message}")
+                }
+            }
         }
+        // update manifest
+        try { updateManifest(creds) } catch (e: Exception) { Log.w("CloudSync", "manifest failed: ${e.message}") }
+        Log.d("CloudSync", "performFullSync completed")
     }
-    
-    private fun pushCategory(category: SyncCategory, backup: BackupFile) {
+
+    private suspend fun pushCategory(category: SyncCategory, backup: BackupFile, creds: CloudSyncCreds) {
         val json = mapper.writeValueAsString(backup)
         val hash = CloudSyncBackup.computeHash(json)
-        
-        if (hash != CloudSyncStorage.getCategoryHash(category)) {
-            CloudSyncStorage.setCategoryHash(category, hash)
-            CloudSyncStorage.setCategoryTimestamp(category, System.currentTimeMillis())
+        val cur = CloudSyncStorage.getCategoryHash(category)
+        if (hash == cur) {
+            Log.d("CloudSync", "No changes for ${category.key}, skip push")
+            return
+        }
+        val url = "${creds.activeUrl()}sync/${creds.syncKey}/${category.key}.json"
+        Log.d("CloudSync", "PUT $url hash=$hash")
+        val res = app.put(url, json = backup.toMap())
+        if (!res.isSuccessful) throw Exception("PUT ${category.key} failed: ${res.code} ${res.text.take(200)}")
+        CloudSyncStorage.setCategoryHash(category, hash)
+        CloudSyncStorage.setCategoryTimestamp(category, System.currentTimeMillis())
+        Log.d("CloudSync", "Pushed ${category.key} OK")
+    }
+
+    private suspend fun pullCategory(category: SyncCategory, creds: CloudSyncCreds): BackupFile? {
+        val url = "${creds.activeUrl()}sync/${creds.syncKey}/${category.key}.json"
+        Log.d("CloudSync", "GET $url")
+        val res = app.get(url)
+        if (!res.isSuccessful) {
+            if (res.code == 404) return null
+            throw Exception("GET ${category.key} failed: ${res.code}")
+        }
+        val text = res.text.trim()
+        if (text == "null" || text.isBlank()) return null
+        Log.d("CloudSync", "GET ${category.key} got ${text.length} chars")
+        // Firebase devuelve objeto con keys bool/int/... o  null
+        val map: Map<String, Any> = mapper.readValue(text)
+        return BackupFile.fromMap(map)
+    }
+
+    private suspend fun registerDevice(creds: CloudSyncCreds) {
+        val url = "${creds.activeUrl()}devices/${creds.syncKey}/${creds.deviceId}.json"
+        val data = mapOf(
+            "name" to (creds.deviceName ?: "Device-${creds.deviceId.take(8)}"),
+            "lastActive" to System.currentTimeMillis(),
+            "deviceId" to creds.deviceId
+        )
+        try {
+            app.put(url, json = data)
+            Log.d("CloudSync", "registerDevice OK")
+        } catch (e: Exception) {
+            Log.w("CloudSync", "registerDevice failed: ${e.message}")
         }
     }
-    
-    private fun pullCategory(context: android.content.Context, category: SyncCategory, creds: CloudSyncCreds) {
-        // TODO: Pull from Firebase
+
+    private suspend fun updateManifest(creds: CloudSyncCreds) {
+        val url = "${creds.activeUrl()}sync/${creds.syncKey}/manifest.json"
+        val cats = SyncCategory.values().associate { cat ->
+            cat.key to mapOf(
+                "ts" to CloudSyncStorage.getCategoryTimestamp(cat),
+                "hash" to CloudSyncStorage.getCategoryHash(cat)
+            )
+        }
+        val manifest = mapOf("categories" to cats, "updatedAt" to System.currentTimeMillis())
+        app.put(url, json = manifest)
+        Log.d("CloudSync", "manifest updated")
+    }
+
+    private fun BackupFile.allKeys(): Set<String> {
+        val s = mutableSetOf<String>()
+        datastore.toMap().keys.forEach { s.add(it) }
+        settings.toMap().keys.forEach { s.add(it) }
+        return s
     }
 }
