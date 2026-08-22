@@ -93,8 +93,11 @@ class CloudSyncPlugin : Plugin() {
 
     private fun registerListeners() {
         val ctx = appContext ?: return
-        prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key != null) markDirty(key)
+        prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == null) return@OnSharedPreferenceChangeListener
+            if (isRestoring || isRestoringGlobal) return@OnSharedPreferenceChangeListener
+            if (prefs.contains(key)) CloudSyncStorage.removeTombstone(key) else CloudSyncStorage.recordDeletion(key)
+            markDirty(key)
         }
         try {
             ctx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)

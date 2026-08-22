@@ -96,5 +96,23 @@ object CloudSyncStorage {
             set("$PREFIX_HASH${cat.key}", null)
             set("$PREFIX_SYNCED_KEYS${cat.key}", null)
         }
+        setTombstones(emptyMap())
+    }
+
+    private const val KEY_TOMBSTONES = "cloudsync_tombstones"
+    fun tombstones(): Map<String, Long> {
+        val raw = get(KEY_TOMBSTONES) ?: return emptyMap()
+        if (raw.isBlank()) return emptyMap()
+        return try { mapper.readValue(raw, Map::class.java) as Map<String, Long> } catch (_:Exception){ emptyMap() }
+    }
+    fun setTombstones(map: Map<String, Long>) {
+        if (map.isEmpty()) { set(KEY_TOMBSTONES, null); return }
+        set(KEY_TOMBSTONES, mapper.writeValueAsString(map))
+    }
+    fun recordDeletion(key: String) {
+        val m = tombstones().toMutableMap(); m[key]=System.currentTimeMillis()/1000; setTombstones(m)
+    }
+    fun removeTombstone(key: String) {
+        val m = tombstones().toMutableMap(); if (m.remove(key)!=null) setTombstones(m)
     }
 }

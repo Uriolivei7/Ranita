@@ -105,14 +105,17 @@ enum class SettingsSubCategory {
 data class BackupFile(
     @JsonProperty("datastore") val datastore: BackupVars,
     @JsonProperty("settings") val settings: BackupVars,
+    @JsonProperty("deletions") val deletions: Map<String, Long> = emptyMap(),
 ) {
     companion object {
         fun fromMap(map: Map<String, Any>): BackupFile {
             val datastoreMap = map["datastore"] as? Map<String, Any>
             val settingsMap = map["settings"] as? Map<String, Any>
+            @Suppress("UNCHECKED_CAST")
+            val del = (map["deletions"] as? Map<String, Any>)?.mapValues { (it.value as Number).toLong() } ?: emptyMap()
             val datastore = datastoreMap?.let { BackupVars.fromSanitized(it) } ?: BackupVars()
             val settings = settingsMap?.let { BackupVars.fromSanitized(it) } ?: BackupVars()
-            return BackupFile(datastore, settings)
+            return BackupFile(datastore, settings, del)
         }
         
         fun mergeBackupFiles(
@@ -121,20 +124,42 @@ data class BackupFile(
             localCategoryTs: Long,
             cloudPayloadTs: Long
         ): BackupFile {
-            val mergedDatastore = mergeVars(local.datastore, remote.datastore, localCategoryTs, cloudPayloadTs)
-            val mergedSettings = mergeVars(local.settings, remote.settings, localCategoryTs, cloudPayloadTs)
-            return BackupFile(mergedDatastore, mergedSettings)
+            val dels = mergeDeletions(local.deletions, remote.deletions)
+            val mergedDatastore = mergeVars(local.datastore, remote.datastore, dels, localCategoryTs, cloudPayloadTs)
+            val mergedSettings = mergeVars(local.settings, remote.settings, dels, localCategoryTs, cloudPayloadTs)
+            return BackupFile(mergedDatastore, mergedSettings, dels)
+        }
+        private fun mergeDeletions(a: Map<String, Long>, b: Map<String, Long>): Map<String, Long> {
+            val out = HashMap<String, Long>(); a.forEach { out[it.key]=it.value }; b.forEach { if ((it.value) > (out[it.key]?:0L)) out[it.key]=it.value }; return out
         }
         
-        private fun mergeVars(local: BackupVars, remote: BackupVars, localTs: Long, cloudTs: Long): BackupVars {
-            val useRemote = cloudTs > localTs
+        private fun mergeVars(local: BackupVars, remote: BackupVars, dels: Map<String,Long>, localTs: Long, cloudTs: Long): BackupVars {
+            // reutiliza lógica de SyncBackup con tombstones
+            fun <T> mergeMap(localM: Map<String,T>?, remoteM: Map<String,T>?): Map<String,T>? {
+                if (localM==null && remoteM==null) return null
+                if (localM==null) return remoteM?.filterKeys { dels[it]?.let { ts -> ts <= 0 } ?: true }
+                if (remoteM==null) return localM
+                val out = HashMap<String,T>()
+                for ((k,v) in localM) {
+                    val rv = remoteM[k]
+                    if (rv==null) out[k]=v else {
+                        val del = dels[k] ?:0L
+
+                        if (del>0) continue
+                        val useRemote = cloudTs > localTs
+                        out[k] = if (useRemote) rv else v
+                    }
+                }
+                for ((k,v) in remoteM) if (!localM.containsKey(k) && (dels[k]==null)) out[k]=v
+                return out
+            }
             return BackupVars(
-                bool = if (useRemote) remote.bool else local.bool,
-                int = if (useRemote) remote.int else local.int,
-                long = if (useRemote) remote.long else local.long,
-                float = if (useRemote) remote.float else local.float,
-                string = if (useRemote) remote.string else local.string,
-                stringSet = if (useRemote) remote.stringSet else local.stringSet,
+                bool = mergeMap(local.bool, remote.bool),
+                int = mergeMap(local.int, remote.int),
+                long = mergeMap(local.long, remote.long),
+                float = mergeMap(local.float, remote.float),
+                string = mergeMap(local.string, remote.string),
+                stringSet = mergeMap(local.stringSet, remote.stringSet),
             )
         }
     }
@@ -143,6 +168,7 @@ data class BackupFile(
         val result = mutableMapOf<String, Any>()
         result["datastore"] = datastore.toMap(sanitize = true)
         result["settings"] = settings.toMap(sanitize = true)
+        if (deletions.isNotEmpty()) result["deletions"] = deletions.mapKeys { com.cloudsync.backup.CloudSyncBackup.sanitizeKey(it.key) }
         return result
     }
 }
