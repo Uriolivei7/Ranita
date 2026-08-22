@@ -159,10 +159,10 @@
         "name": "CinemacityProvider"
     },
     {
-        "fileHash": "sha256-0123f3878e2035b4815d702dec8ab9411a5df5b698bf5f5b0db15e6e4ed60166",
+        "fileHash": "sha256-dd29d2aa96bf08bb7ef88b09a19995f8c155c0dff7af3a46547861a749256def",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 58644,
+        "fileSize": 64443,
         "status": 3,
         "authors": [
             "Ranita"
@@ -273,10 +273,10 @@
         "name": "GloboViewProvider"
     },
     {
-        "fileHash": "sha256-a4b6cfc91d7aa7cc20202e780c86bf8320be0f2afa3e1de865fa1f9df2953f4d",
+        "fileHash": "sha256-d29eb656788e0292af8436c324764127b9ed0ad8656514dc3a14111cbe97db27",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 64530,
+        "fileSize": 64509,
         "status": 1,
         "language": "es",
         "authors": [
