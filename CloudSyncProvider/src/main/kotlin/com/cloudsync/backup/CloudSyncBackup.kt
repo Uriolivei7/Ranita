@@ -50,7 +50,7 @@ object CloudSyncBackup {
         if (!isTransferable(key)) return null
         val lower = key.lowercase(Locale.ROOT)
         return when {
-            lower.contains("result_favorites_state_data") || lower.contains("result_watch_state") -> SyncCategory.BOOKMARKS
+            lower.contains("home_bookmarked") || lower.contains("result_favorites_state_data") || lower.contains("result_watch_state") || lower.contains("bookmarked") || lower.contains("favorites_state") -> SyncCategory.BOOKMARKS
             lower.contains("result_resume_watching") || lower.contains("video_pos_dur") ||
                     lower.contains("download_header_cache") || lower.contains("result_season") ||
                     lower.contains("result_dub") || lower.contains("result_episode") -> SyncCategory.RESUME_WATCHING
