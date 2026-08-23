@@ -108,7 +108,8 @@ open class PlutotvProvider : MainAPI() {
         return newHomePageResponse(
             listOf(
                 HomePageList("Live", channels)
-            ) + categories
+            ) + categories,
+            hasNext = false
         )
     }
 
@@ -185,7 +186,6 @@ open class PlutotvProvider : MainAPI() {
         Log.d("PLUTOTV", "load: url=$url")
         val (_, servers) = obtainSessionData()
 
-        // 1. Intentar parsear si viene como JSON estructurado (Búsqueda/Navegación directa)
         val channel = AppUtils.tryParseJson<Channel>(url)
         channel?.let { channel ->
             Log.d("PLUTOTV", "load: it's a LIVE channel (JSON): ${channel.name} (id=${channel.id})")
