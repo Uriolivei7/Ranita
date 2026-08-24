@@ -37,20 +37,26 @@ class SyncPlugin : Plugin() {
     private var pollingJob: Job? = null
     private var debounceJob: Job? = null
     private var stopSyncJob: Job? = null
+    private var deltaSyncJob: Job? = null
     private var bookmarksObserver: (Boolean) -> Unit = {}
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
     private val pollMs = 10_000L
+    private val resumePushIntervalMs = 60_000L
     private val syncMutex = Mutex()
 
     @Volatile private var foregroundActivities = 0
+    @Volatile private var playerActivities = 0
 
     @Volatile var lastStatus = "Sin sincronizar"
     @Volatile var lastError: String? = null
     @Volatile var isSyncing = false
     @Volatile private var lastResumeMs = 0L
+    @Volatile private var lastResumePushMs = 0L
+    @Volatile private var lastDeltaAttemptMs = 0L
+    @Volatile private var lastRestoreToastMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
 
@@ -58,15 +64,25 @@ class SyncPlugin : Plugin() {
         Log.i(TAG, msg)
     }
 
-    private fun toastSync(msg: String) {
+    private fun isPlayerActivity(activity: Activity): Boolean =
+        activity.javaClass.name.contains("player", ignoreCase = true)
+
+    /** No muestra toasts si hay un reproductor en primer plano (taparía subtítulos). */
+    private fun showToastGated(msg: String) {
+        if (playerActivities > 0) return
         Handler(Looper.getMainLooper()).post { showToast(msg) }
+    }
+
+    private fun toastSync(msg: String) {
+        showToastGated(msg)
     }
 
     private fun toastPushSync() {
         val now = System.currentTimeMillis()
         if (now - lastPushToastMs < 180_000L) return
+        if (playerActivities > 0) return
         lastPushToastMs = now
-        Handler(Looper.getMainLooper()).post { showToast("Cambios guardados") }
+        showToastGated("Cambios guardados")
     }
 
     private fun maybePushToast() {
@@ -100,6 +116,7 @@ class SyncPlugin : Plugin() {
         pollingJob?.cancel()
         debounceJob?.cancel()
         stopSyncJob?.cancel()
+        deltaSyncJob?.cancel()
         val hasDirty = synchronized(dirtyCategories) { dirtyCategories.isNotEmpty() }
         if (hasDirty && SyncStorage.isLoggedIn()) {
             try {
@@ -154,6 +171,8 @@ class SyncPlugin : Plugin() {
         if (cat != SyncCategory.RESUME_WATCHING) {
             pendingPushToast = true
             scheduleDebouncedSync()
+        } else {
+            scheduleDebouncedDeltaSync()
         }
     }
 
@@ -169,12 +188,29 @@ class SyncPlugin : Plugin() {
         }
     }
 
+    private fun scheduleDebouncedDeltaSync() {
+        val now = System.currentTimeMillis()
+        val since = now - lastDeltaAttemptMs
+        val wait = if (since in 0..15_000L) 15_000L - since else 5_000L
+        deltaSyncJob?.cancel()
+        deltaSyncJob = scope.launch {
+            delay(wait)
+            if (SyncStorage.isLoggedIn()) {
+                lastDeltaAttemptMs = System.currentTimeMillis()
+                withContext(NonCancellable) {
+                    try { runSync(deltaOnly = true) } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     private fun registerLifecycle() {
         val appCtx = appContext ?: return
         val application = appCtx.applicationContext as? Application ?: return
         lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 foregroundActivities++
+                if (isPlayerActivity(activity)) playerActivities++
                 lastResumeMs = System.currentTimeMillis()
                 stopSyncJob?.cancel()
                 if (SyncStorage.isLoggedIn()) {
@@ -189,6 +225,7 @@ class SyncPlugin : Plugin() {
             override fun onActivityStarted(activity: Activity) {}
             override fun onActivityPaused(activity: Activity) {
                 foregroundActivities = (foregroundActivities - 1).coerceAtLeast(0)
+                if (isPlayerActivity(activity)) playerActivities = (playerActivities - 1).coerceAtLeast(0)
             }
             override fun onActivityStopped(activity: Activity) {
                 if (!SyncStorage.isLoggedIn()) return
@@ -231,14 +268,14 @@ class SyncPlugin : Plugin() {
 
     /***************** sync logic *****************/
 
-    suspend fun runSync(forceRestore: Boolean = false, forcePush: Boolean = false) {
+    suspend fun runSync(forceRestore: Boolean = false, forcePush: Boolean = false, deltaOnly: Boolean = false) {
         if (!SyncStorage.isLoggedIn()) return
         syncMutex.withLock {
             isSyncing = true
             lastError = null
             lastStatus = "Sincronizando..."
             try {
-                runSyncInternal(forceRestore, forcePush)
+                runSyncInternal(forceRestore, forcePush, deltaOnly)
             } catch (e: Exception) {
                 lastStatus = "Error de sync"
                 lastError = e.message ?: e.javaClass.simpleName
@@ -249,7 +286,31 @@ class SyncPlugin : Plugin() {
         }
     }
 
-    private suspend fun runSyncInternal(forceRestore: Boolean = false, forcePush: Boolean = false) {
+    private suspend fun pushResumeDelta(token: String, projectId: String, deviceId: String) {
+        if (!SyncStorage.isBackupEnabled(SyncCategory.RESUME_WATCHING)) return
+        val appCtx = appContext ?: return
+        val toPush = SyncBackup.buildBackup(appCtx, setOf(SyncCategory.RESUME_WATCHING))
+        if (SyncBackup.isEmpty(toPush)) return
+        val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
+        val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
+        val gen = SyncTime.nowEpochSeconds()
+        val res = SyncNetwork.pushAtomic(
+            token, projectId, deviceId, chunks, gen,
+            SyncStorage.ownDeltaItemId, SyncStorage.ownDeltaContentId, kind = 'D'
+        )
+        if (res != null) {
+            SyncStorage.ownDeltaItemId = res.pointerItemId
+            SyncStorage.ownDeltaContentId = res.pointerContentId
+            lastResumePushMs = System.currentTimeMillis()
+            synchronized(dirtyCategories) { dirtyCategories.remove(SyncCategory.RESUME_WATCHING) }
+            lastStatus = "Delta OK (gen ${res.gen})"
+            log("[push] delta commit: ${res.stagedIds.size} trozo(s), gen ${res.gen}")
+        } else {
+            log("[push] ERROR delta: ${SyncNetwork.lastError}")
+        }
+    }
+
+    private suspend fun runSyncInternal(forceRestore: Boolean = false, forcePush: Boolean = false, deltaOnly: Boolean = false) {
         val backupEnabled = SyncCategory.entries.any { SyncStorage.isBackupEnabled(it) }
         val restoreEnabled = SyncCategory.entries.any { SyncStorage.isRestoreEnabled(it) }
         if (!backupEnabled && !restoreEnabled) {
@@ -273,6 +334,11 @@ class SyncPlugin : Plugin() {
                 return
             }
 
+        if (deltaOnly) {
+            pushResumeDelta(token, projectId, deviceId)
+            return
+        }
+
         val devices = SyncNetwork.fetchDevices(token, projectNum)
         if (devices == null) {
             lastStatus = "No se pudo consultar el proyecto"
@@ -285,17 +351,30 @@ class SyncPlugin : Plugin() {
             .filter { it.deviceId == deviceId }
             .maxByOrNull { it.gen ?: it.updatedAt }
         if (ownDevice != null && !SyncStorage.forceReRegister) {
-            val ownChunks = devices.filter { it.deviceId == deviceId }
+            val committedGen = if (ownDevice.isPointer) ownDevice.gen else null
+            val ownChunks = devices.filter {
+                it.deviceId == deviceId && !it.isPointer &&
+                    (committedGen == null || it.gen == committedGen)
+            }
             SyncStorage.ownChunkContentIds = ownChunks
                 .filter { it.itemContentId != null }
                 .groupBy { it.chunkIndex }
                 .mapValues { (_, ds) -> ds.maxByOrNull { it.gen ?: it.updatedAt }!!.itemContentId!! }
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
+            SyncStorage.ownPointerItemId = ownDevice.itemId
+            SyncStorage.ownPointerContentId = ownDevice.itemContentId
+            val dPtr = SyncNetwork.findDeltaPointer(devices, deviceId)
+            SyncStorage.ownDeltaItemId = dPtr?.itemId
+            SyncStorage.ownDeltaContentId = dPtr?.itemContentId
         } else if (ownDevice == null) {
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
             SyncStorage.ownChunkContentIds = emptyMap()
+            SyncStorage.ownPointerItemId = null
+            SyncStorage.ownPointerContentId = null
+            SyncStorage.ownDeltaItemId = null
+            SyncStorage.ownDeltaContentId = null
             SyncStorage.forceReRegister = false
         }
 
@@ -310,6 +389,10 @@ class SyncPlugin : Plugin() {
             val consumed = SyncStorage.lastRestoredFrom
             val allOthers = SyncNetwork.mainDrafts(devices).filter { it.deviceId != deviceId }
             val othersList = allOthers
+                .map { rep ->
+                    val dPtr = SyncNetwork.findDeltaPointer(devices, rep.deviceId)
+                    if (dPtr != null && (dPtr.gen ?: 0L) > (rep.gen ?: 0L)) rep.copy(gen = dPtr.gen) else rep
+                }
                 .filter { forceRestore || (it.gen ?: it.updatedAt) > (consumed[it.deviceId] ?: 0L) }
                 .sortedByDescending { it.gen ?: it.updatedAt }
 
@@ -328,12 +411,30 @@ class SyncPlugin : Plugin() {
                         log("[restore] ${other.name}: payload incompleto, se reintentará")
                         continue
                     }
-                    consumedNow[other.deviceId] = other.gen ?: other.updatedAt
+                    var effGen = other.gen ?: 0L
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
                         candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
                     }
+                    val dPtr = SyncNetwork.findDeltaPointer(devices, other.deviceId)
+                    if (dPtr != null && (dPtr.gen ?: 0L) > effGen) {
+                        val dPayload = SyncNetwork.assembleDeltaPayload(token, devices, other.deviceId)
+                        val dBackup = if (dPayload == null) null else try {
+                            SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(dPayload))
+                        } catch (_: Exception) { null }
+                        if (dBackup != null) {
+                            effGen = dPtr.gen!!
+                            val rc = filterBackup(dBackup, SyncCategory.RESUME_WATCHING)
+                            if (!SyncBackup.isEmpty(rc)) {
+                                candidates.getOrPut(SyncCategory.RESUME_WATCHING) { mutableListOf() }
+                                    .add(other.copy(gen = effGen) to rc)
+                            }
+                        } else {
+                            log("[restore] ${other.name}: delta ilegible, se usa el full")
+                        }
+                    }
+                    consumedNow[other.deviceId] = maxOf(consumedNow[other.deviceId] ?: 0L, effGen, other.gen ?: 0L)
                 }
                 if (consumedNow.isNotEmpty()) {
                     val mergedConsumed = HashMap(SyncStorage.lastRestoredFrom)
@@ -384,7 +485,15 @@ class SyncPlugin : Plugin() {
                     val src = restoredSources.values.joinToString { it.name }
                     lastStatus = "Restaurado desde $src"
                     log("[restore] OK: $cats desde $src")
-                    toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    if (restoredSources.keys.all { it == SyncCategory.RESUME_WATCHING }) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastRestoreToastMs > 300_000L) {
+                            lastRestoreToastMs = now
+                            toastSync("Sincronizado: reproducción actualizada")
+                        }
+                    } else {
+                        toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    }
                     justRestored = true
                     val freshBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
                     val freshData = SyncNetwork.json.encodeToString(BackupFile.serializer(), freshBackup)
@@ -434,63 +543,48 @@ class SyncPlugin : Plugin() {
                 dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
             }
             if (!forcePush && onlyResumeWatching) {
-                lastStatus = "Esperando cierre de app para push"
-                log("[push] omitido: solo RESUME_WATCHING, esperando background")
-                return
+                val since = System.currentTimeMillis() - lastResumePushMs
+                if (since < resumePushIntervalMs) {
+                    lastStatus = "Esperando push periódico de reproducción"
+                    return
+                }
+                log("[push] RESUME_WATCHING: push periódico (${since / 1000}s desde el último)")
             }
             val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
             val hash = SyncBackup.computeHash(data)
-            val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
-            val ownIds = SyncStorage.ownChunkContentIds
-
-            if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
-                val newGen = SyncTime.nowEpochSeconds()
-                val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
-                if (ids != null) {
-                    SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
-                    SyncStorage.ownContentId = ids.getOrNull(0)
-                    SyncStorage.ownItemId = null
-                    SyncStorage.syncGen = newGen
+            if (hash == SyncStorage.lastPushedHash && !SyncStorage.forceReRegister) {
+                lastStatus = "Sin cambios que subir"
+                log("[push] omitido: sin cambios")
+            } else {
+                val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
+                val gen = SyncTime.nowEpochSeconds()
+                val res = SyncNetwork.pushAtomic(
+                    token, projectId, deviceId, chunks, gen,
+                    SyncStorage.ownPointerItemId, SyncStorage.ownPointerContentId
+                )
+                if (res != null) {
+                    SyncStorage.ownChunkContentIds = res.stagedIds
+                    SyncStorage.ownPointerItemId = res.pointerItemId
+                    SyncStorage.ownPointerContentId = res.pointerContentId
+                    SyncStorage.ownItemId = res.pointerItemId
+                    SyncStorage.ownContentId = res.pointerContentId
+                    SyncStorage.syncGen = res.gen
                     SyncStorage.lastPushedHash = hash
                     SyncStorage.forceReRegister = false
+                    if (onlyResumeWatching) {
+                        lastResumePushMs = System.currentTimeMillis()
+                    }
                     clearDirtyCategories()
                     updateCategoryTimestamps(enabledBackup)
-                    lastStatus = "Sync OK (${ids.size} trozo/s)"
-                    log("[push] draft creado: ${ids.size} trozo(s)")
-                    maybePushToast()
-                    SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
-                } else {
-                    lastStatus = "No se pudo crear draft"
-                    lastError = SyncNetwork.lastError
-                    log("[push] ERROR: registerDevice: ${lastError}")
-                }
-            } else if (hash != SyncStorage.lastPushedHash) {
-                val gen = SyncTime.nowEpochSeconds()
-                val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
-                if (updated != null) {
-                    SyncStorage.ownChunkContentIds = updated
-                    SyncStorage.ownContentId = updated[0]
-                    SyncStorage.ownItemId = null
-                    SyncStorage.syncGen = gen
-                    SyncStorage.lastPushedHash = hash
-                    clearDirtyCategories()
-                    updateCategoryTimestamps(enabledBackup)
-                    lastStatus = "Sync OK (${updated.size} trozo/s)"
-                    log("[push] draft actualizado: ${updated.size} trozo(s)")
+                    lastStatus = "Sync OK (${res.stagedIds.size} trozo/s)"
+                    log("[push] commit publicado: ${res.stagedIds.size} trozo(s), gen ${res.gen}")
                     maybePushToast()
                     SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                 } else {
-                    SyncStorage.ownContentId = null
-                    SyncStorage.ownItemId = null
-                    SyncStorage.ownChunkContentIds = emptyMap()
-                    SyncStorage.forceReRegister = true
-                    lastStatus = "Fallo al actualizar draft"
+                    lastStatus = "Fallo al publicar"
                     lastError = SyncNetwork.lastError
-                    log("[push] ERROR: updateDevice: ${lastError}")
+                    log("[push] ERROR: pushAtomic: ${lastError}")
                 }
-            } else {
-                lastStatus = "Sin cambios que subir"
-                log("[push] omitido: sin cambios")
             }
         }
 

@@ -247,6 +247,10 @@ class SyncSettings(private val plugin: SyncPlugin) {
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
             SyncStorage.ownChunkContentIds = emptyMap()
+            SyncStorage.ownPointerItemId = null
+            SyncStorage.ownPointerContentId = null
+            SyncStorage.ownDeltaItemId = null
+            SyncStorage.ownDeltaContentId = null
             if (!SyncStorage.isLoggedIn()) {
                 plugin.activity?.let {
                     android.widget.Toast.makeText(

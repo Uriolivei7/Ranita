@@ -47,6 +47,22 @@ object SyncStorage {
         get() = get("sync_own_content_id")
         set(value) = set("sync_own_content_id", value)
 
+    var ownPointerItemId: String?
+        get() = get("sync_own_pointer_item_id")
+        set(value) = set("sync_own_pointer_item_id", value)
+
+    var ownPointerContentId: String?
+        get() = get("sync_own_pointer_content_id")
+        set(value) = set("sync_own_pointer_content_id", value)
+
+    var ownDeltaItemId: String?
+        get() = get("sync_own_delta_item_id")
+        set(value) = set("sync_own_delta_item_id", value)
+
+    var ownDeltaContentId: String?
+        get() = get("sync_own_delta_content_id")
+        set(value) = set("sync_own_delta_content_id", value)
+
     var ownChunkContentIds: Map<Int, String>
         get() {
             val raw = get("sync_own_chunk_ids") ?: return emptyMap()
