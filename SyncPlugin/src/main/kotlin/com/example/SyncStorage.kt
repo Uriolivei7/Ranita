@@ -47,22 +47,6 @@ object SyncStorage {
         get() = get("sync_own_content_id")
         set(value) = set("sync_own_content_id", value)
 
-    var ownPointerItemId: String?
-        get() = get("sync_own_pointer_item_id")
-        set(value) = set("sync_own_pointer_item_id", value)
-
-    var ownPointerContentId: String?
-        get() = get("sync_own_pointer_content_id")
-        set(value) = set("sync_own_pointer_content_id", value)
-
-    var ownDeltaItemId: String?
-        get() = get("sync_own_delta_item_id")
-        set(value) = set("sync_own_delta_item_id", value)
-
-    var ownDeltaContentId: String?
-        get() = get("sync_own_delta_content_id")
-        set(value) = set("sync_own_delta_content_id", value)
-
     var ownChunkContentIds: Map<Int, String>
         get() {
             val raw = get("sync_own_chunk_ids") ?: return emptyMap()
@@ -92,6 +76,11 @@ object SyncStorage {
     var forceReRegister: Boolean
         get() = get("sync_force_register") == "true"
         set(value) = set("sync_force_register", value.toString())
+
+    /** Avisos (toasts) visibles aunque haya un reproductor en primer plano. Default: true */
+    var toastDuringPlayback: Boolean
+        get() = get("sync_toast_playback") != "false"
+        set(value) = set("sync_toast_playback", value.toString())
 
     fun isLoggedIn(): Boolean =
         !token.isNullOrBlank() && !projectNum.isNullOrBlank()

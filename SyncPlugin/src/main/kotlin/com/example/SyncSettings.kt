@@ -194,6 +194,24 @@ class SyncSettings(private val plugin: SyncPlugin) {
 
         addSpace(6)
 
+        val toastRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(ctx, 2), 0, dpToPx(ctx, 2))
+        }
+        toastRow.addView(AppCompatTextView(ctx).apply {
+            text = "Avisos durante reproducción"
+            textSize = 13f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val toastBox = CheckBox(ctx).apply {
+            isChecked = SyncStorage.toastDuringPlayback
+        }
+        toastRow.addView(toastBox)
+        root.addView(toastRow)
+
+        addSpace(6)
+
         addSectionTitle("Acciones")
         addBody("Sincroniza automáticamente cada 15s mientras la app esté abierta, al abrir la app y ~2s después de cada cambio local.")
 
@@ -243,14 +261,11 @@ class SyncSettings(private val plugin: SyncPlugin) {
                 SyncStorage.setBackupEnabled(cat, pair.first.isChecked)
                 SyncStorage.setRestoreEnabled(cat, pair.second.isChecked)
             }
+            SyncStorage.toastDuringPlayback = toastBox.isChecked
             SyncStorage.projectId = null
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
             SyncStorage.ownChunkContentIds = emptyMap()
-            SyncStorage.ownPointerItemId = null
-            SyncStorage.ownPointerContentId = null
-            SyncStorage.ownDeltaItemId = null
-            SyncStorage.ownDeltaContentId = null
             if (!SyncStorage.isLoggedIn()) {
                 plugin.activity?.let {
                     android.widget.Toast.makeText(

@@ -115,6 +115,4 @@ data class SyncDevice(
     val chunkIndex: Int = 0,
     val itemContentId: String? = null,
     val gen: Long? = null,
-    val isPointer: Boolean = false,
-    val isDelta: Boolean = false,
 )

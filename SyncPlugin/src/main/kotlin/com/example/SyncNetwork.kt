@@ -7,12 +7,7 @@ import android.provider.Settings
 import android.util.Base64
 import com.lagradost.cloudstream3.app
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
 import kotlinx.serialization.decodeFromString
@@ -57,110 +52,13 @@ object SyncNetwork {
         "$CHUNK_PREFIX|$index/$total|$chunkData"
 
     fun mainDrafts(devices: List<SyncDevice>): List<SyncDevice> =
-        devices.groupBy { it.deviceId }.mapNotNull { (_, ds) ->
-            val ptrs = ds.filter { it.isPointer }
-            if (ptrs.isNotEmpty()) {
-                ptrs.maxByOrNull { it.gen ?: 0L }
-            } else {
-                ds.filter { !it.isPointer && !it.isDelta && it.chunkIndex == 0 }
-                    .maxByOrNull { it.gen ?: it.updatedAt }
-            }
-        }
-
-    private val POINTER_REGEX = Regex("""^(.+)#P(\d+)$""")
-    private val DELTA_PTR_REGEX = Regex("""^(.+)#D(\d+)$""")
-    private val DELTA_CHUNK_REGEX = Regex("""^(.+)#D(\d+)\.(\d+)$""")
-
-    fun findDeltaPointer(devices: List<SyncDevice>, deviceId: String): SyncDevice? =
-        devices.filter { it.deviceId == deviceId && it.isDelta && it.chunkIndex == -1 }
-            .maxByOrNull { it.gen ?: 0L }
-
-    suspend fun assembleDeltaPayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
-        val ptr = findDeltaPointer(devices, deviceId) ?: return null
-        val gen = ptr.gen ?: run { log("[restore] $deviceId: puntero delta sin gen"); return null }
-        val group = devices.filter {
-            it.deviceId == deviceId && it.isDelta && it.chunkIndex >= 0 && it.gen == gen
-        }
-        if (group.isEmpty()) {
-            log("[restore] $deviceId: delta gen $gen sin chunks visibles aún")
-            return null
-        }
-        return assembleCommitted(token, group, deviceId, gen)
-    }
+        devices.filter { it.chunkIndex == 0 }
+            .groupBy { it.deviceId }
+            .mapNotNull { (_, gens) -> gens.maxByOrNull { it.gen ?: it.updatedAt } }
 
     suspend fun assemblePayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
-        val mine = devices.filter { it.deviceId == deviceId }
-        if (mine.isEmpty()) return null
-        val ptr = mine.filter { it.isPointer }.maxByOrNull { it.gen ?: 0L }
-        if (ptr != null && ptr.gen != null) {
-            val gen = ptr.gen!!
-            val group = mine.filter { !it.isPointer && it.gen == gen }
-            return assembleCommitted(token, group, deviceId, gen)
-        }
-        log("[restore] $deviceId: sin puntero, modo legacy")
-        return legacyAssemble(token, mine, deviceId)
-    }
-
-    private suspend fun assembleCommitted(
-        token: String,
-        group: List<SyncDevice>,
-        deviceId: String,
-        gen: Long
-    ): String? {
-        val byIndex = HashMap<Int, SyncDevice>()
-        for (d in group) {
-            val prev = byIndex[d.chunkIndex]
-            if (prev == null || d.updatedAt > prev.updatedAt) byIndex[d.chunkIndex] = d
-        }
-        val draft0 = byIndex[0]
-        if (draft0 == null) {
-            log("[restore] $deviceId: gen $gen sin chunk 0")
-            return null
-        }
-        val body0 = fetchChunkBody(token, draft0.itemContentId ?: draft0.itemId)
-            ?: return null
-        val total = parseChunkTotal(body0)
-        if (total == null) {
-            log("[restore] $deviceId: chunk 0/$gen sin header de total")
-            return null
-        }
-        val data0 = stripChunkHeader(body0, 0, total)
-        if (data0 == null) {
-            log("[restore] $deviceId: chunk 0/$total formato inválido")
-            return null
-        }
-        val missing = (1 until total).filter { byIndex[it] == null }
-        if (missing.isNotEmpty()) {
-            log("[restore] $deviceId: gen $gen incompleta, faltan ${missing.size} chunk(s)")
-            return null
-        }
-        val rest: List<String?> = coroutineScope {
-            val sem = Semaphore(6)
-            (1 until total).map { i ->
-                async {
-                    sem.withPermit {
-                        val d = byIndex[i]!!
-                        val body = fetchChunkBody(token, d.itemContentId ?: d.itemId)
-                        body?.let { stripChunkHeader(it, i, total) }
-                    }
-                }
-            }.awaitAll()
-        }
-        if (rest.any { it == null }) {
-            log("[restore] $deviceId: gen $gen con chunks inválidos al descargar")
-            return null
-        }
-        return buildString {
-            append(data0)
-            for (piece in rest) append(piece!!)
-        }
-    }
-
-    private suspend fun legacyAssemble(
-        token: String,
-        drafts: List<SyncDevice>,
-        deviceId: String
-    ): String? {
+        val drafts = devices.filter { it.deviceId == deviceId }
+        if (drafts.isEmpty()) return null
         val byGen = drafts.groupBy { it.gen }
         val gens: MutableList<Long?> = byGen.keys.filterNotNull().sortedDescending().toMutableList()
         if (byGen.containsKey(null)) gens += null
@@ -301,19 +199,21 @@ object SyncNetwork {
         return parts[2]
     }
 
-    @SuppressLint("HardwareIds", "MissingPermission")
+    @SuppressLint("HardwareIds")
     fun getDeviceId(packageName: String, context: Context): String {
         val androidId =
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         if (!androidId.isNullOrEmpty()) return md5(packageName + androidId)
-
-        val serial: String? = try {
-            @Suppress("DEPRECATION")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else Build.SERIAL
-        } catch (_: Exception) {
-            null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val serial = Build.getSerial()
+                if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
+            } catch (_: SecurityException) {
+            }
+        } else {
+            val serial = Build.SERIAL
+            if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
         }
-        if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
         val deviceInfo = "${Build.BRAND}_${Build.MODEL}_${Build.DEVICE}"
         return md5(packageName + UUID.nameUUIDFromBytes(deviceInfo.toByteArray()).toString())
     }
@@ -399,58 +299,10 @@ object SyncNetwork {
             for (node in nodes) {
                 val content = node.content ?: continue
                 val title = content.title ?: continue
-                val itemId = node.id ?: continue
-                if (itemId.isEmpty()) continue
-                val ptrMatch = POINTER_REGEX.matchEntire(title)
-                if (ptrMatch != null) {
-                    all.add(
-                        SyncDevice(
-                            name = title,
-                            deviceId = ptrMatch.groupValues[1],
-                            itemId = itemId,
-                            updatedAt = parseIsoTime(content.updatedAt),
-                            chunkIndex = -1,
-                            itemContentId = content.id,
-                            gen = ptrMatch.groupValues[2].toLongOrNull(),
-                            isPointer = true,
-                        )
-                    )
-                    continue
-                }
-                val dPtrMatch = DELTA_PTR_REGEX.matchEntire(title)
-                if (dPtrMatch != null) {
-                    all.add(
-                        SyncDevice(
-                            name = title,
-                            deviceId = dPtrMatch.groupValues[1],
-                            itemId = itemId,
-                            updatedAt = parseIsoTime(content.updatedAt),
-                            chunkIndex = -1,
-                            itemContentId = content.id,
-                            gen = dPtrMatch.groupValues[2].toLongOrNull(),
-                            isDelta = true,
-                        )
-                    )
-                    continue
-                }
-                val dChunkMatch = DELTA_CHUNK_REGEX.matchEntire(title)
-                if (dChunkMatch != null) {
-                    all.add(
-                        SyncDevice(
-                            name = title,
-                            deviceId = dChunkMatch.groupValues[1],
-                            itemId = itemId,
-                            updatedAt = parseIsoTime(content.updatedAt),
-                            chunkIndex = dChunkMatch.groupValues[3].toIntOrNull() ?: 0,
-                            itemContentId = content.id,
-                            gen = dChunkMatch.groupValues[2].toLongOrNull(),
-                            isDelta = true,
-                        )
-                    )
-                    continue
-                }
                 val baseId = parseDraftTitle(title).first
                 val (gen, chunk) = parseDraftTitle(title).second
+                val itemId = node.id ?: continue
+                if (itemId.isEmpty()) continue
                 all.add(
                     SyncDevice(
                         name = title,
@@ -470,11 +322,6 @@ object SyncNetwork {
         log("fetchDevices: ${all.size} item(s), ${mainDrafts(all).size} dispositivo(s)")
         return all
     }
-
-    // Título -> (deviceId base, (gen, chunkIndex)); retrocompatible:
-    //  "deviceId"            -> (deviceId, (null, 0))
-    //  "deviceId#3"          -> (deviceId, (null, 3))
-    //  "deviceId#123.0"      -> (deviceId, (123, 0))
     private fun parseDraftTitle(title: String): Pair<String, Pair<Long?, Int>> {
         val idx = title.lastIndexOf('#')
         if (idx <= 0) return title to (null to 0)
@@ -494,83 +341,26 @@ object SyncNetwork {
         return baseId to (gen to chunk)
     }
 
-    data class AtomicPushResult(
-        val gen: Long,
-        val stagedIds: Map<Int, String>,
-        val pointerItemId: String,
-        val pointerContentId: String,
-    )
-
-    /**
-     * Publicación atómica: crea todos los chunks en drafts nuevos (staging),
-     * y al final actualiza/crea el draft-puntero con el gen comprometido.
-     * Si el proceso muere antes del flip, el puntero sigue apuntando a la
-     * generación anterior completa — los lectores nunca ven datos rotos.
-     */
-    suspend fun pushAtomic(
+    suspend fun registerDevice(
         token: String,
         projectId: String,
-        deviceId: String,
+        deviceName: String,
         chunks: List<String>,
-        gen: Long,
-        pointerItemId: String?,
-        pointerContentId: String?,
-        kind: Char = 'P'
-    ): AtomicPushResult? {
-        val staged = createStagedChunks(token, projectId, deviceId, chunks, gen, kind)
-        if (staged == null) return null
-
-        val ptrTitle = "$deviceId#$kind$gen"
-        val ptr: Pair<String, String>? = if (pointerItemId != null && pointerContentId != null) {
-            if (updateSingle(token, pointerContentId, ptrTitle, "sync-$kind $gen")) {
-                pointerItemId to pointerContentId
-            } else null
-        } else {
-            val (itemId, contentId) = registerSingle(token, projectId, ptrTitle, "sync-$kind $gen")
-            if (itemId == null || contentId == null) null else itemId to contentId
-        }
-        if (ptr == null) {
-            err("pushAtomic: no se pudo confirmar el puntero")
-            return null
-        }
-        log("[push] commit: gen $gen (${chunks.size} chunks)")
-        return AtomicPushResult(gen, staged, ptr.first, ptr.second)
-    }
-
-    private suspend fun createStagedChunks(
-        token: String,
-        projectId: String,
-        deviceId: String,
-        chunks: List<String>,
-        gen: Long,
-        kind: Char
-    ): Map<Int, String>? {
-        val results: List<Pair<Int, Pair<String, String>>?> = coroutineScope {
-            val sem = Semaphore(5)
-            chunks.indices.map { i ->
-                async {
-                    sem.withPermit {
-                        // Sin letra de canal: los chunks SIEMPRE son "#<gen>.<i>".
-                        // Solo el título del puntero lleva la letra (P/D).
-                        val title = "$deviceId#$gen.$i"
-                        val body = makeChunkBody(i, chunks.size, chunks[i])
-                        val (itemId, contentId) = registerSingle(token, projectId, title, body)
-                        if (itemId == null || contentId == null) null else i to (itemId to contentId)
-                    }
-                }
-            }.awaitAll()
-        }
-        if (results.any { it == null }) {
-            err("pushAtomic: fallo creando chunks staging, revirtiendo")
-            coroutineScope {
-                val sem = Semaphore(5)
-                results.mapNotNull { it?.second?.first }.map { itemId ->
-                    async { sem.withPermit { deleteDraft(token, projectId, itemId) } }
-                }.awaitAll()
+        gen: Long
+    ): List<String>? {
+        val ids = mutableListOf<String>()
+        for ((i, chunk) in chunks.withIndex()) {
+            val title = "$deviceName#$gen.$i"
+            val body = makeChunkBody(i, chunks.size, chunk)
+            val (itemId, contentId) = registerSingle(token, projectId, title, body)
+            if (itemId == null || contentId == null) {
+                err("register chunk $i falló: ${SyncNetwork.lastError}")
+                return null
             }
-            return null
+            ids.add(contentId)
         }
-        return results.mapNotNull { it }.associate { it.first to it.second.second }
+        log("[push] register: ${chunks.size} chunks")
+        return ids
     }
 
     private suspend fun registerSingle(
@@ -591,6 +381,31 @@ object SyncNetwork {
         val contentId = resp?.data?.addDraft?.projectItem?.content?.id
         if (itemId == null) err("register failed: ${resp?.errors?.joinToString() { it.message ?: "" }}")
         return itemId to contentId
+    }
+
+    suspend fun updateDevice(
+        token: String,
+        projectId: String,
+        deviceName: String,
+        chunks: List<String>,
+        existing: Map<Int, String>,
+        gen: Long
+    ): Map<Int, String>? {
+        val result = existing.toMutableMap()
+        for ((i, chunk) in chunks.withIndex()) {
+            val title = "$deviceName#$gen.$i"
+            val body = makeChunkBody(i, chunks.size, chunk)
+            val contentId = result[i]
+            if (contentId != null) {
+                if (!updateSingle(token, contentId, title, body)) return null
+            } else {
+                val (itemId, newId) = registerSingle(token, projectId, title, body)
+                if (itemId == null || newId == null) return null
+                result[i] = newId
+            }
+        }
+        log("[push] update: ${chunks.size} chunks")
+        return result
     }
 
     private suspend fun updateSingle(
@@ -637,58 +452,24 @@ object SyncNetwork {
     ) {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return
-        val ptr = drafts.filter { it.isPointer }.maxByOrNull { it.gen ?: 0L }
-        val dPtr = drafts.filter { it.isDelta && it.chunkIndex == -1 }.maxByOrNull { it.gen ?: 0L }
-        val freshest = listOfNotNull(ptr, dPtr).maxByOrNull { it.updatedAt }
-        if (freshest != null && System.currentTimeMillis() / 1000L - freshest.updatedAt < 45L) {
-            log("[push] cleanup omitido: puntero reciente (<45s), esperando consistencia")
-            return
-        }
         val keep = if (removeAll) {
             emptySet<String>()
         } else {
-            val keepIds = mutableSetOf<String>()
-            if (ptr != null && ptr.gen != null) {
-                val g = ptr.gen!!
-                drafts.filter { it.isPointer || (!it.isDelta && it.gen == g) }
-                    .forEach { keepIds.add(it.itemId) }
-            }
-            if (dPtr != null && dPtr.gen != null) {
-                val dg = dPtr.gen!!
-                drafts.filter { (it.isDelta && it.chunkIndex == -1) || (it.isDelta && it.gen == dg) }
-                    .forEach { keepIds.add(it.itemId) }
-            }
-            if (keepIds.isEmpty()) {
-                val anchor = drafts.filter { !it.isPointer && !it.isDelta && it.chunkIndex == 0 }
-                    .maxByOrNull { it.updatedAt }
-                if (anchor != null) {
-                    val anchorGen = anchor.gen
-                    if (anchorGen != null) {
-                        drafts.filter { it.gen == anchorGen }.forEach { keepIds.add(it.itemId) }
-                    } else {
-                        drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
-                            .forEach { keepIds.add(it.itemId) }
-                    }
-                }
-            }
-            keepIds
-        }
-        var stale = drafts.filter { it.itemId !in keep }
-        val maxCommitted = listOfNotNull(ptr?.gen, dPtr?.gen).maxOrNull()
-        if (maxCommitted != null) {
-            val future = stale.filter { (it.gen ?: 0L) > maxCommitted }
-            if (future.isNotEmpty()) {
-                log("[push] cleanup: se omiten ${future.size} draft(s) de gens futuras")
-                stale = stale.filterNot { (it.gen ?: 0L) > maxCommitted }
+            val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return
+            val anchorGen = anchor.gen
+            if (anchorGen != null) {
+                drafts.filter { it.gen == anchorGen }.map { it.itemId }.toSet()
+            } else {
+                drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
+                    .map { it.itemId }
+                    .toSet()
             }
         }
+        val stale = drafts.filter { it.itemId !in keep }
         if (stale.isEmpty()) return
         log("[push] cleanup: ${stale.size} stale drafts de $deviceId")
-        coroutineScope {
-            val sem = Semaphore(5)
-            stale.map { draft ->
-                async { sem.withPermit { deleteDraft(token, projectId, draft.itemId) } }
-            }.awaitAll()
+        for (draft in stale) {
+            deleteDraft(token, projectId, draft.itemId)
         }
     }
 

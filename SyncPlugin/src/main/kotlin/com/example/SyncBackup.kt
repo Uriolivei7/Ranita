@@ -12,15 +12,6 @@ object SyncBackup {
 
     private const val TOMBSTONE_TTL_SECONDS = 30L * 24 * 3600
 
-    /**
-     * Máximo de series (entradas result_resume_watching) que se suben al cloud.
-     * Se conservan las más recientes por timestamp. El historial local NO se toca:
-     * la poda solo afecta al backup publicado, para mantener los payloads chicos.
-     */
-    private const val MAX_RESUME_ENTRIES = 500
-
-    @Volatile private var lastPruneLogMs = 0L
-
     private const val POSITION_LEAD_SECONDS = 2.0
 
     private val resumeMapper = ObjectMapper()
@@ -95,7 +86,7 @@ object SyncBackup {
         context: Context,
         enabled: Set<SyncCategory>,
     ): BackupFile {
-        val resumeIndex = buildResumeIndex(context.getSharedPrefs().all, MAX_RESUME_ENTRIES)
+        val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
                 isResumeRelevant(entry.key, resumeIndex)
@@ -139,42 +130,17 @@ object SyncBackup {
         val episodeIds: Set<Int>,
     )
 
-    private fun buildResumeIndex(allData: Map<String, *>, maxEntries: Int): Map<String, ResumeIndex> {
-        // 1) Recolectar entradas de resume por cuenta con su timestamp
-        val perAccount = HashMap<String, MutableList<Pair<Int, Long>>>()
+    private fun buildResumeIndex(allData: Map<String, *>): Map<String, ResumeIndex> {
+        val parents = HashMap<String, MutableSet<Int>>()
+        val episodes = HashMap<String, MutableSet<Int>>()
         for ((key, value) in allData) {
             val parts = key.split("/")
             if (parts.size != 3) continue
             if (!parts[0].all { it.isDigit() }) continue
             if (parts[1] != "result_resume_watching_2") continue
             val parentId = parts[2].toIntOrNull() ?: continue
-            val ts = if (value is String) {
-                SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(value))
-            } else 0L
-            perAccount.getOrPut(parts[0]) { ArrayList() }.add(parentId to ts)
-        }
-
-        // 2) Podar: solo las maxEntries más recientes por cuenta suben al cloud
-        val parents = HashMap<String, MutableSet<Int>>()
-        val episodes = HashMap<String, MutableSet<Int>>()
-        var totalBefore = 0
-        var totalAfter = 0
-        for ((account, list) in perAccount) {
-            totalBefore += list.size
-            val kept = list.sortedByDescending { it.second }.take(maxEntries)
-            totalAfter += kept.size
-            for ((parentId, _) in kept) {
-                parents.getOrPut(account) { HashSet() }.add(parentId)
-                val value = allData["$account/result_resume_watching_2/$parentId"]
-                extractEpisodeId(value)?.let { episodes.getOrPut(account) { HashSet() }.add(it) }
-            }
-        }
-        if (totalBefore > totalAfter) {
-            val now = System.currentTimeMillis()
-            if (now - lastPruneLogMs > 60_000L) {
-                lastPruneLogMs = now
-                android.util.Log.i("SyncStream", "[backup] resume podado: $totalBefore -> $totalAfter entradas (local intacto)")
-            }
+            parents.getOrPut(parts[0]) { HashSet() }.add(parentId)
+            extractEpisodeId(value)?.let { episodes.getOrPut(parts[0]) { HashSet() }.add(it) }
         }
         return parents.keys.associateWith { account ->
             ResumeIndex(
@@ -491,11 +457,6 @@ object SyncBackup {
         return result
     }
 
-    /**
-     * Position guard for resume data: an idle device refreshes its embedded updateTime
-     * without changing the position, which would let its stale resume win over the device
-     * that actually kept playing. When both sides report a position and one is meaningfully
-     */
     private enum class Winner { CLOUD, LOCAL }
 
     private fun resolveWinner(
@@ -511,6 +472,20 @@ object SyncBackup {
     ): Winner {
         val lower = key.lowercase()
         val isPositionKey = lower.contains("video_pos_dur") || lower.contains("result_resume_watching")
+        val localTs = episodeTimestampFor(key, localMap, localEpisodeTs)
+        val cloudTs = episodeTimestampFor(key, cloudMap, cloudEpisodeTs)
+        if (localTs > 0L || cloudTs > 0L) {
+
+            if (isPositionKey && abs(cloudTs - localTs) <= POSITION_LEAD_SECONDS.toLong()) {
+                val localPos = resumePosition(localVal)
+                val cloudPos = resumePosition(cloudVal)
+                if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) > POSITION_LEAD_SECONDS) {
+                    return if (cloudPos > localPos) Winner.CLOUD else Winner.LOCAL
+                }
+            }
+            return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
+        }
+
         if (isPositionKey) {
             val localPos = resumePosition(localVal)
             val cloudPos = resumePosition(cloudVal)
@@ -518,9 +493,6 @@ object SyncBackup {
                 return if (cloudPos > localPos) Winner.CLOUD else Winner.LOCAL
             }
         }
-        val localTs = episodeTimestampFor(key, localMap, localEpisodeTs)
-        val cloudTs = episodeTimestampFor(key, cloudMap, cloudEpisodeTs)
-        if (localTs > 0L || cloudTs > 0L) return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
         return if (cloudPayloadTs > localCategoryTs) Winner.CLOUD else Winner.LOCAL
     }
 
@@ -532,12 +504,6 @@ object SyncBackup {
             -1.0
         }
     }
-
-    /**
-     * PosDur (video_pos_dur) has no timestamp of its own, so it is resolved using the
-     * updateTime of its sibling result_resume_watching_2 entry. The position guard above
-     * already protects this path from the idle device bumping that updateTime on app open.
-     */
     private fun episodeTimestampFor(
         key: String,
         stringMap: Map<String, String>,
