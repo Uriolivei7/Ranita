@@ -547,7 +547,9 @@ object SyncNetwork {
             chunks.indices.map { i ->
                 async {
                     sem.withPermit {
-                        val title = "$deviceId#$kind$gen.$i"
+                        // Sin letra de canal: los chunks SIEMPRE son "#<gen>.<i>".
+                        // Solo el título del puntero lleva la letra (P/D).
+                        val title = "$deviceId#$gen.$i"
                         val body = makeChunkBody(i, chunks.size, chunks[i])
                         val (itemId, contentId) = registerSingle(token, projectId, title, body)
                         if (itemId == null || contentId == null) null else i to (itemId to contentId)

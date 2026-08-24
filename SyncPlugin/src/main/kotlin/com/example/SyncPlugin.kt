@@ -277,6 +277,8 @@ class SyncPlugin : Plugin() {
             lastStatus = "Sincronizando..."
             try {
                 runSyncInternal(forceRestore, forcePush, deltaOnly)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 lastStatus = "Error de sync"
                 lastError = e.message ?: e.javaClass.simpleName
@@ -379,9 +381,9 @@ class SyncPlugin : Plugin() {
             SyncStorage.forceReRegister = false
         }
 
-        // Autoreparación: puntero propio apuntando a una generación sin chunks
         val ownPtr = devices.firstOrNull { it.deviceId == deviceId && it.isPointer }
-        if (ownPtr?.gen != null && !SyncStorage.forceReRegister) {
+        val ptrAge = if (ownPtr != null) System.currentTimeMillis() / 1000L - ownPtr.updatedAt else Long.MAX_VALUE
+        if (ownPtr?.gen != null && ptrAge >= 30L && !SyncStorage.forceReRegister) {
             val g = ownPtr.gen!!
             val hasChunk0 = devices.any {
                 it.deviceId == deviceId && !it.isPointer && !it.isDelta &&
