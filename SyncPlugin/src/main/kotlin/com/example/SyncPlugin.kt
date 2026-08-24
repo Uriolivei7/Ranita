@@ -407,11 +407,12 @@ class SyncPlugin : Plugin() {
             val consumed = SyncStorage.lastRestoredFrom
             val allOthers = SyncNetwork.mainDrafts(devices).filter { it.deviceId != deviceId }
             val othersList = allOthers
-                .map { rep ->
-                    val dPtr = SyncNetwork.findDeltaPointer(devices, rep.deviceId)
-                    if (dPtr != null && (dPtr.gen ?: 0L) > (rep.gen ?: 0L)) rep.copy(gen = dPtr.gen) else rep
+                .filter { rep ->
+                    if (forceRestore) return@filter true
+                    val c = consumed[rep.deviceId] ?: 0L
+                    val dG = SyncNetwork.findDeltaPointer(devices, rep.deviceId)?.gen ?: 0L
+                    (rep.gen ?: rep.updatedAt) > c || dG > c
                 }
-                .filter { forceRestore || (it.gen ?: it.updatedAt) > (consumed[it.deviceId] ?: 0L) }
                 .sortedByDescending { it.gen ?: it.updatedAt }
 
             if (othersList.isEmpty()) {
@@ -423,24 +424,30 @@ class SyncPlugin : Plugin() {
                 for (other in othersList) {
                     val nowMs = System.currentTimeMillis()
                     if (nowMs < (restoreBackoff[other.deviceId] ?: 0L)) continue
-                    val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
-                    val cloudBackup = if (payload == null) null else try {
-                        SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
-                    } catch (_: Exception) { null }
-                    if (cloudBackup == null) {
-                        log("[restore] ${other.name}: payload incompleto, reintento en 2 min")
-                        restoreBackoff[other.deviceId] = nowMs + 120_000L
-                        continue
-                    }
-                    restoreBackoff.remove(other.deviceId)
+                    val consumedPrev = consumed[other.deviceId] ?: 0L
                     var effGen = other.gen ?: 0L
-                    for (cat in enabledRestore) {
-                        val cloudCat = filterBackup(cloudBackup, cat)
-                        if (SyncBackup.isEmpty(cloudCat)) continue
-                        candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
+
+                    val fullNeeded = forceRestore || effGen > consumedPrev
+                    var haveFull: BackupFile? = null
+                    if (fullNeeded) {
+                        val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
+                        haveFull = if (payload == null) null else try {
+                            SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
+                        } catch (_: Exception) { null }
+                        if (haveFull == null) {
+                            log("[restore] ${other.name}: payload incompleto, reintento en 2 min")
+                            restoreBackoff[other.deviceId] = nowMs + 120_000L
+                            continue
+                        }
+                        restoreBackoff.remove(other.deviceId)
+                        for (cat in enabledRestore) {
+                            val cloudCat = filterBackup(haveFull, cat)
+                            if (SyncBackup.isEmpty(cloudCat)) continue
+                            candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
+                        }
                     }
                     val dPtr = SyncNetwork.findDeltaPointer(devices, other.deviceId)
-                    if (dPtr != null && (dPtr.gen ?: 0L) > effGen) {
+                    if (dPtr != null && (dPtr.gen ?: 0L) > maxOf(effGen, consumedPrev)) {
                         val dPayload = SyncNetwork.assembleDeltaPayload(token, devices, other.deviceId)
                         val dBackup = if (dPayload == null) null else try {
                             SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(dPayload))
