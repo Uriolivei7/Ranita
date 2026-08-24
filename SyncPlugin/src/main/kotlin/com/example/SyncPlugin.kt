@@ -56,6 +56,7 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastResumeMs = 0L
     @Volatile private var lastResumePushMs = 0L
     @Volatile private var lastDeltaAttemptMs = 0L
+    private val restoreBackoff = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var lastRestoreToastMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
@@ -378,6 +379,21 @@ class SyncPlugin : Plugin() {
             SyncStorage.forceReRegister = false
         }
 
+        // Autoreparación: puntero propio apuntando a una generación sin chunks
+        val ownPtr = devices.firstOrNull { it.deviceId == deviceId && it.isPointer }
+        if (ownPtr?.gen != null && !SyncStorage.forceReRegister) {
+            val g = ownPtr.gen!!
+            val hasChunk0 = devices.any {
+                it.deviceId == deviceId && !it.isPointer && !it.isDelta &&
+                    it.chunkIndex == 0 && it.gen == g
+            }
+            if (!hasChunk0) {
+                log("[push] reparación: puntero propio gen $g sin chunks, se republicará")
+                SyncStorage.forceReRegister = true
+                SyncStorage.lastPushedHash = null
+            }
+        }
+
         val enabledBackup = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isBackupEnabled(it) }.toSet()
         val enabledRestore = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isRestoreEnabled(it) }.toSet()
 
@@ -403,14 +419,18 @@ class SyncPlugin : Plugin() {
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs < (restoreBackoff[other.deviceId] ?: 0L)) continue
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
                     val cloudBackup = if (payload == null) null else try {
                         SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
                     } catch (_: Exception) { null }
                     if (cloudBackup == null) {
-                        log("[restore] ${other.name}: payload incompleto, se reintentará")
+                        log("[restore] ${other.name}: payload incompleto, reintento en 2 min")
+                        restoreBackoff[other.deviceId] = nowMs + 120_000L
                         continue
                     }
+                    restoreBackoff.remove(other.deviceId)
                     var effGen = other.gen ?: 0L
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)

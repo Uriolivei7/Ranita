@@ -298,21 +298,19 @@ object SyncNetwork {
         return parts[2]
     }
 
-    @SuppressLint("HardwareIds")
+    @SuppressLint("HardwareIds", "MissingPermission")
     fun getDeviceId(packageName: String, context: Context): String {
         val androidId =
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         if (!androidId.isNullOrEmpty()) return md5(packageName + androidId)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val serial = Build.getSerial()
-                if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
-            } catch (_: SecurityException) {
-            }
-        } else {
-            val serial = Build.SERIAL
-            if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
+
+        val serial: String? = try {
+            @Suppress("DEPRECATION")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else Build.SERIAL
+        } catch (_: Exception) {
+            null
         }
+        if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
         val deviceInfo = "${Build.BRAND}_${Build.MODEL}_${Build.DEVICE}"
         return md5(packageName + UUID.nameUUIDFromBytes(deviceInfo.toByteArray()).toString())
     }
@@ -634,20 +632,25 @@ object SyncNetwork {
     ) {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return
+        val ptr = drafts.filter { it.isPointer }.maxByOrNull { it.gen ?: 0L }
+        val dPtr = drafts.filter { it.isDelta && it.chunkIndex == -1 }.maxByOrNull { it.gen ?: 0L }
+        val freshest = listOfNotNull(ptr, dPtr).maxByOrNull { it.updatedAt }
+        if (freshest != null && System.currentTimeMillis() / 1000L - freshest.updatedAt < 45L) {
+            log("[push] cleanup omitido: puntero reciente (<45s), esperando consistencia")
+            return
+        }
         val keep = if (removeAll) {
             emptySet<String>()
         } else {
             val keepIds = mutableSetOf<String>()
-            val ptr = drafts.filter { it.isPointer }.maxByOrNull { it.gen ?: 0L }
             if (ptr != null && ptr.gen != null) {
                 val g = ptr.gen!!
                 drafts.filter { it.isPointer || (!it.isDelta && it.gen == g) }
                     .forEach { keepIds.add(it.itemId) }
             }
-            val dPtr = drafts.filter { it.isDelta && it.chunkIndex == -1 }.maxByOrNull { it.gen ?: 0L }
             if (dPtr != null && dPtr.gen != null) {
                 val dg = dPtr.gen!!
-                drafts.filter { (it.isDelta && it.chunkIndex == -1) || it.gen == dg }
+                drafts.filter { (it.isDelta && it.chunkIndex == -1) || (it.isDelta && it.gen == dg) }
                     .forEach { keepIds.add(it.itemId) }
             }
             if (keepIds.isEmpty()) {
@@ -665,7 +668,15 @@ object SyncNetwork {
             }
             keepIds
         }
-        val stale = drafts.filter { it.itemId !in keep }
+        var stale = drafts.filter { it.itemId !in keep }
+        val maxCommitted = listOfNotNull(ptr?.gen, dPtr?.gen).maxOrNull()
+        if (maxCommitted != null) {
+            val future = stale.filter { (it.gen ?: 0L) > maxCommitted }
+            if (future.isNotEmpty()) {
+                log("[push] cleanup: se omiten ${future.size} draft(s) de gens futuras")
+                stale = stale.filterNot { (it.gen ?: 0L) > maxCommitted }
+            }
+        }
         if (stale.isEmpty()) return
         log("[push] cleanup: ${stale.size} stale drafts de $deviceId")
         coroutineScope {
