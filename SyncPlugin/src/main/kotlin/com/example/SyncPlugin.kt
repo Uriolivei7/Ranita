@@ -57,6 +57,7 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastResumePushMs = 0L
     @Volatile private var lastDeltaAttemptMs = 0L
     private val restoreBackoff = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val deltaBackoff = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var lastRestoreToastMs = 0L
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
@@ -192,7 +193,7 @@ class SyncPlugin : Plugin() {
     private fun scheduleDebouncedDeltaSync() {
         val now = System.currentTimeMillis()
         val since = now - lastDeltaAttemptMs
-        val wait = if (since in 0..15_000L) 15_000L - since else 5_000L
+        val wait = if (since in 0..25_000L) 25_000L - since else 5_000L
         deltaSyncJob?.cancel()
         deltaSyncJob = scope.launch {
             delay(wait)
@@ -447,20 +448,24 @@ class SyncPlugin : Plugin() {
                         }
                     }
                     val dPtr = SyncNetwork.findDeltaPointer(devices, other.deviceId)
-                    if (dPtr != null && (dPtr.gen ?: 0L) > maxOf(effGen, consumedPrev)) {
+                    if (dPtr != null && (dPtr.gen ?: 0L) > maxOf(effGen, consumedPrev) &&
+                        nowMs >= (deltaBackoff[other.deviceId] ?: 0L)
+                    ) {
                         val dPayload = SyncNetwork.assembleDeltaPayload(token, devices, other.deviceId)
                         val dBackup = if (dPayload == null) null else try {
                             SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(dPayload))
                         } catch (_: Exception) { null }
                         if (dBackup != null) {
                             effGen = dPtr.gen!!
+                            deltaBackoff.remove(other.deviceId)
                             val rc = filterBackup(dBackup, SyncCategory.RESUME_WATCHING)
                             if (!SyncBackup.isEmpty(rc)) {
                                 candidates.getOrPut(SyncCategory.RESUME_WATCHING) { mutableListOf() }
                                     .add(other.copy(gen = effGen) to rc)
                             }
                         } else {
-                            log("[restore] ${other.name}: delta ilegible, se usa el full")
+                            log("[restore] ${other.name}: delta ilegible, reintento en 30s")
+                            deltaBackoff[other.deviceId] = nowMs + 30_000L
                         }
                     }
                     consumedNow[other.deviceId] = maxOf(consumedNow[other.deviceId] ?: 0L, effGen, other.gen ?: 0L)

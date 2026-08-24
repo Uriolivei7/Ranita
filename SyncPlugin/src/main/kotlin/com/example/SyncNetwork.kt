@@ -77,11 +77,14 @@ object SyncNetwork {
 
     suspend fun assembleDeltaPayload(token: String, devices: List<SyncDevice>, deviceId: String): String? {
         val ptr = findDeltaPointer(devices, deviceId) ?: return null
-        val gen = ptr.gen ?: return null
+        val gen = ptr.gen ?: run { log("[restore] $deviceId: puntero delta sin gen"); return null }
         val group = devices.filter {
             it.deviceId == deviceId && it.isDelta && it.chunkIndex >= 0 && it.gen == gen
         }
-        if (group.isEmpty()) return null
+        if (group.isEmpty()) {
+            log("[restore] $deviceId: delta gen $gen sin chunks visibles aún")
+            return null
+        }
         return assembleCommitted(token, group, deviceId, gen)
     }
 
