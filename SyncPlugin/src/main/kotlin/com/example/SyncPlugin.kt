@@ -43,6 +43,8 @@ class SyncPlugin : Plugin() {
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
+    /** Canal delta desactivado: vuelve al flujo estable (push completo al cerrar / cada 60s en background). */
+    private val enableDeltaChannel = false
     private val pollMs = 10_000L
     private val resumePushIntervalMs = 60_000L
     private val syncMutex = Mutex()
@@ -173,7 +175,7 @@ class SyncPlugin : Plugin() {
         if (cat != SyncCategory.RESUME_WATCHING) {
             pendingPushToast = true
             scheduleDebouncedSync()
-        } else {
+        } else if (enableDeltaChannel) {
             scheduleDebouncedDeltaSync()
         }
     }
@@ -191,6 +193,7 @@ class SyncPlugin : Plugin() {
     }
 
     private fun scheduleDebouncedDeltaSync() {
+        if (!enableDeltaChannel) return
         val now = System.currentTimeMillis()
         val since = now - lastDeltaAttemptMs
         val wait = if (since in 0..25_000L) 25_000L - since else 5_000L
