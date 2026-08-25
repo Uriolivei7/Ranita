@@ -478,8 +478,7 @@ fun buildBackgroundPosterUrl(id: String, ott: String = "nf"): String {
 }
 
 fun buildVerticalPosterUrlWithProxy(id: String, ott: String = "nf"): String {
-    val raw = buildVerticalPosterUrl(id, ott)
-    return "https://wsrv.nl/?url=$raw&w=500"
+    return buildVerticalPosterUrl(id, ott)
 }
 
 fun buildNewTvHeaders(ott: String, extra: Map<String, String> = emptyMap()): Map<String, String> {
