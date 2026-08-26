@@ -14,6 +14,9 @@ object SyncBackup {
 
     private const val POSITION_LEAD_SECONDS = 2.0
 
+    /** Ventana en la que una posición menor tras un completado cuenta como re-watch genuino. */
+    private const val COMPLETION_GRACE_SECONDS = 1800L
+
     private val resumeMapper = ObjectMapper()
 
     val nonTransferableKeys = listOf(
@@ -474,6 +477,33 @@ object SyncBackup {
         val isPositionKey = lower.contains("video_pos_dur") || lower.contains("result_resume_watching")
         val localTs = episodeTimestampFor(key, localMap, localEpisodeTs)
         val cloudTs = episodeTimestampFor(key, cloudMap, cloudEpisodeTs)
+
+        if (isPositionKey) {
+            val localPos = resumePosition(localVal)
+            val cloudPos = resumePosition(cloudVal)
+            val localDone = isCompletedValue(localPos, resumeDuration(localVal))
+            val cloudDone = isCompletedValue(cloudPos, resumeDuration(cloudVal))
+
+            if (localPos >= 0.0 && cloudPos >= 0.0 && localDone != cloudDone) {
+                val doneIsCloud = cloudDone
+                val doneTs = if (cloudDone) cloudTs else localTs
+                val incompleteTs = if (cloudDone) localTs else cloudTs
+                if (incompleteTs <= doneTs) {
+                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
+                }
+                if (incompleteTs - doneTs > COMPLETION_GRACE_SECONDS) {
+                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
+                }
+            }
+
+            if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) <= POSITION_LEAD_SECONDS) {
+                if (localDone != cloudDone) {
+                    return if (cloudDone) Winner.CLOUD else Winner.LOCAL
+                }
+                return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
+            }
+        }
+
         if (localTs > 0L || cloudTs > 0L) {
 
             if (isPositionKey && abs(cloudTs - localTs) <= POSITION_LEAD_SECONDS.toLong()) {
@@ -504,6 +534,18 @@ object SyncBackup {
             -1.0
         }
     }
+
+    private fun resumeDuration(json: Any?): Double {
+        if (json !is String) return -1.0
+        return try {
+            "\"duration\":\\s*([\\d.]+)".toRegex().find(json)?.groupValues?.get(1)?.toDouble() ?: -1.0
+        } catch (_: Exception) {
+            -1.0
+        }
+    }
+
+    private fun isCompletedValue(pos: Double, dur: Double): Boolean =
+        pos >= 0.0 && dur > 0.0 && pos >= 0.9 * dur
     private fun episodeTimestampFor(
         key: String,
         stringMap: Map<String, String>,
