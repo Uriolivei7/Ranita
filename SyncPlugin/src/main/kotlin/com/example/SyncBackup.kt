@@ -485,6 +485,16 @@ object SyncBackup {
         val cloudTs = episodeTimestampFor(key, cloudMap, cloudEpisodeTs)
 
         if (isPositionKey) {
+            if (lower.contains("result_resume_watching")) {
+                val localEp = resumeEpisodeId(localVal)
+                val cloudEp = resumeEpisodeId(cloudVal)
+                if (localEp != null && cloudEp != null && localEp != cloudEp) {
+                    if (localTs > 0L || cloudTs > 0L) {
+                        return if (cloudTs >= localTs) Winner.CLOUD else Winner.LOCAL
+                    }
+                }
+            }
+
             val localPos = resumePosition(localVal)
             val cloudPos = resumePosition(cloudVal)
             val localDone = isCompletedValue(localPos, resumeDuration(localVal))
