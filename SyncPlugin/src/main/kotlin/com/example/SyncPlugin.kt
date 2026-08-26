@@ -54,6 +54,9 @@ class SyncPlugin : Plugin() {
     private var lastPushToastMs = 0L
     @Volatile private var pendingPushToast = false
     @Volatile private var playerActivities = 0
+    @Volatile private var lastPeriodicResumePushMs = 0L
+    /** Subida periódica de RESUME_WATCHING durante el uso (foreground incluido). */
+    private val periodicResumePushMs = 60_000L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -450,9 +453,13 @@ class SyncPlugin : Plugin() {
                 dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
             }
             if (!forcePush && onlyResumeWatching) {
-                lastStatus = "Esperando cierre de app para push"
-                log("[push] omitido: solo RESUME_WATCHING, esperando background")
-                return
+                val since = System.currentTimeMillis() - lastPeriodicResumePushMs
+                if (since < periodicResumePushMs) {
+                    lastStatus = "Esperando cierre de app para push"
+                    log("[push] omitido: solo RESUME_WATCHING, periódico en ${(periodicResumePushMs - since) / 1000}s")
+                    return
+                }
+                log("[push] RESUME_WATCHING: push periódico (${since / 1000}s desde el último)")
             }
             val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
             val hash = SyncBackup.computeHash(data)
@@ -469,6 +476,7 @@ class SyncPlugin : Plugin() {
                     SyncStorage.syncGen = newGen
                     SyncStorage.lastPushedHash = hash
                     SyncStorage.forceReRegister = false
+                    if (onlyResumeWatching) lastPeriodicResumePushMs = System.currentTimeMillis()
                     clearDirtyCategories()
                     updateCategoryTimestamps(enabledBackup)
                     lastStatus = "Sync OK (${ids.size} trozo/s)"
@@ -489,6 +497,7 @@ class SyncPlugin : Plugin() {
                     SyncStorage.ownItemId = null
                     SyncStorage.syncGen = gen
                     SyncStorage.lastPushedHash = hash
+                    if (onlyResumeWatching) lastPeriodicResumePushMs = System.currentTimeMillis()
                     clearDirtyCategories()
                     updateCategoryTimestamps(enabledBackup)
                     lastStatus = "Sync OK (${updated.size} trozo/s)"

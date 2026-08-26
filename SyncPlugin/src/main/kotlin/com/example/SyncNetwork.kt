@@ -7,7 +7,12 @@ import android.provider.Settings
 import android.util.Base64
 import com.lagradost.cloudstream3.app
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayInputStream
 import kotlinx.serialization.decodeFromString
@@ -99,24 +104,28 @@ object SyncNetwork {
                 return null
             }
             sb.append(data0)
-            for (i in 1 until total) {
-                val draft = byIndex[i]
-                if (draft == null) {
-                    log("[restore] $deviceId: chunk $i/$total no existe")
+
+            val rest: List<String?> = coroutineScope {
+                val sem = Semaphore(6)
+                (1 until total).map { i ->
+                    async {
+                        sem.withPermit {
+                            val draft = byIndex[i]
+                            if (draft == null) null
+                            else {
+                                val chunkId = draft.itemContentId ?: draft.itemId
+                                fetchChunkBody(token, chunkId)?.let { stripChunkHeader(it, i, total) }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+            for ((idx, piece) in rest.withIndex()) {
+                if (piece == null) {
+                    log("[restore] $deviceId: chunk ${idx + 1}/$total no disponible")
                     return null
                 }
-                val chunkId = draft.itemContentId ?: draft.itemId
-                val body = fetchChunkBody(token, chunkId)
-                if (body == null) {
-                    log("[restore] $deviceId: chunk $i/$total fetch falló")
-                    return null
-                }
-                val data = stripChunkHeader(body, i, total)
-                if (data == null) {
-                    log("[restore] $deviceId: chunk $i/$total formato inválido")
-                    return null
-                }
-                sb.append(data)
+                sb.append(piece)
             }
             return sb.toString()
         }
@@ -159,12 +168,24 @@ object SyncNetwork {
         val sb = StringBuilder()
         val data0 = stripChunkHeader(body0, 0, realTotal) ?: return null
         sb.append(data0)
-        for (i in 1 until realTotal) {
-            val draft = allByIndex[i]!!
-            val chunkId = draft.itemContentId ?: draft.itemId
-            val body = fetchChunkBody(token, chunkId) ?: return null
-            val data = stripChunkHeader(body, i, realTotal) ?: return null
-            sb.append(data)
+        val rest: List<String?> = coroutineScope {
+            val sem = Semaphore(6)
+            (1 until realTotal).map { i ->
+                async {
+                    sem.withPermit {
+                        val draft = allByIndex[i]!!
+                        val chunkId = draft.itemContentId ?: draft.itemId
+                        fetchChunkBody(token, chunkId)?.let { stripChunkHeader(it, i, realTotal) }
+                    }
+                }
+            }.awaitAll()
+        }
+        for ((idx, piece) in rest.withIndex()) {
+            if (piece == null) {
+                log("[restore] $deviceId: best-effort chunk ${idx + 1}/$realTotal no disponible")
+                return null
+            }
+            sb.append(piece)
         }
 
         val result = sb.toString()
@@ -199,21 +220,19 @@ object SyncNetwork {
         return parts[2]
     }
 
-    @SuppressLint("HardwareIds")
+    @SuppressLint("HardwareIds", "MissingPermission")
     fun getDeviceId(packageName: String, context: Context): String {
         val androidId =
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         if (!androidId.isNullOrEmpty()) return md5(packageName + androidId)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val serial = Build.getSerial()
-                if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
-            } catch (_: SecurityException) {
-            }
-        } else {
-            val serial = Build.SERIAL
-            if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
+
+        val serial: String? = try {
+            @Suppress("DEPRECATION")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else Build.SERIAL
+        } catch (_: Exception) {
+            null
         }
+        if (!serial.isNullOrEmpty() && serial != "unknown") return md5(packageName + serial)
         val deviceInfo = "${Build.BRAND}_${Build.MODEL}_${Build.DEVICE}"
         return md5(packageName + UUID.nameUUIDFromBytes(deviceInfo.toByteArray()).toString())
     }
@@ -348,19 +367,26 @@ object SyncNetwork {
         chunks: List<String>,
         gen: Long
     ): List<String>? {
-        val ids = mutableListOf<String>()
-        for ((i, chunk) in chunks.withIndex()) {
-            val title = "$deviceName#$gen.$i"
-            val body = makeChunkBody(i, chunks.size, chunk)
-            val (itemId, contentId) = registerSingle(token, projectId, title, body)
-            if (itemId == null || contentId == null) {
-                err("register chunk $i falló: ${SyncNetwork.lastError}")
-                return null
-            }
-            ids.add(contentId)
+
+        val results: List<Pair<Int, String>?> = coroutineScope {
+            val sem = Semaphore(5)
+            chunks.indices.map { i ->
+                async {
+                    sem.withPermit {
+                        val title = "$deviceName#$gen.$i"
+                        val body = makeChunkBody(i, chunks.size, chunks[i])
+                        val (_, contentId) = registerSingle(token, projectId, title, body)
+                        if (contentId == null) {
+                            err("register chunk $i falló: ${SyncNetwork.lastError}")
+                            null
+                        } else i to contentId
+                    }
+                }
+            }.awaitAll()
         }
+        if (results.any { it == null }) return null
         log("[push] register: ${chunks.size} chunks")
-        return ids
+        return results.mapNotNull { it?.second }
     }
 
     private suspend fun registerSingle(
@@ -391,19 +417,29 @@ object SyncNetwork {
         existing: Map<Int, String>,
         gen: Long
     ): Map<Int, String>? {
-        val result = existing.toMutableMap()
-        for ((i, chunk) in chunks.withIndex()) {
-            val title = "$deviceName#$gen.$i"
-            val body = makeChunkBody(i, chunks.size, chunk)
-            val contentId = result[i]
-            if (contentId != null) {
-                if (!updateSingle(token, contentId, title, body)) return null
-            } else {
-                val (itemId, newId) = registerSingle(token, projectId, title, body)
-                if (itemId == null || newId == null) return null
-                result[i] = newId
-            }
+
+        val outcomes: List<Pair<Boolean, String?>> = coroutineScope {
+            val sem = Semaphore(5)
+            chunks.indices.map { i ->
+                async {
+                    sem.withPermit {
+                        val title = "$deviceName#$gen.$i"
+                        val body = makeChunkBody(i, chunks.size, chunks[i])
+                        val contentId = existing[i]
+                        if (contentId != null) {
+                            val ok = updateSingle(token, contentId, title, body)
+                            ok to null
+                        } else {
+                            val (_, newId) = registerSingle(token, projectId, title, body)
+                            (newId != null) to newId
+                        }
+                    }
+                }
+            }.awaitAll()
         }
+        if (outcomes.any { !it.first }) return null
+        val result = existing.toMutableMap()
+        outcomes.forEachIndexed { i, (_, newId) -> newId?.let { result[i] = it } }
         log("[push] update: ${chunks.size} chunks")
         return result
     }
