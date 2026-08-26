@@ -340,9 +340,22 @@ class SyncPlugin : Plugin() {
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
-                    val cloudBackup = if (payload == null) null else try {
-                        SyncNetwork.json.decodeFromString(BackupFile.serializer(), SyncNetwork.decompressData(payload))
-                    } catch (_: Exception) { null }
+                    var cloudBackup: BackupFile? = null
+                    if (payload != null) {
+                        val incomingData = SyncNetwork.decompressData(payload)
+                        val isEcho = SyncStorage.lastPushedHash != null &&
+                            SyncBackup.computeHash(incomingData) == SyncStorage.lastPushedHash
+                        if (isEcho) {
+                            log("[restore] ${other.name}: eco propio omitido")
+                            consumedNow[other.deviceId] = other.gen ?: other.updatedAt
+                            continue
+                        }
+                        cloudBackup = try {
+                            SyncNetwork.json.decodeFromString(BackupFile.serializer(), incomingData)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
                     if (cloudBackup == null) {
                         log("[restore] ${other.name}: payload incompleto, se reintentará")
                         continue
