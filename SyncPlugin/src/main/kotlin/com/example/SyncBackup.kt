@@ -92,11 +92,11 @@ object SyncBackup {
         val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, resumeIndex)
+                isResumeRelevant(entry.key, entry.value, resumeIndex)
         }
         val allSettings = context.getDefaultSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, resumeIndex)
+                isResumeRelevant(entry.key, entry.value, resumeIndex)
         }
         val deletions = pruneTombstones(SyncStorage.tombstones())
             .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled }
@@ -164,6 +164,7 @@ object SyncBackup {
 
     private fun isResumeRelevant(
         key: String,
+        value: Any?,
         resumeIndex: Map<String, ResumeIndex>,
     ): Boolean {
         val lowerKey = key.lowercase()
@@ -175,8 +176,13 @@ object SyncBackup {
             val id = parts.getOrNull(1)?.toIntOrNull() ?: return false
             return id in index.parentIds
         } else if (lowerKey.contains("video_pos_dur")) {
-            val id = parts.getOrNull(2)?.toIntOrNull() ?: return false
-            return id in index.episodeIds
+            val id = parts.getOrNull(2)?.toIntOrNull() ?: false
+            if (id !is Int) return false
+            if (id in index.episodeIds) return true
+            // Un episodio completado SIEMPRE viaja: su posición final (>90%)
+            // es la que produce el check de "visto" en los demás dispositivos,
+            // aunque la serie ya haya avanzado al siguiente episodio.
+            return isCompletedValue(resumePosition(value), resumeDuration(value))
         } else if (lowerKey.contains("result_season") || lowerKey.contains("result_dub") ||
             lowerKey.contains("result_episode")
         ) {
