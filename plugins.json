@@ -778,44 +778,6 @@
         "name": "TokianimeProvider"
     },
     {
-        "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-2a7e05e08cfe0da4a55e934abdcff1925dd3e14fc00935480e3f5bf327c9d6c8",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 26733,
-        "status": 1,
-        "language": "mx",
-        "authors": [
-            "misajimenezmx"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 5,
-        "internalName": "TvenvivoProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TvenvivoProvider.cs3",
-        "name": "TvenvivoProvider"
-    },
-    {
-        "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-eae0b8f423851f7f9674cabd3b0c7fa05a8b4d3d3740d7e0eb35f0a2585ca7e3",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 26629,
-        "status": 1,
-        "language": "mx",
-        "authors": [
-            "misajimenezmx"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 5,
-        "internalName": "TvporinternetProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TvporinternetProvider.cs3",
-        "name": "TvporinternetProvider"
-    },
-    {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
         "fileHash": "sha256-7c15dd0a9c6e769c90d8162fa3e50a01ad88f7e7c6f39009ac97df6afa72bed3",
         "apiVersion": 1,
