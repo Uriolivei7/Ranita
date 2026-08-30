@@ -370,7 +370,10 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                merged[key] = localVal
+                val delTs = deletions[key]
+                if (delTs == null || delTs <= resumeSiblingTs(key, localStrings)) {
+                    merged[key] = localVal
+                }
             } else {
                 merged[key] = if (
                     cloudValueWins(key, localStrings, cloudStrings, localCategoryTs, cloudPayloadTs)
@@ -444,7 +447,10 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                merged[key] = localVal
+                val delTs = deletions[key]
+                if (delTs == null || delTs <= episodeTimestampFor(key, local, localEpisodeTs)) {
+                    merged[key] = localVal
+                }
             } else {
                 if (key == ACCOUNTS_KEY) {
                     merged[key] = if (accountCount(cloudVal) >= accountCount(localVal)) cloudVal else localVal
