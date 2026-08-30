@@ -134,11 +134,15 @@ class SyncPlugin : Plugin() {
         val appCtx = appContext ?: return
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
             if (isRestoring || key == null) return@OnSharedPreferenceChangeListener
-            if (prefs.contains(key)) {
+            val added = prefs.contains(key)
+            if (added) {
                 SyncBackup.removeTombstone(key)
             } else {
                 SyncBackup.recordDeletion(key)
             }
+            // Log de depuración: cada cambio de SharedPreferences
+            val cat = SyncBackup.classifyKey(key)
+            log("[prefs] key=$key added=$added classified=$cat")
             markDirty(key)
         }
         appCtx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
