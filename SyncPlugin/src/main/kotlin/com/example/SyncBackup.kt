@@ -211,13 +211,14 @@ object SyncBackup {
         restoreVars(context, backupFile.settings, isSettings = true, enabled)
         context.getDefaultSharedPrefs().edit()
             .putInt("auto_download_plugins_key2", 2).apply()
-        applyDeletions(context, backupFile.deletions, enabled)
+        applyDeletions(context, backupFile.deletions, enabled, backupFile)
     }
 
     private fun applyDeletions(
         context: Context,
         deletions: Map<String, Long>,
         enabled: Set<SyncCategory>,
+        mergedBackup: BackupFile?,
     ) {
         if (deletions.isEmpty()) return
         val dataPrefs = context.getSharedPrefs()
@@ -225,9 +226,23 @@ object SyncBackup {
         val now = SyncTime.nowEpochSeconds()
         val dataRemove = mutableListOf<String>()
         val settingsRemove = mutableListOf<String>()
+        val keepKeys = mutableSetOf<String>()
+        if (mergedBackup != null) {
+            mergedBackup.datastore.string?.let { keepKeys += it.keys }
+            mergedBackup.datastore.bool?.let { keepKeys += it.keys }
+            mergedBackup.datastore.int?.let { keepKeys += it.keys }
+            mergedBackup.datastore.long?.let { keepKeys += it.keys }
+            mergedBackup.datastore.float?.let { keepKeys += it.keys }
+            mergedBackup.settings.string?.let { keepKeys += it.keys }
+            mergedBackup.settings.bool?.let { keepKeys += it.keys }
+            mergedBackup.settings.int?.let { keepKeys += it.keys }
+            mergedBackup.settings.long?.let { keepKeys += it.keys }
+            mergedBackup.settings.float?.let { keepKeys += it.keys }
+        }
         for ((key, delTs) in deletions) {
             if (!key.isTransferable() || classifyKey(key) !in enabled) continue
             if (now - delTs >= TOMBSTONE_TTL_SECONDS) continue
+            if (key in keepKeys) continue
             if (dataPrefs.contains(key)) {
                 if (dataTimestamp(dataPrefs.all[key]) < delTs) dataRemove.add(key)
             } else if (settingsPrefs.contains(key)) {
