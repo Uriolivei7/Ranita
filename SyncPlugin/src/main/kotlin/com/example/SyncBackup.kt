@@ -413,12 +413,17 @@ object SyncBackup {
         if (parts.size < 2) return 0L
         val episodeId = parts[parts.size - 1].toIntOrNull() ?: return 0L
         val account = if (parts[0].all { it.isDigit() }) parts[0] else ""
-        val resumeKey = if (account.isEmpty()) {
-            "result_resume_watching_2/$episodeId"
-        } else {
-            "$account/result_resume_watching_2/$episodeId"
+        val type = if (parts.size >= 3) parts[parts.lastIndex - 1] else ""
+        val siblingType = when (type) {
+            "result_watch_state", "result_watch_state_data" -> "result_watch_state_data"
+            else -> "result_resume_watching_2"
         }
-        return SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(stringMap[resumeKey]))
+        val siblingKey = if (account.isEmpty()) {
+            "$siblingType/$episodeId"
+        } else {
+            "$account/$siblingType/$episodeId"
+        }
+        return SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(stringMap[siblingKey]))
     }
 
     private fun mergeStringMap(
@@ -582,12 +587,17 @@ object SyncBackup {
         stringMap: Map<String, String>,
         episodeTs: Map<Int, Long>,
     ): Long {
-        if (!key.lowercase().contains("video_pos_dur")) {
-            return SyncKeyPath.itemTimestamp(key, SyncCategory.SETTINGS, stringMap)
+        if (key.lowercase().contains("video_pos_dur")) {
+            val parts = key.split("/")
+            val episodeId = parts.getOrNull(parts.lastIndex)?.toIntOrNull() ?: return 0L
+            return episodeTs[episodeId] ?: 0L
         }
-        val parts = key.split("/")
-        val episodeId = parts.getOrNull(parts.lastIndex)?.toIntOrNull() ?: return 0L
-        return episodeTs[episodeId] ?: 0L
+        val category = when {
+            key.lowercase().contains("result_watch_state") -> SyncCategory.BOOKMARKS
+            key.lowercase().contains("result_favorites") -> SyncCategory.BOOKMARKS
+            else -> SyncCategory.SETTINGS
+        }
+        return SyncKeyPath.itemTimestamp(key, category, stringMap)
     }
 
     private fun resumeEpisodeId(json: String): Int? =
