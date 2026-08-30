@@ -134,15 +134,11 @@ class SyncPlugin : Plugin() {
         val appCtx = appContext ?: return
         prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
             if (isRestoring || key == null) return@OnSharedPreferenceChangeListener
-            val added = prefs.contains(key)
-            if (added) {
+            if (prefs.contains(key)) {
                 SyncBackup.removeTombstone(key)
             } else {
                 SyncBackup.recordDeletion(key)
             }
-            // Log de depuración: cada cambio de SharedPreferences
-            val cat = SyncBackup.classifyKey(key)
-            log("[prefs] key=$key added=$added classified=$cat")
             markDirty(key)
         }
         appCtx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
@@ -247,28 +243,6 @@ class SyncPlugin : Plugin() {
                 if (SyncStorage.isLoggedIn()) {
                     val inForeground = foregroundActivities > 0
                     try { runSync(forcePush = !inForeground) } catch (_: Exception) {}
-                }
-            }
-        }
-        // Diagnóstico: dump de SharedPreferences cada 30s para ver qué escribe CloudStream
-        scope.launch {
-            var lastDump = ""
-            while (isActive) {
-                delay(30_000L)
-                try {
-                    val ctx = appContext ?: continue
-                    val prefs = ctx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
-                    val all = prefs.all
-                    val watchKeys = all.keys.filter { it.contains("result_watch_state") }
-                    val favKeys = all.keys.filter { it.contains("result_favorites_state_data") }
-                    val dump = "prefs_total=${all.size} watch_state=${watchKeys.size} fav=${favKeys.size} " +
-                        "watch_keys=${watchKeys.take(5)} fav_keys=${favKeys.take(3)}"
-                    if (dump != lastDump) {
-                        log("[diag] SharedPrefs rebuild_preference: $dump")
-                        lastDump = dump
-                    }
-                } catch (e: Exception) {
-                    log("[diag] Error leyendo prefs: ${e.message}")
                 }
             }
         }

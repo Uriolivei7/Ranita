@@ -179,9 +179,6 @@ object SyncBackup {
             val id = parts.getOrNull(2)?.toIntOrNull() ?: false
             if (id !is Int) return false
             if (id in index.episodeIds) return true
-            // Un episodio completado SIEMPRE viaja: su posición final (>90%)
-            // es la que produce el check de "visto" en los demás dispositivos,
-            // aunque la serie ya haya avanzado al siguiente episodio.
             return isCompletedValue(resumePosition(value), resumeDuration(value))
         } else if (lowerKey.contains("result_season") || lowerKey.contains("result_dub") ||
             lowerKey.contains("result_episode")
