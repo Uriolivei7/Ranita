@@ -250,6 +250,28 @@ class SyncPlugin : Plugin() {
                 }
             }
         }
+        // Diagnóstico: dump de SharedPreferences cada 30s para ver qué escribe CloudStream
+        scope.launch {
+            var lastDump = ""
+            while (isActive) {
+                delay(30_000L)
+                try {
+                    val ctx = appContext ?: continue
+                    val prefs = ctx.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
+                    val all = prefs.all
+                    val watchKeys = all.keys.filter { it.contains("result_watch_state") }
+                    val favKeys = all.keys.filter { it.contains("result_favorites_state_data") }
+                    val dump = "prefs_total=${all.size} watch_state=${watchKeys.size} fav=${favKeys.size} " +
+                        "watch_keys=${watchKeys.take(5)} fav_keys=${favKeys.take(3)}"
+                    if (dump != lastDump) {
+                        log("[diag] SharedPrefs rebuild_preference: $dump")
+                        lastDump = dump
+                    }
+                } catch (e: Exception) {
+                    log("[diag] Error leyendo prefs: ${e.message}")
+                }
+            }
+        }
     }
 
     /***************** sync logic *****************/
