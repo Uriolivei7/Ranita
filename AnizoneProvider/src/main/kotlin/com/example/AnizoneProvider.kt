@@ -92,12 +92,71 @@ class AnizoneProvider : MainAPI() {
 
 
     private fun getSnapshot(doc : Document) : String {
-        return doc.select("main div[wire:snapshot]")
-            .attr("wire:snapshot").replace("&quot;", "\"")
+        return doc.selectFirst("main")?.getElementsByAttribute("wire:snapshot")?.attr("wire:snapshot")?.replace("&quot;", "\"") ?: ""
     }
     private fun getSnapshot(json : JSONObject) : String {
         return json.getJSONArray("components")
             .getJSONObject(0).getString("snapshot")
+    }
+
+    private fun findEpisodesSnapshot(doc: Document): String {
+        val mainEl = doc.selectFirst("main") ?: return getSnapshot(doc)
+        val candidates = mainEl.getElementsByAttribute("wire:snapshot")
+        for (el in candidates) {
+            val raw = el.attr("wire:snapshot").replace("&quot;", "\"")
+            if (raw.isBlank()) continue
+            try {
+                val snapJson = JSONObject(raw)
+                val name = snapJson.optJSONObject("memo")?.optString("name", "") ?: ""
+                if (name == "pages.anime-detail") {
+                    Log.d("AniZone", "Found episodes snapshot: name=$name")
+                    return raw
+                }
+            } catch (_: Exception) {}
+        }
+        val fallback = getSnapshot(doc)
+        Log.d("AniZone", "Using fallback snapshot (${candidates.count()} candidates)")
+        return fallback
+    }
+
+    private fun findEpisodesXData(doc: Document): String? {
+        val mainEl = doc.selectFirst("main") ?: return null
+        val candidates = mainEl.getElementsByAttribute("wire:snapshot")
+        for (el in candidates) {
+            val raw = el.attr("wire:snapshot").replace("&quot;", "\"")
+            if (raw.isBlank()) continue
+            try {
+                val snapJson = JSONObject(raw)
+                val name = snapJson.optJSONObject("memo")?.optString("name", "") ?: ""
+                if (name == "pages.anime-detail") {
+                    return el.attr("x-data")
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    private fun parseEpisodesFromXData(xData: String): List<JSONObject> {
+        val raw = Regex("""items:\s*JSON\.parse\('(.*?)'\)""", setOf(RegexOption.DOT_MATCHES_ALL))
+            .find(xData)?.groupValues?.getOrNull(1) ?: return emptyList()
+        val jsonText = unescapeJsString(raw)
+        return try {
+            val arr = JSONArray(jsonText)
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        } catch (e: Exception) {
+            Log.e("AniZone", "parseEpisodesFromXData error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun parseEpisodesHasMore(xData: String): Boolean {
+        return Regex("""hasMore:\s*(true|false)""").find(xData)
+            ?.groupValues?.getOrNull(1) == "true"
+    }
+
+    private fun parseEpisodesNextCursor(xData: String): String {
+        return Regex("""nextCursor:\s*('([^']*)'|null)""").find(xData)
+            ?.groupValues?.getOrNull(2) ?: ""
     }
 
     private  fun getHtmlFromWire(json: JSONObject): Document {
@@ -304,8 +363,10 @@ class AnizoneProvider : MainAPI() {
         val doc = req.document
         val cookie = req.cookies.toMutableMap()
         Log.d("AniZone", "load: HTTP ${req.code}, doc title='${doc.title()}'")
+
+        val episodesSnapshot = findEpisodesSnapshot(doc)
         val wireData = mutableMapOf(
-            "wireSnapshot" to getSnapshot(doc),
+            "wireSnapshot" to episodesSnapshot,
             "token" to doc.select("script[data-csrf]").attr("data-csrf")
         )
         val title = doc.title()
@@ -336,55 +397,103 @@ class AnizoneProvider : MainAPI() {
         val maxAttempts = 100
         var page = 1
 
+        val allEpiItems = mutableListOf<JSONObject>()
         val allEpiElms = mutableListOf<Element>()
-        allEpiElms.addAll(currentDoc.select("li[x-data]"))
 
-        while (page < maxAttempts) {
-            val responseJson = try {
-                liveWireBuilder(
-                    mapOf("paginators.page" to "${page + 1}"), mutableListOf(), cookie, wireData, true
-                )
-            } catch (e: Exception) {
-                Log.e("AniZone Load", "Error al paginar episodios (página ${page + 1}): ${e.message}")
-                break
+        val xData = findEpisodesXData(doc)
+        if (xData != null) {
+            allEpiItems.addAll(parseEpisodesFromXData(xData))
+            Log.d("AniZone", "load: found ${allEpiItems.size} episodes from x-data")
+
+            var hasMore = parseEpisodesHasMore(xData)
+            var nextCursor = parseEpisodesNextCursor(xData)
+
+            while (hasMore && nextCursor.isNotBlank() && page < maxAttempts) {
+                val responseJson = try {
+                    liveWireBuilder(
+                        mutableMapOf(), mutableListOf(
+                            mapOf("path" to "", "method" to "loadPage", "params" to listOf(nextCursor))
+                        ), cookie, wireData, true
+                    )
+                } catch (e: Exception) {
+                    Log.e("AniZone Load", "Error paginating episodes (page ${page + 1}): ${e.message}")
+                    break
+                }
+                val dispatchParams = getItemsLoadedParams(responseJson) ?: break
+                val newItems = dispatchParams.optJSONArray("items")
+                if (newItems != null) {
+                    for (i in 0 until newItems.length()) {
+                        allEpiItems.add(newItems.getJSONObject(i))
+                    }
+                }
+                hasMore = dispatchParams.optBoolean("hasMore", false)
+                nextCursor = dispatchParams.optString("nextCursor", "")
+                Log.d("AniZone", "load: page ${page + 1} got ${newItems?.length() ?: 0} episodes, hasMore=$hasMore")
+                page++
             }
-            val nextDoc = getHtmlFromWire(responseJson)
-            val newEpiElms = nextDoc.select("li[x-data]")
-            if (newEpiElms.isEmpty()) break
-            allEpiElms.addAll(newEpiElms)
-            currentDoc = nextDoc
-            page++
+        } else {
+            Log.w("AniZone", "load: no episodes x-data found, trying DOM fallback")
+            allEpiElms.addAll(currentDoc.select("li[x-data]"))
+            while (page < maxAttempts) {
+                val responseJson = try {
+                    liveWireBuilder(
+                        mapOf("paginators.page" to "${page + 1}"), mutableListOf(), cookie, wireData, true
+                    )
+                } catch (e: Exception) {
+                    Log.e("AniZone Load", "Error paginating (page ${page + 1}): ${e.message}")
+                    break
+                }
+                val nextDoc = getHtmlFromWire(responseJson)
+                val newEpiElms = nextDoc.select("li[x-data]")
+                if (newEpiElms.isEmpty()) break
+                allEpiElms.addAll(newEpiElms)
+                currentDoc = nextDoc
+                page++
+            }
         }
 
-        val epiElms = allEpiElms
+        val episodes = if (allEpiItems.isNotEmpty()) {
+            allEpiItems.map { item ->
+                val slug = item.optString("slug", "")
+                val url = item.optString("url", "")
+                val titleList = item.optJSONObject("title_list")
+                val epTitle = titleList?.optString("1")?.takeIf { it.isNotBlank() }
+                    ?: item.optString("title", "").ifBlank { null }
+                val airDate = item.optString("air_date", "").ifBlank { null }
+                val snapshot = item.optString("snapshot", "").ifBlank { null }
 
-        val episodes = epiElms.map{ elt ->
-            newEpisode(
-                data = elt.selectFirst("a")?.attr("href") ?: "") {
-                this.name = elt.selectFirst("h3")?.text()
-                    ?.substringAfter(":")?.trim()
-                this.season = 0
-                this.posterUrl = elt.selectFirst("img")?.attr("src")
-                this.data = "${elt.selectFirst("a")?.attr("href")}|||$imdbId"
-
-                this.date = elt.selectFirst("span[title]")
-                    ?.selectFirst("span.line-clamp-1")
-                    ?.text()
-                    ?.trim()
-                    ?.replace(Regex("\\s+"), "")
-                    ?.ifEmpty { null }
-                    ?.let { dateText ->
-                        Log.d("AniZone", "Fecha encontrada para ${this.name}: $dateText")
-
+                newEpisode(data = url) {
+                    this.name = epTitle ?: "Episode $slug"
+                    this.season = 0
+                    this.posterUrl = snapshot
+                    this.data = "$url|||$imdbId"
+                    this.date = airDate?.let {
                         try {
-                            val parsedTime = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
-                            Log.d("AniZone", "Parseo exitoso para ${this.name}: $parsedTime")
-                            parsedTime
-                        } catch (e: Exception) {
-                            Log.e("AniZone", "FALLO de parseo para ${this.name} con texto '$dateText': ${e.message}")
-                            null
-                        }
+                            SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(it)?.time
+                        } catch (_: Exception) { null }
                     } ?: 0L
+                }
+            }
+        } else {
+            allEpiElms.map { elt ->
+                newEpisode(
+                    data = elt.selectFirst("a")?.attr("href") ?: "") {
+                    this.name = elt.selectFirst("h3")?.text()
+                        ?.substringAfter(":")?.trim()
+                    this.season = 0
+                    this.posterUrl = elt.selectFirst("img")?.attr("src")
+                    this.data = "${elt.selectFirst("a")?.attr("href")}|||$imdbId"
+                    this.date = elt.selectFirst("span[title]")
+                        ?.selectFirst("span.line-clamp-1")
+                        ?.text()?.trim()
+                        ?.replace(Regex("\\s+"), "")
+                        ?.ifEmpty { null }
+                        ?.let { dateText ->
+                            try {
+                                SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(dateText)?.time
+                            } catch (_: Exception) { null }
+                        } ?: 0L
+                }
             }
         }
 
