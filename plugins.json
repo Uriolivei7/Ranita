@@ -81,10 +81,10 @@
         "name": "AnimeparadiseProvider"
     },
     {
-        "fileHash": "sha256-1116161a4684e564162d6b3ef23c1fb0c30accf4b8d853a8ca789b10c3930f9f",
+        "fileHash": "sha256-573bab348f7d6b01ba50c56e5ed49eca6aa08549e535ae830476fff3e9435611",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25882,
+        "fileSize": 29896,
         "status": 1,
         "language": "en",
         "authors": [
@@ -677,10 +677,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-693e9a230d6f22241883e85654fba868fb33add53eaa65c6d3730fe4a172a00a",
+        "fileHash": "sha256-b1939a87d7649d83d521c237a1eb7d1b4432a42e9b0c67756a288a0fb4204627",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 45359,
+        "fileSize": 82811,
         "status": 1,
         "language": "es",
         "authors": [
