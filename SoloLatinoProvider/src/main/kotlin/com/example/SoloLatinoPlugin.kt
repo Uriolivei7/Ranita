@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.MainAPI
 @CloudstreamPlugin
 class SoloLatinoPlugin : Plugin() {
     override fun load(context: Context) {
+        SoloLatinoProvider.pluginContext = context
         registerMainAPI(SoloLatinoProvider())
         registerExtractorAPI(VoeExtractor())
         registerExtractorAPI(VoeYipsu())
