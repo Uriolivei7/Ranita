@@ -523,30 +523,6 @@
         "jarHash": "sha256-9a0d5fd0af666470b1e3ce7274d298db37f3c5168b6068bb29b68e3c5bee4871"
     },
     {
-        "fileHash": "sha256-33473bb6c15a3ab197a4fdb7720c16684794b0b5e28904fe0d19438ce7a3b450",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 59748,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries",
-            "Cartoon",
-            "Anime"
-        ],
-        "version": 21,
-        "internalName": "PlayhubProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlayhubProvider.cs3",
-        "name": "PlayhubProvider"
-    },
-    {
         "fileHash": "sha256-4ce1877a56baa3c5bf1d2034d859a9f64da9f4522b5a1a509e548bac5450be00",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -612,28 +588,6 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/RetrotveProvider.cs3",
         "name": "RetrotveProvider"
-    },
-    {
-        "fileHash": "sha256-f50e62e32fab539e44616cca669c5f92e53af9fd4d61eb5d09f307d653869d20",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 27420,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Cartoon"
-        ],
-        "version": 21,
-        "internalName": "SeriesbiblicasProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SeriesbiblicasProvider.cs3",
-        "name": "SeriesbiblicasProvider"
     },
     {
         "fileHash": "sha256-d3461d4a1c20fa351228a1b2db9aba6ae0ccbefdd823b448e9d9fa4cd3a98292",
@@ -776,6 +730,25 @@
         "description": "Anime sub espa\u00f1ol y audio latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TokianimeProvider.cs3",
         "name": "TokianimeProvider"
+    },
+    {
+        "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
+        "fileHash": "sha256-f51d2f2b72e2af117c40781902190e99bc0c37f9bd457f1f112528675966d7d7",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 46784,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "misajimenezmx"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 5,
+        "internalName": "TvenvivoProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TvenvivoProvider.cs3",
+        "name": "TvenvivoProvider"
     },
     {
         "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
