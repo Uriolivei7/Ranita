@@ -468,27 +468,6 @@
     "fileSize": 31000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlayhubProvider.cs3",
-    "status": 1,
-    "version": 2,
-    "apiVersion": 1,
-    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-    "name": "PlayHUB",
-    "internalName": "PlayhubProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "https://www.playhubmax.com/",
-    "tvTypes": [
-      "TvSeries",
-      "Movie",
-      "Cartoon"
-    ],
-    "iconUrl": "https://i.pinimg.com/736x/ab/99/19/ab9919a3fefdd712be72f03360c21cd0.jpg",
-    "language": "mx",
-    "fileSize": 58000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MhdflixProvider.cs3",
     "status": 1,
     "version": 5,
@@ -575,27 +554,6 @@
     "fileSize": 48000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SeriesbiblicasProvider.cs3",
-    "status": 1,
-    "version": 1,
-    "apiVersion": 1,
-    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-    "name": "SeriesBiblicas",
-    "internalName": "SeriesbiblicasProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "https://seriesbiblicas.net/",
-    "tvTypes": [
-      "Cartoon",
-      "TvSeries",
-      "Movie"
-    ],
-    "iconUrl": "https://seriesbiblicas.net/wp-content/uploads/2019/01/FAVICON.png",
-    "language": "mx",
-    "fileSize": 27000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Atalayas21Provider.cs3",
     "status": 1,
     "version": 1,
@@ -631,6 +589,25 @@
       "Live"
     ],
     "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
+    "language": "mx",
+    "fileSize": 23000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TvenvivoProvider.cs3",
+    "status": 1,
+    "version": 5,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "TVenVIVO",
+    "internalName": "TvenvivoProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://www.tvenvivo2.com",
+    "tvTypes": [
+      "Live"
+    ],
+    "iconUrl": "https://www.tvenvivo2.com/imge/favicon.png",
     "language": "mx",
     "fileSize": 23000
   },
