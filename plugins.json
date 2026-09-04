@@ -732,6 +732,26 @@
         "name": "TokianimeProvider"
     },
     {
+        "iconUrl": "https://torrentio.strem.fun/images/logo_v1.png",
+        "fileHash": "sha256-588aac28ea94db1945a2a90997cd252657431cb82dbbab24667e59b6439fdbd3",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 36121,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "TorrentioProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TorrentioProvider.cs3",
+        "name": "TorrentioProvider"
+    },
+    {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
         "fileHash": "sha256-f51d2f2b72e2af117c40781902190e99bc0c37f9bd457f1f112528675966d7d7",
         "apiVersion": 1,
