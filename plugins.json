@@ -612,25 +612,6 @@
     "fileSize": 23000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/YoutubeProvider.cs3",
-    "status": 1,
-    "version": 1,
-    "apiVersion": 1,
-    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-    "name": "YouTube",
-    "internalName": "YoutubeProvider",
-    "authors": [
-      "Ranita"
-    ],
-    "description": "Plugin para YouTube",
-    "tvTypes": [
-      "Other"
-    ],
-    "iconUrl": "https://www.gstatic.com/youtube/img/branding/favicon/favicon_144x144_v2.png",
-    "language": "mx",
-    "fileSize": 154000
-  },
-  {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/GloboViewProvider.cs3",
     "status": 1,
     "version": 3,
@@ -704,6 +685,27 @@
       "Others"
     ],
     "iconUrl": "https://img.icons8.com/?size=96&id=3FDJsdSpK6cv&format=png",
+    "language": "mx",
+    "fileSize": 112000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TorrentioProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "Torrentio",
+    "internalName": "TorrentioProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Torrents vía addon Stremio Torrentio (usa reproductor torrent de CloudStream)",
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Anime"
+    ],
+    "iconUrl": "https://torrentio.strem.fun/images/logo_v1.png",
     "language": "mx",
     "fileSize": 112000
   }
