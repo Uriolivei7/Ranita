@@ -42,10 +42,11 @@ class UniqueStreamProvider : MainAPI() {
             File(appContext?.filesDir ?: File(System.getProperty("java.io.tmpdir")), "uniquestream_cache")
         }
         private const val CACHE_TTL_MS = 24L * 60 * 60 * 1000
+        private const val CACHE_VERSION = 2
     }
 
     private fun seasonCacheFile(seasonId: String): File =
-        File(diskCacheDir, "season_$seasonId.json")
+        File(diskCacheDir, "season_${CACHE_VERSION}_$seasonId.json")
 
     private fun seriesCacheFile(seriesId: String): File =
         File(diskCacheDir, "series_$seriesId.json")
@@ -614,10 +615,7 @@ class UniqueStreamProvider : MainAPI() {
 
         val hasFractional = baseEps.any { (it.episode_number ?: 0.0) % 1.0 != 0.0 }
 
-        val regulars = baseEps
-            .filterNot(isSpecialFn)
-            .sortedBy { it.episode_number ?: 0.0 }
-
+        val regulars = baseEps.filterNot(isSpecialFn)
         val specials = baseEps
             .filter(isSpecialFn)
             .sortedBy { it.episode_number ?: 0.0 }
@@ -628,7 +626,13 @@ class UniqueStreamProvider : MainAPI() {
             s.copy(episode_number = maxRegular + i + 1)
         }
 
-        if (hasFractional) {
+        val renumberNeeded = hasFractional || regulars.any { ep ->
+            val num = ep.episode_number ?: 0.0
+            val label = ep.episode
+            num < 1.0 || (label != null && label.isNotEmpty() && label.toDoubleOrNull() == null)
+        }
+
+        if (renumberNeeded) {
             val renumbered = merged.mapIndexed { i, ep -> ep.copy(episode_number = (i + 1).toDouble()) }
             episodeCache[seasonId] = renumbered
             writeSeasonCache(seasonId, renumbered)

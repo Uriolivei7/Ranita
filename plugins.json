@@ -652,7 +652,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/UniquestreamProvider.cs3",
     "status": 1,
-    "version": 4,
+    "version": 5,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeStream",
@@ -707,6 +707,6 @@
     ],
     "iconUrl": "https://torrentio.strem.fun/images/logo_v1.png",
     "language": "mx",
-    "fileSize": 112000
+    "fileSize": 34000
   }
 ]
