@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class SerieskaoPlugin : Plugin() {
     override fun load(context: Context) {
+        SerieskaoProvider.pluginContext = context
         registerMainAPI(SerieskaoProvider())
     }
 }

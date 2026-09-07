@@ -1,16 +1,13 @@
 package com.example
 
-import android.util.Base64
+import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.*
-import java.security.MessageDigest
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
+import okhttp3.Interceptor
 
 class SerieskaoProvider : MainAPI() {
     override var mainUrl = "https://serieskao.top"
@@ -29,6 +26,8 @@ class SerieskaoProvider : MainAPI() {
     private val TAG = "SeriesKao"
 
     companion object {
+        var pluginContext: Context? = null
+
         private val fixHosts = mapOf(
             "https://hglink.to" to "https://streamwish.to",
             "https://swdyu.com" to "https://streamwish.to",
@@ -55,6 +54,30 @@ class SerieskaoProvider : MainAPI() {
             result = result.replaceFirst(old, new)
         }
         return result
+    }
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        val cdnDomains = listOf("dramiyos", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou")
+        val cdnPaths = listOf("/hls2/", "/hls3/", ".urlset/")
+        return Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            val isCdn = cdnDomains.any { url.contains(it, ignoreCase = true) } ||
+                cdnPaths.any { url.contains(it, ignoreCase = true) }
+            if (!isCdn) return@Interceptor chain.proceed(request)
+
+            Log.d(TAG, "[intercept] CDN request: ${url.take(120)}")
+            val newRequest = request.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .header("Referer", extractorLink.referer)
+                .header("Origin", "https://vidhidepro.com")
+                .header("Accept", "*/*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+            val response = chain.proceed(newRequest)
+            Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type","?")} url=${url.take(100)}")
+            response
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
@@ -240,6 +263,7 @@ class SerieskaoProvider : MainAPI() {
                         }
                     }
                 } else {
+
                     val epItems = doc.select("a.episode-item")
                     Log.d(TAG, "load flat episodios HTML=${epItems.size}")
                     for ((ei, element) in epItems.withIndex()) {
@@ -300,47 +324,59 @@ class SerieskaoProvider : MainAPI() {
         if (!playerUrl.contains(mainUrl.removePrefix("https://").removePrefix("http://"))) {
             Log.d(TAG, "loadLinks embed externo: $playerUrl")
             when {
-                playerUrl.contains("xupalace.org/video/") -> {
-                    Log.d(TAG, "loadLinks xupalace video -> extrayendo go_to_playerVast")
-                    try {
-                        val xDoc = app.get(playerUrl, referer = data).document
-                        val links = xDoc.select("*[onclick*='go_to_playerVast']").mapNotNull { el ->
-                            Regex("""go_to_playerVast\('([^']+)'""").find(el.attr("onclick"))?.groupValues?.get(1)
-                        }
-                        if (links.isEmpty()) {
-                            Log.w(TAG, "loadLinks sin go_to_playerVast en xupalace")
-                            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
-                        } else {
-                            Log.d(TAG, "loadLinks xupalace links=${links.size}: $links")
-                            links.amap { link ->
-                                loadExtractor(fixHostsTitle(link), playerUrl, subtitleCallback, callback)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "loadLinks xupalace error: ${e.message}")
-                        loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
-                    }
-                }
-
-                playerUrl.contains("xupalace.org/uqlink.php") || playerUrl.contains("xupalace.org/ggtz") -> {
-                    Log.d(TAG, "loadLinks xupalace uqlink -> siguiendo iframe")
-                    try {
-                        val xDoc = app.get(playerUrl, referer = data).document
-                        val iframeSrc = xDoc.selectFirst("iframe")?.attr("src")
-                        if (iframeSrc != null) {
-                            loadExtractor(fixHostsTitle(fixUrl(iframeSrc)), playerUrl, subtitleCallback, callback)
-                        } else {
-                            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "loadLinks xupalace uqlink error: ${e.message}")
-                        loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                playerUrl.contains("embed69.org") -> {
+                    Log.d(TAG, "loadLinks embed69 externo -> extractKaoEmbed69")
+                    extractKaoEmbed69(playerUrl, data, subtitleCallback) { link ->
+                        CoroutineScope(Dispatchers.IO).launch { callback(link) }
                     }
                 }
 
                 else -> {
-                    Log.d(TAG, "loadLinks embed directo -> loadExtractor")
-                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                    Log.d(TAG, "loadLinks embed externo embeds directo -> loadExtractor")
+                    when {
+                        playerUrl.contains("xupalace.org/video/") -> {
+                            Log.d(TAG, "loadLinks xupalace video -> extrayendo go_to_playerVast")
+                            try {
+                                val xDoc = app.get(playerUrl, referer = data).document
+                                val links = xDoc.select("*[onclick*='go_to_playerVast']").mapNotNull { el ->
+                                    Regex("""go_to_playerVast\('([^']+)'""").find(el.attr("onclick"))?.groupValues?.get(1)
+                                }
+                                if (links.isEmpty()) {
+                                    Log.w(TAG, "loadLinks sin go_to_playerVast en xupalace")
+                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                } else {
+                                    Log.d(TAG, "loadLinks xupalace links=${links.size}: $links")
+                                    links.amap { link ->
+                                        loadExtractor(fixHostsTitle(link), playerUrl, subtitleCallback, callback)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "loadLinks xupalace error: ${e.message}")
+                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                            }
+                        }
+
+                        playerUrl.contains("xupalace.org/uqlink.php") || playerUrl.contains("xupalace.org/ggtz") -> {
+                            Log.d(TAG, "loadLinks xupalace uqlink -> siguiendo iframe")
+                            try {
+                                val xDoc = app.get(playerUrl, referer = data).document
+                                val iframeSrc = xDoc.selectFirst("iframe")?.attr("src")
+                                if (iframeSrc != null) {
+                                    loadExtractor(fixHostsTitle(fixUrl(iframeSrc)), playerUrl, subtitleCallback, callback)
+                                } else {
+                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "loadLinks xupalace uqlink error: ${e.message}")
+                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                            }
+                        }
+
+                        else -> {
+                            Log.d(TAG, "loadLinks embed directo -> loadExtractor")
+                            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                        }
+                    }
                 }
             }
             return@coroutineScope true
@@ -395,60 +431,13 @@ class SerieskaoProvider : MainAPI() {
                 val decrypted = decryptAESLocal(encrypted, aesKey)
                 if (decrypted != null) {
                     Log.d(TAG, "loadLinks decrypted ${embed.servername}: $decrypted")
-                    loadExtractor(fixHostsTitle(decrypted), playerUrl, subtitleCallback) { link ->
-                        CoroutineScope(Dispatchers.IO).launch {
-                            callback(newExtractorLink(
-                                "$langTag[${link.source}]",
-                                "$langTag[${link.source}]",
-                                link.url
-                            ) {
-                                this.quality = link.quality
-                                this.type = link.type
-                                this.referer = link.referer
-                                this.headers = link.headers
-                                this.extractorData = link.extractorData
-                            })
-                        }
+                    loadKaoSourceExtractor(langTag, fixHostsLinks(decrypted), playerUrl, subtitleCallback) { link ->
+                        CoroutineScope(Dispatchers.IO).launch { callback(link) }
                     }
                 }
             }
         }
         return@coroutineScope true
-    }
-
-    private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray? {
-        val md = MessageDigest.getInstance("SHA-256")
-        var nonce = 0L
-        val maxAttempts = 500000L
-        while (nonce < maxAttempts) {
-            val input = "$challenge$nonce".toByteArray(Charsets.UTF_8)
-            val hash = md.digest(input).joinToString("") { "%02x".format(it) }
-            if (hash.startsWith("000")) {
-                Log.d(TAG, "PoW nonce=$nonce hash=${hash.take(8)} attempts=$nonce")
-                return MessageDigest.getInstance("SHA-256")
-                    .digest("$challenge$nonce$salt".toByteArray(Charsets.UTF_8))
-            }
-            nonce++
-        }
-        Log.e(TAG, "PoW no solution after $maxAttempts attempts")
-        return null
-    }
-
-    private fun decryptAESLocal(encryptedBase64: String, aesKey: ByteArray): String? {
-        return try {
-            val raw = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-            if (raw.size < 17) return null
-            val iv = raw.copyOfRange(0, 16)
-            val ciphertext = raw.copyOfRange(16, raw.size)
-            if (ciphertext.size % 16 != 0) return null
-            val keySpec = SecretKeySpec(aesKey.copyOfRange(0, 32), "AES")
-            val cipher = try { Cipher.getInstance("AES/CBC/PKCS5Padding") } catch (e: Throwable) { Cipher.getInstance("AES/CBC/PKCS7PADDING") }
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(iv))
-            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-        } catch (e: Exception) {
-            Log.e(TAG, "AES error: ${e.message}")
-            null
-        }
     }
 
     data class DataLinkEntry(

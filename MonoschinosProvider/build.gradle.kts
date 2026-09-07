@@ -1,28 +1,26 @@
 // use an integer for version numbers
-version = 1
+version = 7
 
 
 cloudstream {
+    language = "mx"
     // All of these properties are optional, you can safely remove them
 
-    description = "Española (Spanish) Anime Extension"
-    language    = "es"
-    authors = listOf("Phisher98")
+    //description = "Lorem Ipsum"
+    authors = listOf("Stormunblessed")
 
     /**
-    * Status int as the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta only
-    * */
-    status = 1 // will be 3 if unspecified
+     * Status int as the following:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     * */
+    status = 0 // will be 3 if unspecified
+    tvTypes = listOf(
+        "Anime",
+        "OVA",
+    )
 
-    // List of video source types. Users are able to filter for extensions in a given category.
-    // You can find a list of available types here:
-    // https://recloudstream.github.io/cloudstream/html/app/com.lagradost.cloudstream3/-tv-type/index.html
-    tvTypes = listOf("Movie","Anime","AnimeMovie")
-    iconUrl = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png"
-
-    isCrossPlatform = false
+    iconUrl = "https://www.google.com/s2/favicons?domain=monoschinos2.com&sz=%size%"
 }

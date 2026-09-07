@@ -7,6 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class MonoschinosPlugin: Plugin() {
     override fun load(context: Context) {
+        MonoschinosProvider.pluginContext = context
         registerMainAPI(MonoschinosProvider())
     }
 }

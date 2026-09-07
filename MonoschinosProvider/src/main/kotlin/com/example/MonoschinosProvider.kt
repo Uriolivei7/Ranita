@@ -1,10 +1,13 @@
 package com.example
 
+import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import okhttp3.Interceptor
+import okhttp3.Response
 import java.net.URLEncoder
 import java.util.*
 import kotlin.collections.ArrayList
@@ -13,8 +16,9 @@ class MonoschinosProvider : MainAPI() {
     companion object {
         private val TAG = "MonosChinos"
         fun getType(t: String): TvType {
-            return if (t.contains("OVA") || t.contains("Especial")) TvType.OVA
-            else if (t.contains("Pelicula")) TvType.AnimeMovie
+            val lower = t.lowercase(Locale.ROOT)
+            return if (lower.contains("ova") || lower.contains("especial")) TvType.OVA
+            else if (lower.contains("película") || lower.contains("pelicula")) TvType.AnimeMovie
             else TvType.Anime
         }
         fun getDubStatus(title: String): DubStatus {
@@ -24,6 +28,7 @@ class MonoschinosProvider : MainAPI() {
         }
         var latestCookie: Map<String, String> = emptyMap()
         var latestToken = ""
+        var pluginContext: Context? = null
     }
 
     override var mainUrl = "https://monoschinos.st"
@@ -33,33 +38,33 @@ class MonoschinosProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
-        TvType.AnimeMovie,
-        TvType.OVA,
-        TvType.Anime,
+            TvType.AnimeMovie,
+            TvType.OVA,
+            TvType.Anime,
     )
 
     override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
         val items = ArrayList<HomePageList>()
         val urls = listOf(
-            Pair("$mainUrl/emision", "Recientes"),
-            Pair("$mainUrl/animes", "Animes"),
+                Pair("$mainUrl/emision", "Recientes"),
+                Pair("$mainUrl/animes", "Animes"),
         )
 
         items.add(
-            HomePageList(
-                "Últimos capítulos",
-                app.get(mainUrl, timeout = 120).document.select("a.card-wrap").map {
-                    val title = it.selectFirst("h3.card-title")?.text() ?: ""
-                    val poster = it.selectFirst("img.card-img")?.attr("data-src") ?: ""
-                    val href = it.attr("href")
-                    val url = href.replace("ver/", "anime/")
-                        .replace(Regex("episodio-\\d+"), "sub-espanol")
-                    val epNum = Regex("""episodio-(\d+)""").find(href)?.groupValues?.get(1)?.toIntOrNull()
-                    newAnimeSearchResponse(title, url) {
-                        this.posterUrl = fixUrl(poster)
-                        addDubStatus(getDubStatus(title), epNum)
-                    }
-                }, isHorizontalImages = true)
+                HomePageList(
+                        "Últimos capítulos",
+                        app.get(mainUrl, timeout = 120).document.select("a.card-wrap").map {
+                            val title = it.selectFirst("h3.card-title")?.text() ?: ""
+                            val poster = it.selectFirst("img.card-img")?.attr("data-src") ?: ""
+                            val href = it.attr("href")
+                            val url = href.replace("ver/", "anime/")
+                                    .replace(Regex("episodio-\\d+"), "sub-espanol")
+                            val epNum = Regex("""episodio-(\d+)""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                            newAnimeSearchResponse(title, url) {
+                                this.posterUrl = fixUrl(poster)
+                                addDubStatus(getDubStatus(title), epNum)
+                            }
+                        }, isHorizontalImages = true)
         )
 
         urls.amap { (url, name) ->
@@ -67,9 +72,12 @@ class MonoschinosProvider : MainAPI() {
             val home = app.get(url, timeout = 120).document.select("a.card-wrap").map {
                 val title = it.selectFirst("h3.card-title")?.text() ?: ""
                 val poster = it.selectFirst("img.card-img")?.attr("data-src") ?: ""
+                val year = it.selectFirst("div.mt-1 span")?.text()?.toIntOrNull()
+                val typeBadge = it.select("div.absolute.top-2 span").firstOrNull()?.text() ?: it.select("div.absolute.top-2").firstOrNull()?.text() ?: ""
 
-                newAnimeSearchResponse(title, fixUrl(it.attr("href"))) {
+                newAnimeSearchResponse(title, fixUrl(it.attr("href")), getType(typeBadge)) {
                     this.posterUrl = fixUrl(poster)
+                    this.year = year
                     addDubStatus(getDubStatus(title))
                 }
             }
@@ -99,9 +107,12 @@ class MonoschinosProvider : MainAPI() {
                     val title = el.selectFirst("h3.card-title")?.text() ?: return@mapNotNull null
                     val href = el.attr("href") ?: return@mapNotNull null
                     val image = el.selectFirst("img.card-img")?.attr("data-src") ?: el.selectFirst("img.card-img")?.attr("src") ?: ""
-                    Log.d(TAG, "search: item title='$title' href=$href")
-                    newAnimeSearchResponse(title, fixUrl(href), TvType.Anime) {
+                    val year = el.selectFirst("div.mt-1 span")?.text()?.toIntOrNull()
+                    val typeBadge = el.select("div.absolute.top-2 span").firstOrNull()?.text() ?: el.select("div.absolute.top-2").firstOrNull()?.text() ?: ""
+                    Log.d(TAG, "search: item title='$title' href=$href year=$year type='$typeBadge'")
+                    newAnimeSearchResponse(title, fixUrl(href), getType(typeBadge)) {
                         this.posterUrl = fixUrl(image)
+                        this.year = year
                         addDubStatus(if (title.contains("Latino") || title.contains("Castellano")) DubStatus.Dubbed else DubStatus.Subbed)
                     }
                 } catch (e: Exception) {
@@ -162,30 +173,33 @@ class MonoschinosProvider : MainAPI() {
             "En emisión" -> ShowStatus.Ongoing
             else -> null
         }
-        Log.d(TAG, "load: title='$title' type='$type' status=$status poster=$poster")
+        val year = doc.select("dd.text-right").mapNotNull { dd ->
+            Regex("(\\d{4})").find(dd.text())?.groupValues?.get(1)?.toIntOrNull()
+        }.firstOrNull()
+        Log.d(TAG, "load: title='$title' type='$type' status=$status year=$year poster=$poster")
 
         val caplistHost = caplist.substringAfter("://").substringBefore("/")
         Log.d(TAG, "load: POST a caplist (host=$caplistHost) con token='${token.take(20)}' y ${cookies.size} cookies")
         val capJson = app.post(caplist,
-            headers = mapOf(
-                "Host" to caplistHost,
-                "User-Agent" to USER_AGENT,
-                "Accept" to "application/json, text/javascript, */*; q=0.01",
-                "Accept-Language" to "en-US,en;q=0.5",
-                "Referer" to url,
-                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                "X-Requested-With" to "XMLHttpRequest",
-                "Origin" to mainUrl,
-                "DNT" to "1",
-                "Alt-Used" to caplistHost,
-                "Connection" to "keep-alive",
-                "Sec-Fetch-Dest" to "empty",
-                "Sec-Fetch-Mode" to "cors",
-                "Sec-Fetch-Site" to "same-origin",
-                "TE" to "trailers"
-            ),
-            cookies = cookies,
-            data = mapOf("_token" to token)).parsed<CapList>()
+                headers = mapOf(
+                        "Host" to caplistHost,
+                        "User-Agent" to USER_AGENT,
+                        "Accept" to "application/json, text/javascript, */*; q=0.01",
+                        "Accept-Language" to "en-US,en;q=0.5",
+                        "Referer" to url,
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Origin" to mainUrl,
+                        "DNT" to "1",
+                        "Alt-Used" to caplistHost,
+                        "Connection" to "keep-alive",
+                        "Sec-Fetch-Dest" to "empty",
+                        "Sec-Fetch-Mode" to "cors",
+                        "Sec-Fetch-Site" to "same-origin",
+                        "TE" to "trailers"
+                ),
+                cookies = cookies,
+               data = mapOf("_token" to token)).parsed<CapList>()
         Log.d(TAG, "load: POST OK, eps=${capJson.eps?.size ?: 0} caps=${capJson.caps?.size ?: 0}")
 
         val allEpisodes = capJson.eps ?: capJson.caps ?: emptyList()
@@ -211,23 +225,91 @@ class MonoschinosProvider : MainAPI() {
             addEpisodes(DubStatus.Subbed, epList)
             showStatus = status
             plot = description
+            this.year = year
             tags = genres
         }
     }
 
     override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+            data: String,
+            isCasting: Boolean,
+            subtitleCallback: (SubtitleFile) -> Unit,
+            callback: (ExtractorLink) -> Unit
     ): Boolean {
+        var found = false
         app.get(data).document.select(".play-video").amap {
             val encodedurl = it.attr("data-player")
             val urlDecoded = base64Decode(encodedurl)
             val url = (urlDecoded).replace("https://monoschinos2.com/reproductor?url=", "")
-                .replace("https://sblona.com","https://watchsb.com").replace("https://swdyu.com","https://streamwish.to")
-            loadExtractor(url, mainUrl, subtitleCallback, callback)
+                    .replace("https://sblona.com","https://watchsb.com").replace("https://swdyu.com","https://streamwish.to")
+
+            val host = url.substringAfter("://").substringBefore("/")
+            Log.d(TAG, "loadLinks: server $host -> $url")
+            var serverEmitted = false
+            val countingCallback: (ExtractorLink) -> Unit = { link ->
+                serverEmitted = true
+                callback(link)
+            }
+            when {
+                host.contains("luluvdo") -> {
+                    MonosLuluvdo().getUrl(url, mainUrl, subtitleCallback, countingCallback)
+                }
+                host.contains("mixdrop") -> {
+                    MonosMixdrop().getUrl(url, mainUrl, subtitleCallback, countingCallback)
+                }
+                host.contains("voe") -> {
+                    MonosVoe().getUrl(url, mainUrl, subtitleCallback, countingCallback)
+                }
+                host.contains("filemoon") || host.contains("byse") -> {
+                    MonosFilemoon().getUrl(url, mainUrl, subtitleCallback, countingCallback)
+                }
+                host.contains("mega") -> {
+                    Log.w(TAG, "loadLinks: mega.nz requiere proxy AES local, omitido: $host")
+                }
+                else -> {
+                    val byseHandled = MonosFilemoon().tryResolveByseGeneric(url, mainUrl, subtitleCallback, countingCallback)
+                    if (!byseHandled) {
+                        loadExtractor(url, mainUrl, subtitleCallback, countingCallback)
+                    }
+                }
+            }
+            found = found || serverEmitted
         }
-        return true
+        return found
+    }
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        return Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            val isCdn = url.contains("cdn-tnmr", ignoreCase = true) ||
+                url.contains("mxcontent", ignoreCase = true) ||
+                url.contains("cloudwindow-route", ignoreCase = true) ||
+                url.contains(".urlset", ignoreCase = true) ||
+                url.contains("abyss", ignoreCase = true) ||
+                url.contains("filemoon", ignoreCase = true) ||
+                url.contains(".sx/", ignoreCase = true) ||
+                url.contains("/hls2/", ignoreCase = true) ||
+                url.contains("/hls/", ignoreCase = true)
+            if (!isCdn) return@Interceptor chain.proceed(request)
+
+            val referer = when {
+                url.contains("cdn-tnmr") -> "https://luluvdo.com/"
+                url.contains("mxcontent") -> "https://mixdrop.top/"
+                url.contains("cloudwindow-route") -> "https://eugenemakedraw.com/"
+                else -> extractorLink.referer
+            }
+            Log.d(TAG, "[intercept] CDN request: ${url.take(120)} referer=$referer")
+            val newRequest = request.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .header("Referer", referer)
+                .header("Origin", referer.removeSuffix("/"))
+                .header("Accept", "*/*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+            val response = chain.proceed(newRequest)
+            Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type","?")} url=${url.take(100)}")
+            response
+        }
     }
 }
