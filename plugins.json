@@ -435,24 +435,22 @@
         "name": "MhdflixProvider"
     },
     {
-        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/animeav1.png",
-        "fileHash": "sha256-d16ffd1c3921794b7c29aca1c25ec45dbcb93fa21394dbfcb3b6f81d008324c3",
+        "iconUrl": "https://www.google.com/s2/favicons?domain=monoschinos2.com&sz=%size%",
+        "fileHash": "sha256-870f05b17ddb0840792e7127611edc0bab24b25d8d3dbf39ff325dde9a2056eb",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21114,
-        "status": 1,
-        "language": "es",
+        "fileSize": 76925,
+        "status": 0,
+        "language": "mx",
         "authors": [
-            "Phisher98"
+            "Stormunblessed"
         ],
         "tvTypes": [
-            "Movie",
             "Anime",
-            "AnimeMovie"
+            "OVA"
         ],
-        "version": 1,
+        "version": 7,
         "internalName": "MonoschinosProvider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/MonoschinosProvider.cs3",
         "name": "MonoschinosProvider"
     },
@@ -590,10 +588,10 @@
         "name": "RetrotveProvider"
     },
     {
-        "fileHash": "sha256-d3461d4a1c20fa351228a1b2db9aba6ae0ccbefdd823b448e9d9fa4cd3a98292",
+        "fileHash": "sha256-48f6dda0d00f8ba0f9678b1e91894d639f79aba9963ca44306fcfca830c5b415",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 32297,
+        "fileSize": 88752,
         "status": 1,
         "language": "es",
         "authors": [
