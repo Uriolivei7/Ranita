@@ -79,11 +79,22 @@ class SyncPlugin : Plugin() {
     }
 
     private fun refreshResumeShelf() {
-        val act = activity ?: return
+        val act = activity ?: run {
+            log("[ui] refreshResumeShelf: sin activity")
+            return
+        }
         runCatching {
-            androidx.lifecycle.ViewModelProvider(act)[
+            val hvm = androidx.lifecycle.ViewModelProvider(act)[
                 com.lagradost.cloudstream3.ui.home.HomeViewModel::class.java
-            ].reloadStored()
+            ]
+            if (hvm != null) {
+                log("[ui] refreshResumeShelf: ok ${hvm.hashCode()}")
+                hvm.reloadStored()
+            } else {
+                log("[ui] refreshResumeShelf: hvm null")
+            }
+        }.onFailure {
+            log("[ui] refreshResumeShelf: fallo ${it}")
         }
     }
 
