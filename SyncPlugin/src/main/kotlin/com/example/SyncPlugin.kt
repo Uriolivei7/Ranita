@@ -93,12 +93,20 @@ class SyncPlugin : Plugin() {
                 val probe = SyncBackup.probeResumeId
                 SyncBackup.probeResumeId = null
                 if (probe != null) {
+                    val account = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()
+                    val expectedKey = "$account/video_pos_dur/$probe"
+                    val keyEscrito = SyncBackup.probeResumeKey
+                    val valEscrito = SyncBackup.probeResumeValue
                     val pos = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(probe)
-                    if (pos != null) {
-                        log("[ui] probe $probe: getViewPos=${pos.position}/${pos.duration} (${if (pos.duration > 0) (100 * pos.position / pos.duration) else 0}%)")
-                    } else {
-                        log("[ui] probe $probe: getViewPos=null")
-                    }
+                    val valEnClaveEsperada = runCatching<String?> {
+                        act.getSharedPreferences("rebuild_preference", android.content.Context.MODE_PRIVATE)
+                            .getString(expectedKey, null)
+                    }.getOrNull()
+                    log(
+                        "[ui] probe $probe: cuentaApp='$account' keyApp='$expectedKey' valApp=${valEnClaveEsperada?.take(70)} " +
+                            "keyEscrita='$keyEscrito' valEscrita=${valEscrito?.take(70)} " +
+                            if (pos != null) "getViewPos=${pos.position}/${pos.duration}" else "getViewPos=null"
+                    )
                 }
             } else {
                 log("[ui] refreshResumeShelf: hvm null")
