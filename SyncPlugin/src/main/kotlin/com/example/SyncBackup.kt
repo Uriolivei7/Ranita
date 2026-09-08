@@ -2,7 +2,9 @@ package com.example
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.lagradost.cloudstream3.utils.DataStoreHelper
 import java.security.MessageDigest
 import kotlin.math.abs
 
@@ -53,6 +55,61 @@ object SyncBackup {
         return !nonTransferableKeys.any { lower.contains(it.lowercase()) }
     }
 
+    private val accountScopedSections = setOf(
+        "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
+        "result_season", "result_dub", "result_episode", "download_header_cache",
+    )
+
+    private class ScopedKey(
+        val account: String,
+        val section: String,
+        val id: String,
+    )
+
+    private fun scopedKey(key: String): ScopedKey? {
+        val parts = key.split("/")
+        if (parts.size < 3) return null
+        val section = parts[1]
+        if (section !in accountScopedSections) return null
+        return ScopedKey(parts[0], section, parts[2])
+    }
+
+    /** keyIndex del perfil activo de este dispositivo (lo almacena CloudStream). */
+    fun activeAccount(context: Context): String? {
+        val prefs = context.getSharedPrefs()
+        return try {
+            if (prefs.contains("data_store_helper/account_key_index")) {
+                prefs.getInt("data_store_helper/account_key_index", -1).let {
+                    if (it >= 0) it.toString() else prefs.getString("data_store_helper/account_key_index", null)
+                }
+            } else {
+                prefs.getString("data_store_helper/account_key_index", null)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Solo deja pasar claves de re-watch del perfil ACTIVO de este dispositivo.
+     * Las de otros perfiles (keyIndex distinto) NUNCA viajan, así el receptor
+     * no puede mezclarlas con su propio perfil activo.
+     */
+    private fun isActiveResumeKey(key: String, activeAccount: String?): Boolean {
+        val sc = scopedKey(key) ?: return true
+        if (activeAccount == null) return false
+        if (sc.account == activeAccount) return true
+        return sc.account.startsWith("Account(", ignoreCase = true) &&
+            Regex("keyIndex=(\\d+)").find(sc.account)?.groupValues?.get(1) == activeAccount
+    }
+
+    /** Re-escribe el keyIndex de un re-watch entrante al perfil activo local. */
+    private fun remapResumeKey(key: String, localActive: String?): String {
+        val sc = scopedKey(key) ?: return key
+        if (localActive == null || sc.account == localActive) return key
+        return "$localActive/${sc.section}/${sc.id}"
+    }
+
     fun classifyKey(key: String): SyncCategory? {
         val lowerKey = key.lowercase()
         if (!key.isTransferable()) return null
@@ -89,17 +146,20 @@ object SyncBackup {
         context: Context,
         enabled: Set<SyncCategory>,
     ): BackupFile {
+        val activeAccount = activeAccount(context)
         val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, entry.value, resumeIndex)
+                isResumeRelevant(entry.key, entry.value, resumeIndex) &&
+                isActiveResumeKey(entry.key, activeAccount)
         }
         val allSettings = context.getDefaultSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, entry.value, resumeIndex)
+                isResumeRelevant(entry.key, entry.value, resumeIndex) &&
+                isActiveResumeKey(entry.key, activeAccount)
         }
         val deletions = pruneTombstones(SyncStorage.tombstones())
-            .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled }
+            .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled && isActiveResumeKey(key, activeAccount) }
         return BackupFile(
             datastore = buildVars(allData),
             settings = buildVars(allSettings),
@@ -221,29 +281,31 @@ object SyncBackup {
         val dataPrefs = context.getSharedPrefs()
         val settingsPrefs = context.getDefaultSharedPrefs()
         val now = SyncTime.nowEpochSeconds()
+        val localActive = activeAccount(context)
         val dataRemove = mutableListOf<String>()
         val settingsRemove = mutableListOf<String>()
         val keepKeys = mutableSetOf<String>()
         if (mergedBackup != null) {
-            mergedBackup.datastore.string?.let { keepKeys += it.keys }
-            mergedBackup.datastore.bool?.let { keepKeys += it.keys }
-            mergedBackup.datastore.int?.let { keepKeys += it.keys }
-            mergedBackup.datastore.long?.let { keepKeys += it.keys }
-            mergedBackup.datastore.float?.let { keepKeys += it.keys }
-            mergedBackup.settings.string?.let { keepKeys += it.keys }
-            mergedBackup.settings.bool?.let { keepKeys += it.keys }
-            mergedBackup.settings.int?.let { keepKeys += it.keys }
-            mergedBackup.settings.long?.let { keepKeys += it.keys }
-            mergedBackup.settings.float?.let { keepKeys += it.keys }
+            mergedBackup.datastore.string?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.datastore.bool?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.datastore.int?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.datastore.long?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.datastore.float?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.settings.string?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.bool?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.int?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.long?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.float?.let { keys -> keepKeys += keys.keys }
         }
         for ((key, delTs) in deletions) {
-            if (!key.isTransferable() || classifyKey(key) !in enabled) continue
+            val k = remapResumeKey(key, localActive)
+            if (!k.isTransferable() || classifyKey(k) !in enabled) continue
             if (now - delTs >= TOMBSTONE_TTL_SECONDS) continue
-            if (key in keepKeys) continue
-            if (dataPrefs.contains(key)) {
-                if (dataTimestamp(dataPrefs.all[key]) < delTs) dataRemove.add(key)
-            } else if (settingsPrefs.contains(key)) {
-                if (dataTimestamp(settingsPrefs.all[key]) < delTs) settingsRemove.add(key)
+            if (k in keepKeys) continue
+            if (dataPrefs.contains(k)) {
+                if (dataTimestamp(dataPrefs.all[k]) < delTs) dataRemove.add(k)
+            } else if (settingsPrefs.contains(k)) {
+                if (dataTimestamp(settingsPrefs.all[k]) < delTs) settingsRemove.add(k)
             }
         }
         if (dataRemove.isNotEmpty()) {
@@ -275,19 +337,49 @@ object SyncBackup {
     ) {
         val prefs = if (isSettings) context.getDefaultSharedPrefs() else context.getSharedPrefs()
         val editor = prefs.edit()
+        val localActive = if (isSettings) null else activeAccount(context)
 
-        vars.bool?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putBoolean(k, v) }
-        vars.int?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putInt(k, v) }
-        vars.float?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putFloat(k, v) }
-        vars.long?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putLong(k, v) }
-        vars.stringSet?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putStringSet(k, v) }
+        vars.bool?.forEach { (k, v) ->
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putBoolean(mk, v)
+        }
+        vars.int?.forEach { (k, v) ->
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putInt(mk, v)
+        }
+        vars.float?.forEach { (k, v) ->
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putFloat(mk, v)
+        }
+        vars.long?.forEach { (k, v) ->
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putLong(mk, v)
+        }
+        vars.stringSet?.forEach { (k, v) ->
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putStringSet(mk, v)
+        }
         vars.string?.forEach { (k, v) ->
-            if (k.isTransferable() && classifyKey(k) in enabled) {
-                val localVal = prefs.getString(k, null)
+            val mk = remapResumeKey(k, localActive)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) {
+                val localVal = prefs.getString(mk, null)
                 val cloudTs = SyncKeyPath.extractTimestamp(v)
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
                 if (localVal == null || SyncTime.shouldRestore(cloudTs, localTs)) {
-                    editor.putString(k, v)
+                    editor.putString(mk, v)
+                    if (mk.contains("video_pos_dur")) {
+                        val pos = resumePosition(v)
+                        val dur = resumeDuration(v)
+                        if (pos >= 0.0 && dur > 0.0) {
+                            val id = mk.split("/").last().toIntOrNull()
+                            if (id != null) {
+                                runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
+                                    .onSuccess {
+                                        Log.i("SyncStream", "[rw] restore bajo $id ${(100 * pos / dur).toInt()}%")
+                                    }
+                            }
+                        }
+                    }
                 }
             }
         }
