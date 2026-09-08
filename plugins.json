@@ -653,10 +653,10 @@
         "name": "SoloLatinoProvider"
     },
     {
-        "fileHash": "sha256-b99b011216a3e0eb2b69f96ee142c6f15f7d6ef4f21137f6af1b5daec1d4795b",
+        "fileHash": "sha256-5bd9d0369bfc8f8936876b27b7cebc2d1a946b73cec9bb548645655c56f6761f",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 116660,
+        "fileSize": 117244,
         "status": 1,
         "language": "es",
         "authors": [
@@ -665,7 +665,7 @@
         "tvTypes": [
             "Others"
         ],
-        "version": 5,
+        "version": 6,
         "internalName": "SyncPlugin",
         "description": "Sincroniza favoritos, progreso, historial, repos y ajustes entre tus dispositivos (via GitHub, sin servidor)",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SyncPlugin.cs3",
@@ -789,42 +789,5 @@
         "description": "Espa\u00f1ola (Spanish) Anime Extension",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/UniquestreamProvider.cs3",
         "name": "UniquestreamProvider"
-    },
-    {
-        "fileHash": "sha256-ef905861e8568e1ee43b1efe7a55fbff2d2015cf08c9de02fcd2401543556b56",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25883,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
-        ],
-        "tvTypes": [
-            "TvSeries",
-            "Cartoon",
-            "Anime"
-        ],
-        "version": 21,
-        "internalName": "VerseriesonlineProvider",
-        "description": "Contenido en Latino",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VerseriesonlineProvider.cs3",
-        "name": "VerseriesonlineProvider"
-    },
-    {
-        "fileHash": "sha256-154aacd61b1a8d4b54686e1c16539df1855580b701a9b2fcd183f1911d1b6a42",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 159235,
-        "status": 3,
-        "authors": [
-            "Ranita"
-        ],
-        "version": 1,
-        "internalName": "YoutubeProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/YoutubeProvider.cs3",
-        "name": "YoutubeProvider"
     }
 ]
