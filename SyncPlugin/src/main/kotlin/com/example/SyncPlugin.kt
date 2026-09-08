@@ -94,7 +94,8 @@ class SyncPlugin : Plugin() {
                 SyncBackup.probeResumeId = null
                 if (probe != null) {
                     val account = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()
-                    val expectedKey = "$account/video_pos_dur/$probe"
+                    val keyIndex = SyncBackup.currentAccount()
+                    val expectedKey = "$keyIndex/video_pos_dur/$probe"
                     val keyEscrito = SyncBackup.probeResumeKey
                     val valEscrito = SyncBackup.probeResumeValue
                     val pos = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(probe)
@@ -103,7 +104,7 @@ class SyncPlugin : Plugin() {
                             .getString(expectedKey, null)
                     }.getOrNull()
                     log(
-                        "[ui] probe $probe: cuentaApp='$account' keyApp='$expectedKey' valApp=${valEnClaveEsperada?.take(70)} " +
+                        "[ui] probe $probe: keyIndex=$keyIndex cuentaApp='$account' keyApp='$expectedKey' valApp=${valEnClaveEsperada?.take(70)} " +
                             "keyEscrita='$keyEscrito' valEscrita=${valEscrito?.take(70)} " +
                             if (pos != null) "getViewPos=${pos.position}/${pos.duration}" else "getViewPos=null"
                     )
@@ -119,7 +120,7 @@ class SyncPlugin : Plugin() {
 
     private fun probeStorage(act: Context, probeId: Int) {
         runCatching {
-            val dir = java.io.File(act.dataDir, "shared_prefs")
+            val dir = java.io.File(act.applicationInfo.dataDir, "shared_prefs")
             val files = dir.listFiles()?.filter { it.extension == "xml" } ?: emptyList()
             val hits = mutableListOf<String>()
             val probeHits = mutableListOf<String>()
@@ -159,7 +160,7 @@ class SyncPlugin : Plugin() {
                     "$it=${(pp.all[it] as? String)?.take(60)}"
                 }
             )
-            val filesDir = java.io.File(act.dataDir, "files")
+            val filesDir = java.io.File(act.applicationInfo.dataDir, "files")
             val fs = filesDir.listFiles()?.filter { it.isFile }
                 ?.map { "${it.name}(${it.length()})" }?.take(25) ?: emptyList()
             log("[ui] filesDir: ${fs.joinToString(" , ").ifEmpty { "vacio" }}")

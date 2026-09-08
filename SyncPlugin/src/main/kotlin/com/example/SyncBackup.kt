@@ -25,6 +25,12 @@ object SyncBackup {
         "result_favorites_state_data", "result_watch_state", "result_watch_state_data",
     )
 
+    /** Descarta datos por-cuenta obsoletos inyectados por versiones anteriores (prefijos "Account(...)"). */
+    private val RESUME_SECTIONS = setOf(
+        "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
+        "result_season", "result_dub", "result_episode",
+    )
+
     private fun String.isAccountLike(): Boolean =
         all { it.isDigit() } || startsWith("Account(", ignoreCase = true)
 
@@ -39,8 +45,20 @@ object SyncBackup {
         return localAccount + "/" + key.substring(parts[0].length + 1)
     }
 
-    private fun currentAccount(): String? =
-        runCatching { DataStoreHelper.getCurrentAccount()?.toString() }.getOrNull()
+    /** Prefijo de cuenta que CloudStream usa en las claves: el keyIndex activo. */
+    fun currentAccount(): String? {
+        try {
+            val acc = DataStoreHelper.getCurrentAccount() ?: return null
+            val byReflection = runCatching {
+                val cls = Class.forName("com.lagradost.cloudstream3.utils.DataStoreHelper\$Account")
+                if (cls.isInstance(acc)) cls.getMethod("getKeyIndex").invoke(acc)?.toString() else null
+            }.getOrNull()
+            if (!byReflection.isNullOrBlank()) return byReflection
+            return Regex("keyIndex=(\\d+)").find(acc.toString())?.groupValues?.get(1)
+        } catch (t: Throwable) {
+            return null
+        }
+    }
 
     var probeResumeId: Int? = null
     var probeResumeKey: String? = null
@@ -340,6 +358,15 @@ object SyncBackup {
                         if (mk.contains("video_pos_dur")) {
                             val pos = resumePosition(v)
                             val dur = resumeDuration(v)
+                            if (dur > 0.0) {
+                                runCatching {
+                                    DataStoreHelper.setViewPos(
+                                        mk.split("/").last().toInt(),
+                                        pos.toLong(),
+                                        dur.toLong(),
+                                    )
+                                }
+                            }
                             if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur) {
                                 if (lowBars.size < 10) lowBars.add("${mk.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
                                 if (probeResumeId == null) {
@@ -356,9 +383,28 @@ object SyncBackup {
             }
         }
         editor.apply()
+        if (!isSettings) cleanStaleKeys(context, prefs, localAccount)
         if (lowBars.isNotEmpty() || changedResume.isNotEmpty()) {
             Log.i("SyncStream", "[rw] restore: bajos=${lowBars.joinToString()} resume=${changedResume.joinToString()}")
         }
+    }
+
+    private fun cleanStaleKeys(context: Context, prefs: SharedPreferences, localAccount: String?) {
+        val stale = prefs.all.keys.filter { k ->
+            if (k.contains("video_pos_dur/999999001")) return@filter true
+            val parts = k.split('/')
+            if (parts.size < 2) return@filter false
+            val sec = parts[1].lowercase()
+            if (!ACCOUNT_SCOPED_SECTIONS.contains(sec)) return@filter false
+            when {
+                parts[0].startsWith("Account(", ignoreCase = true) -> true
+                parts[0].isAccountLike() && parts[0] != localAccount -> sec in RESUME_SECTIONS
+                else -> false
+            }
+        }
+        if (stale.isEmpty()) return
+        prefs.edit().apply { stale.forEach { remove(it) } }.apply()
+        Log.i("SyncStream", "[rw] limpieza: eliminadas ${stale.size} claves obsoletas")
     }
 
     fun isEmpty(backupFile: BackupFile?): Boolean {
