@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.security.MessageDigest
 import kotlin.math.abs
@@ -278,6 +279,8 @@ object SyncBackup {
         vars.float?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putFloat(k, v) }
         vars.long?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putLong(k, v) }
         vars.stringSet?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putStringSet(k, v) }
+        var lowBars = mutableListOf<String>()
+        var changedResume = mutableListOf<String>()
         vars.string?.forEach { (k, v) ->
             if (k.isTransferable() && classifyKey(k) in enabled) {
                 val localVal = prefs.getString(k, null)
@@ -285,10 +288,24 @@ object SyncBackup {
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
                 if (localVal == null || SyncTime.shouldRestore(cloudTs, localTs)) {
                     editor.putString(k, v)
+                    if (SyncCategory.RESUME_WATCHING in enabled) {
+                        if (k.contains("video_pos_dur")) {
+                            val pos = resumePosition(v)
+                            val dur = resumeDuration(v)
+                            if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur && lowBars.size < 10) {
+                                lowBars.add("${k.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
+                            }
+                        } else if (k.contains("result_resume_watching_2") && localVal != v && changedResume.size < 10) {
+                            changedResume.add("${k.split("/").lastOrNull()}=ep${resumeEpisodeId(v)}")
+                        }
+                    }
                 }
             }
         }
         editor.apply()
+        if (lowBars.isNotEmpty() || changedResume.isNotEmpty()) {
+            Log.i("SyncStream", "[rw] restore: bajos=${lowBars.joinToString()} resume=${changedResume.joinToString()}")
+        }
     }
 
     fun isEmpty(backupFile: BackupFile?): Boolean {
