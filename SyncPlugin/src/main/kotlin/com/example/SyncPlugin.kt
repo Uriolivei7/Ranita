@@ -92,19 +92,6 @@ class SyncPlugin : Plugin() {
         toastPushSync()
     }
 
-    /** Recarga el estante "Continuar Viendo" desde el datastore para reflejar el progreso restaurado. */
-    private fun refreshResumeShelf() {
-        val act = activity ?: return
-        runCatching {
-            val hvm = androidx.lifecycle.ViewModelProvider(act)[
-                com.lagradost.cloudstream3.ui.home.HomeViewModel::class.java
-            ]
-            hvm.reloadStored()
-        }.onFailure {
-            log("[ui] refreshResumeShelf: fallo ${it}")
-        }
-    }
-
     companion object {
         private const val TAG = "SyncStream"
     }
@@ -349,7 +336,7 @@ class SyncPlugin : Plugin() {
                 log("[restore] sin cambios pendientes")
             } else {
                 isRestoring = true
-                val candidates = mutableMapOf<SyncCategory, MutableList<Triple<SyncDevice, BackupFile, Map<String, String>>>>()
+                val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
@@ -377,7 +364,7 @@ class SyncPlugin : Plugin() {
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
-                        candidates.getOrPut(cat) { mutableListOf() }.add(Triple(other, cloudCat, SyncBackup.sourceAccounts(cloudBackup)))
+                        candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
                     }
                 }
                 if (consumedNow.isNotEmpty()) {
@@ -395,11 +382,11 @@ class SyncPlugin : Plugin() {
                     for (cat in enabledRestore) {
                         val list = candidates[cat] ?: continue
                         val best = list.maxWithOrNull(
-                            compareBy<Triple<SyncDevice, BackupFile, Map<String, String>>> {
+                            compareBy<Pair<SyncDevice, BackupFile>> {
                                 SyncBackup.getBackupFileKeys(it.second).size
                             }.thenBy { it.first.updatedAt }
                         ) ?: continue
-                        val (source, cloudCat, srcAccounts) = best
+                        val (source, cloudCat) = best
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
                             localCat, cloudCat,
@@ -408,7 +395,7 @@ class SyncPlugin : Plugin() {
                         )
                         if (merged != localCat) {
                             log("[restore] $cat: cambio detectado desde ${source.name}")
-                            SyncBackup.restore(appCtx, merged, setOf(cat), srcAccounts)
+                            SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {
                                 SyncCategory.SETTINGS -> restoredSettings = true
@@ -444,7 +431,6 @@ class SyncPlugin : Plugin() {
                             }
                             if (restoredResume) {
                                 MainActivity.reloadHomeEvent(true)
-                                refreshResumeShelf()
                             }
                             if (restoredBookmarks) {
                                 MainActivity.reloadLibraryEvent(true)
