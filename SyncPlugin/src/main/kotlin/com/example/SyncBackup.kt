@@ -14,9 +14,6 @@ object SyncBackup {
 
     private const val POSITION_LEAD_SECONDS = 2.0
 
-    /** Ventana en la que una posición menor tras un completado cuenta como re-watch genuino. */
-    private const val COMPLETION_GRACE_SECONDS = 1800L
-
     private val resumeMapper = ObjectMapper()
 
     val nonTransferableKeys = listOf(
@@ -516,30 +513,6 @@ object SyncBackup {
                         return if (cloudTs >= localTs) Winner.CLOUD else Winner.LOCAL
                     }
                 }
-            }
-
-            val localPos = resumePosition(localVal)
-            val cloudPos = resumePosition(cloudVal)
-            val localDone = isCompletedValue(localPos, resumeDuration(localVal))
-            val cloudDone = isCompletedValue(cloudPos, resumeDuration(cloudVal))
-
-            if (localPos >= 0.0 && cloudPos >= 0.0 && localDone != cloudDone) {
-                val doneIsCloud = cloudDone
-                val doneTs = if (cloudDone) cloudTs else localTs
-                val incompleteTs = if (cloudDone) localTs else cloudTs
-                if (incompleteTs <= doneTs) {
-                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
-                }
-                if (incompleteTs - doneTs > COMPLETION_GRACE_SECONDS) {
-                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
-                }
-            }
-
-            if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) <= POSITION_LEAD_SECONDS) {
-                if (localDone != cloudDone) {
-                    return if (cloudDone) Winner.CLOUD else Winner.LOCAL
-                }
-                return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
             }
         }
 
