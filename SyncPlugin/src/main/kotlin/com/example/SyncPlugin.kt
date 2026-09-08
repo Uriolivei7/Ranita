@@ -146,6 +146,31 @@ class SyncPlugin : Plugin() {
                     "ultimaVideoPosDur=${firstSample ?: "ninguna"}"
             )
             log("[ui] storage-files: ${hits.joinToString(" ; ").ifEmpty { "nada" }}")
+            val pp = act.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
+            val vpKeys = pp.all.keys.filter { it.contains("video_pos_dur") }.take(4)
+            val rwKeys = pp.all.keys.filter { it.contains("result_resume_watching_2") }.take(4)
+            log(
+                "[ui] vpKeys: " + vpKeys.joinToString(" ;; ") {
+                    "$it=${(pp.all[it] as? String)?.take(60)}"
+                }
+            )
+            log(
+                "[ui] rwKeys: " + rwKeys.joinToString(" ;; ") {
+                    "$it=${(pp.all[it] as? String)?.take(60)}"
+                }
+            )
+            val filesDir = java.io.File(act.dataDir, "files")
+            val fs = filesDir.listFiles()?.filter { it.isFile }
+                ?.map { "${it.name}(${it.length()})" }?.take(25) ?: emptyList()
+            log("[ui] filesDir: ${fs.joinToString(" , ").ifEmpty { "vacio" }}")
+            val testId = 999999001
+            com.lagradost.cloudstream3.utils.DataStoreHelper.setViewPos(testId, 1234L, 567890L)
+            val readBack = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(testId)
+            val testKey = pp.all.keys.firstOrNull { it.contains("video_pos_dur/$testId") }
+            log(
+                "[ui] apiTest: getViewPos(999999001)=${readBack?.let { "${it.position}/${it.duration}" } ?: "null"}" +
+                    " testKey=${testKey?.take(120) ?: "no-en-rebuild"} val=${(pp.all[testKey] as? String)?.take(40)}"
+            )
         }.onFailure {
             log("[ui] storage: fallo ${it}")
         }
