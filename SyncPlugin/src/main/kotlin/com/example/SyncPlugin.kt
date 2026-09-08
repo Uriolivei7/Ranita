@@ -381,12 +381,24 @@ class SyncPlugin : Plugin() {
                 try {
                     for (cat in enabledRestore) {
                         val list = candidates[cat] ?: continue
-                        val best = list.maxWithOrNull(
-                            compareBy<Pair<SyncDevice, BackupFile>> {
-                                SyncBackup.getBackupFileKeys(it.second).size
-                            }.thenBy { it.first.updatedAt }
-                        ) ?: continue
-                        val (source, cloudCat) = best
+                        val sorted = list.sortedBy { it.first.updatedAt }
+                        var combined: BackupFile? = null
+                        var newest: SyncDevice? = null
+                        for ((source, cloudCat) in sorted) {
+                            val prev = combined
+                            combined = if (prev == null) {
+                                cloudCat
+                            } else {
+                                SyncBackup.mergeBackupFiles(
+                                    prev, cloudCat,
+                                    localCategoryTs = 0L,
+                                    cloudPayloadTs = source.updatedAt,
+                                )
+                            }
+                            newest = source
+                        }
+                        val source = newest ?: continue
+                        val cloudCat = combined ?: continue
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
                             localCat, cloudCat,
@@ -394,7 +406,7 @@ class SyncPlugin : Plugin() {
                             cloudPayloadTs = source.updatedAt,
                         )
                         if (merged != localCat) {
-                            log("[restore] $cat: cambio detectado desde ${source.name}")
+                            log("[restore] $cat: cambio detectado desde ${sorted.size} dispositivo(s)")
                             SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {
