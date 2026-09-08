@@ -349,7 +349,7 @@ class SyncPlugin : Plugin() {
                 log("[restore] sin cambios pendientes")
             } else {
                 isRestoring = true
-                val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
+                val candidates = mutableMapOf<SyncCategory, MutableList<Triple<SyncDevice, BackupFile, Map<String, String>>>>()
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
@@ -377,7 +377,7 @@ class SyncPlugin : Plugin() {
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
                         if (SyncBackup.isEmpty(cloudCat)) continue
-                        candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
+                        candidates.getOrPut(cat) { mutableListOf() }.add(Triple(other, cloudCat, SyncBackup.sourceAccounts(cloudBackup)))
                     }
                 }
                 if (consumedNow.isNotEmpty()) {
@@ -395,11 +395,11 @@ class SyncPlugin : Plugin() {
                     for (cat in enabledRestore) {
                         val list = candidates[cat] ?: continue
                         val best = list.maxWithOrNull(
-                            compareBy<Pair<SyncDevice, BackupFile>> {
+                            compareBy<Triple<SyncDevice, BackupFile, Map<String, String>>> {
                                 SyncBackup.getBackupFileKeys(it.second).size
                             }.thenBy { it.first.updatedAt }
                         ) ?: continue
-                        val (source, cloudCat) = best
+                        val (source, cloudCat, srcAccounts) = best
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
                             localCat, cloudCat,
@@ -408,7 +408,7 @@ class SyncPlugin : Plugin() {
                         )
                         if (merged != localCat) {
                             log("[restore] $cat: cambio detectado desde ${source.name}")
-                            SyncBackup.restore(appCtx, merged, setOf(cat))
+                            SyncBackup.restore(appCtx, merged, setOf(cat), srcAccounts)
                             restoredAny = true
                             when (cat) {
                                 SyncCategory.SETTINGS -> restoredSettings = true
