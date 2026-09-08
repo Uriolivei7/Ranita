@@ -78,6 +78,15 @@ class SyncPlugin : Plugin() {
         showToastGated(msg)
     }
 
+    private fun refreshResumeShelf() {
+        val act = activity ?: return
+        runCatching {
+            androidx.lifecycle.ViewModelProvider(act)[
+                com.lagradost.cloudstream3.ui.home.HomeViewModel::class.java
+            ].reloadStored()
+        }
+    }
+
     private fun toastPushSync() {
         val now = System.currentTimeMillis()
         if (now - lastPushToastMs < 180_000L) return
@@ -443,6 +452,7 @@ class SyncPlugin : Plugin() {
                             }
                             if (restoredResume) {
                                 MainActivity.reloadHomeEvent(true)
+                                refreshResumeShelf()
                             }
                             if (restoredBookmarks) {
                                 MainActivity.reloadLibraryEvent(true)
