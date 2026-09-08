@@ -107,12 +107,47 @@ class SyncPlugin : Plugin() {
                             "keyEscrita='$keyEscrito' valEscrita=${valEscrito?.take(70)} " +
                             if (pos != null) "getViewPos=${pos.position}/${pos.duration}" else "getViewPos=null"
                     )
+                    probeStorage(act, probe)
                 }
             } else {
                 log("[ui] refreshResumeShelf: hvm null")
             }
         }.onFailure {
             log("[ui] refreshResumeShelf: fallo ${it}")
+        }
+    }
+
+    private fun probeStorage(act: Context, probeId: Int) {
+        runCatching {
+            val dir = java.io.File(act.dataDir, "shared_prefs")
+            val files = dir.listFiles()?.filter { it.extension == "xml" } ?: emptyList()
+            val hits = mutableListOf<String>()
+            val probeHits = mutableListOf<String>()
+            for (f in files) {
+                val prefs = act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
+                val keys = prefs.all.keys.toList()
+                if (keys.any { it.contains("video_pos_dur") }) {
+                    val sample = keys.filter { it.contains("video_pos_dur") }.take(2)
+                    hits += "${f.nameWithoutExtension}: " + sample.joinToString(" | ") { it.take(50) }
+                }
+                val probeKey = keys.firstOrNull { it.contains("video_pos_dur/$probeId") }
+                if (probeKey != null) probeHits += "${f.nameWithoutExtension}=${probeKey.take(50)}"
+            }
+            val firstSample = files.firstOrNull { f ->
+                act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
+                    .all.keys.any { it.contains("video_pos_dur") }
+            }?.let { f ->
+                val prefs = act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
+                val k = prefs.all.keys.first { it.contains("video_pos_dur") }
+                "$k=${(prefs.all[k] as? String)?.take(70)}"
+            }
+            log(
+                "[ui] storage: probeEn=${probeHits.joinToString(" ; ").ifEmpty { "ninguno" }} " +
+                    "ultimaVideoPosDur=${firstSample ?: "ninguna"}"
+            )
+            log("[ui] storage-files: ${hits.joinToString(" ; ").ifEmpty { "nada" }}")
+        }.onFailure {
+            log("[ui] storage: fallo ${it}")
         }
     }
 
