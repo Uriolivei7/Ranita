@@ -486,7 +486,7 @@ class SyncPlugin : Plugin() {
             val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
             val ownIds = SyncStorage.ownChunkContentIds
 
-            if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
+            if (ownIds.isEmpty() || SyncStorage.forceReRegister || ownIds.size != chunks.size) {
                 val newGen = SyncTime.nowEpochSeconds()
                 val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                 if (ids != null) {
