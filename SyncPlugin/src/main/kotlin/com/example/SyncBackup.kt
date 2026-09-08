@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.lagradost.cloudstream3.utils.DataStoreHelper
 import java.security.MessageDigest
 import kotlin.math.abs
 
@@ -16,6 +17,30 @@ object SyncBackup {
     private const val POSITION_LEAD_SECONDS = 2.0
 
     private val resumeMapper = ObjectMapper()
+
+    /** Secciones del datastore cuyo primer segmento de clave es la cuenta activa. */
+    private val ACCOUNT_SCOPED_SECTIONS = setOf(
+        "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
+        "result_season", "result_dub", "result_episode", "download_header_cache",
+        "result_favorites_state_data", "result_watch_state", "result_watch_state_data",
+    )
+
+    private fun String.isAccountLike(): Boolean =
+        all { it.isDigit() } || startsWith("Account(", ignoreCase = true)
+
+    /** Reescribe el segmento de cuenta de una clave al de la cuenta activa del dispositivo. */
+    fun remapAccountKey(key: String, localAccount: String?): String {
+        if (localAccount.isNullOrEmpty()) return key
+        val parts = key.split('/')
+        if (parts.size < 2) return key
+        if (!parts[0].isAccountLike()) return key
+        if (!ACCOUNT_SCOPED_SECTIONS.contains(parts[1].lowercase())) return key
+        if (parts[0] == localAccount) return key
+        return localAccount + "/" + key.substring(parts[0].length + 1)
+    }
+
+    private fun currentAccount(): String? =
+        runCatching { DataStoreHelper.getCurrentAccount()?.toString() }.getOrNull()
 
     var probeResumeId: Int? = null
     var probeResumeKey: String? = null
@@ -141,7 +166,7 @@ object SyncBackup {
         for ((key, value) in allData) {
             val parts = key.split("/")
             if (parts.size != 3) continue
-            if (!parts[0].all { it.isDigit() }) continue
+            if (!parts[0].isAccountLike()) continue
             if (parts[1] != "result_resume_watching_2") continue
             val parentId = parts[2].toIntOrNull() ?: continue
             parents.getOrPut(parts[0]) { HashSet() }.add(parentId)
@@ -171,7 +196,7 @@ object SyncBackup {
     ): Boolean {
         val lowerKey = key.lowercase()
         val parts = key.split("/")
-        val account = if (parts.size >= 2 && parts[0].all { it.isDigit() }) parts[0] else null
+        val account = if (parts.size >= 2 && parts[0].isAccountLike()) parts[0] else null
         val index = account?.let { resumeIndex[it] }
         if (index == null) return true
         if (lowerKey.contains("download_header_cache")) {
@@ -223,6 +248,7 @@ object SyncBackup {
         val dataPrefs = context.getSharedPrefs()
         val settingsPrefs = context.getDefaultSharedPrefs()
         val now = SyncTime.nowEpochSeconds()
+        val localAccount = currentAccount()
         val dataRemove = mutableListOf<String>()
         val settingsRemove = mutableListOf<String>()
         val keepKeys = mutableSetOf<String>()
@@ -239,13 +265,14 @@ object SyncBackup {
             mergedBackup.settings.float?.let { keepKeys += it.keys }
         }
         for ((key, delTs) in deletions) {
-            if (!key.isTransferable() || classifyKey(key) !in enabled) continue
+            val k = remapAccountKey(key, localAccount)
+            if (!k.isTransferable() || classifyKey(k) !in enabled) continue
             if (now - delTs >= TOMBSTONE_TTL_SECONDS) continue
-            if (key in keepKeys) continue
-            if (dataPrefs.contains(key)) {
-                if (dataTimestamp(dataPrefs.all[key]) < delTs) dataRemove.add(key)
-            } else if (settingsPrefs.contains(key)) {
-                if (dataTimestamp(settingsPrefs.all[key]) < delTs) settingsRemove.add(key)
+            if (k in keepKeys) continue
+            if (dataPrefs.contains(k)) {
+                if (dataTimestamp(dataPrefs.all[k]) < delTs) dataRemove.add(k)
+            } else if (settingsPrefs.contains(k)) {
+                if (dataTimestamp(settingsPrefs.all[k]) < delTs) settingsRemove.add(k)
             }
         }
         if (dataRemove.isNotEmpty()) {
@@ -277,35 +304,52 @@ object SyncBackup {
     ) {
         val prefs = if (isSettings) context.getDefaultSharedPrefs() else context.getSharedPrefs()
         val editor = prefs.edit()
+        val localAccount = if (isSettings) null else currentAccount()
 
-        vars.bool?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putBoolean(k, v) }
-        vars.int?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putInt(k, v) }
-        vars.float?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putFloat(k, v) }
-        vars.long?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putLong(k, v) }
-        vars.stringSet?.forEach { (k, v) -> if (k.isTransferable() && classifyKey(k) in enabled) editor.putStringSet(k, v) }
+        vars.bool?.forEach { (k, v) ->
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putBoolean(mk, v)
+        }
+        vars.int?.forEach { (k, v) ->
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putInt(mk, v)
+        }
+        vars.float?.forEach { (k, v) ->
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putFloat(mk, v)
+        }
+        vars.long?.forEach { (k, v) ->
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putLong(mk, v)
+        }
+        vars.stringSet?.forEach { (k, v) ->
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putStringSet(mk, v)
+        }
         var lowBars = mutableListOf<String>()
         var changedResume = mutableListOf<String>()
         vars.string?.forEach { (k, v) ->
-            if (k.isTransferable() && classifyKey(k) in enabled) {
-                val localVal = prefs.getString(k, null)
+            val mk = remapAccountKey(k, localAccount)
+            if (mk.isTransferable() && classifyKey(mk) in enabled) {
+                val localVal = prefs.getString(mk, null)
                 val cloudTs = SyncKeyPath.extractTimestamp(v)
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
                 if (localVal == null || SyncTime.shouldRestore(cloudTs, localTs)) {
-                    editor.putString(k, v)
+                    editor.putString(mk, v)
                     if (SyncCategory.RESUME_WATCHING in enabled) {
-                        if (k.contains("video_pos_dur")) {
+                        if (mk.contains("video_pos_dur")) {
                             val pos = resumePosition(v)
                             val dur = resumeDuration(v)
                             if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur) {
-                                if (lowBars.size < 10) lowBars.add("${k.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
+                                if (lowBars.size < 10) lowBars.add("${mk.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
                                 if (probeResumeId == null) {
-                                    probeResumeId = k.split("/").lastOrNull()?.toIntOrNull()
-                                    probeResumeKey = k
+                                    probeResumeId = mk.split("/").lastOrNull()?.toIntOrNull()
+                                    probeResumeKey = mk
                                     probeResumeValue = v
                                 }
                             }
-                        } else if (k.contains("result_resume_watching_2") && localVal != v && changedResume.size < 10) {
-                            changedResume.add("${k.split("/").lastOrNull()}=ep${resumeEpisodeId(v)}")
+                        } else if (mk.contains("result_resume_watching_2") && localVal != v && changedResume.size < 10) {
+                            changedResume.add("${mk.split("/").lastOrNull()}=ep${resumeEpisodeId(v)}")
                         }
                     }
                 }
