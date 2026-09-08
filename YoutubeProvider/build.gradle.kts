@@ -4,6 +4,9 @@ plugins {
 
 }
 
+// use an integer for version numbers
+version = 1
+
 android {
     namespace = "com.arabseed" // أو com.cimatn حسب مشروعك
     compileSdk = 34
@@ -12,12 +15,12 @@ android {
     }
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         freeCompilerArgs.add("-XXLanguage:+BreakContinueInInlineLambdas")
     }
 }
