@@ -90,6 +90,16 @@ class SyncPlugin : Plugin() {
             if (hvm != null) {
                 log("[ui] refreshResumeShelf: ok ${hvm.hashCode()}")
                 hvm.reloadStored()
+                val probe = SyncBackup.probeResumeId
+                SyncBackup.probeResumeId = null
+                if (probe != null) {
+                    val pos = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(probe)
+                    if (pos != null) {
+                        log("[ui] probe $probe: getViewPos=${pos.position}/${pos.duration} (${if (pos.duration > 0) (100 * pos.position / pos.duration) else 0}%)")
+                    } else {
+                        log("[ui] probe $probe: getViewPos=null")
+                    }
+                }
             } else {
                 log("[ui] refreshResumeShelf: hvm null")
             }

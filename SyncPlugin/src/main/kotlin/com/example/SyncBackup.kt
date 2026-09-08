@@ -17,6 +17,8 @@ object SyncBackup {
 
     private val resumeMapper = ObjectMapper()
 
+    var probeResumeId: Int? = null
+
     val nonTransferableKeys = listOf(
         "anilist_unixtime", "anilist_token", "anilist_user", "anilist_cached_list",
         "anilist_accounts", "anilist_active",
@@ -292,8 +294,9 @@ object SyncBackup {
                         if (k.contains("video_pos_dur")) {
                             val pos = resumePosition(v)
                             val dur = resumeDuration(v)
-                            if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur && lowBars.size < 10) {
-                                lowBars.add("${k.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
+                            if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur) {
+                                if (lowBars.size < 10) lowBars.add("${k.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
+                                if (probeResumeId == null) probeResumeId = k.split("/").lastOrNull()?.toIntOrNull()
                             }
                         } else if (k.contains("result_resume_watching_2") && localVal != v && changedResume.size < 10) {
                             changedResume.add("${k.split("/").lastOrNull()}=ep${resumeEpisodeId(v)}")
