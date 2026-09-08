@@ -1,5 +1,5 @@
 // use an integer for version numbers
-version = 6
+version = 13
 
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")

@@ -78,105 +78,6 @@ class SyncPlugin : Plugin() {
         showToastGated(msg)
     }
 
-    private fun refreshResumeShelf() {
-        val act = activity ?: run {
-            log("[ui] refreshResumeShelf: sin activity")
-            return
-        }
-        runCatching {
-            val hvm = androidx.lifecycle.ViewModelProvider(act)[
-                com.lagradost.cloudstream3.ui.home.HomeViewModel::class.java
-            ]
-            if (hvm != null) {
-                log("[ui] refreshResumeShelf: ok ${hvm.hashCode()}")
-                hvm.reloadStored()
-                val probe = SyncBackup.probeResumeId
-                SyncBackup.probeResumeId = null
-                if (probe != null) {
-                    val account = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()
-                    val keyIndex = SyncBackup.currentAccount()
-                    val expectedKey = "$keyIndex/video_pos_dur/$probe"
-                    val keyEscrito = SyncBackup.probeResumeKey
-                    val valEscrito = SyncBackup.probeResumeValue
-                    val pos = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(probe)
-                    val valEnClaveEsperada = runCatching<String?> {
-                        act.getSharedPreferences("rebuild_preference", android.content.Context.MODE_PRIVATE)
-                            .getString(expectedKey, null)
-                    }.getOrNull()
-                    log(
-                        "[ui] probe $probe: keyIndex=$keyIndex cuentaApp='$account' keyApp='$expectedKey' valApp=${valEnClaveEsperada?.take(70)} " +
-                            "keyEscrita='$keyEscrito' valEscrita=${valEscrito?.take(70)} " +
-                            if (pos != null) "getViewPos=${pos.position}/${pos.duration}" else "getViewPos=null"
-                    )
-                    probeStorage(act, probe)
-                }
-            } else {
-                log("[ui] refreshResumeShelf: hvm null")
-            }
-        }.onFailure {
-            log("[ui] refreshResumeShelf: fallo ${it}")
-        }
-    }
-
-    private fun probeStorage(act: Context, probeId: Int) {
-        runCatching {
-            val dir = java.io.File(act.applicationInfo.dataDir, "shared_prefs")
-            val files = dir.listFiles()?.filter { it.extension == "xml" } ?: emptyList()
-            val hits = mutableListOf<String>()
-            val probeHits = mutableListOf<String>()
-            for (f in files) {
-                val prefs = act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
-                val keys = prefs.all.keys.toList()
-                if (keys.any { it.contains("video_pos_dur") }) {
-                    val sample = keys.filter { it.contains("video_pos_dur") }.take(2)
-                    hits += "${f.nameWithoutExtension}: " + sample.joinToString(" | ") { it.take(50) }
-                }
-                val probeKey = keys.firstOrNull { it.contains("video_pos_dur/$probeId") }
-                if (probeKey != null) probeHits += "${f.nameWithoutExtension}=${probeKey.take(50)}"
-            }
-            val firstSample = files.firstOrNull { f ->
-                act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
-                    .all.keys.any { it.contains("video_pos_dur") }
-            }?.let { f ->
-                val prefs = act.getSharedPreferences(f.nameWithoutExtension, Context.MODE_PRIVATE)
-                val k = prefs.all.keys.first { it.contains("video_pos_dur") }
-                "$k=${(prefs.all[k] as? String)?.take(70)}"
-            }
-            log(
-                "[ui] storage: probeEn=${probeHits.joinToString(" ; ").ifEmpty { "ninguno" }} " +
-                    "ultimaVideoPosDur=${firstSample ?: "ninguna"}"
-            )
-            log("[ui] storage-files: ${hits.joinToString(" ; ").ifEmpty { "nada" }}")
-            val pp = act.getSharedPreferences("rebuild_preference", Context.MODE_PRIVATE)
-            val vpKeys = pp.all.keys.filter { it.contains("video_pos_dur") }.take(4)
-            val rwKeys = pp.all.keys.filter { it.contains("result_resume_watching_2") }.take(4)
-            log(
-                "[ui] vpKeys: " + vpKeys.joinToString(" ;; ") {
-                    "$it=${(pp.all[it] as? String)?.take(60)}"
-                }
-            )
-            log(
-                "[ui] rwKeys: " + rwKeys.joinToString(" ;; ") {
-                    "$it=${(pp.all[it] as? String)?.take(60)}"
-                }
-            )
-            val filesDir = java.io.File(act.applicationInfo.dataDir, "files")
-            val fs = filesDir.listFiles()?.filter { it.isFile }
-                ?.map { "${it.name}(${it.length()})" }?.take(25) ?: emptyList()
-            log("[ui] filesDir: ${fs.joinToString(" , ").ifEmpty { "vacio" }}")
-            val testId = 999999001
-            com.lagradost.cloudstream3.utils.DataStoreHelper.setViewPos(testId, 1234L, 567890L)
-            val readBack = com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos(testId)
-            val testKey = pp.all.keys.firstOrNull { it.contains("video_pos_dur/$testId") }
-            log(
-                "[ui] apiTest: getViewPos(999999001)=${readBack?.let { "${it.position}/${it.duration}" } ?: "null"}" +
-                    " testKey=${testKey?.take(120) ?: "no-en-rebuild"} val=${(pp.all[testKey] as? String)?.take(40)}"
-            )
-        }.onFailure {
-            log("[ui] storage: fallo ${it}")
-        }
-    }
-
     private fun toastPushSync() {
         val now = System.currentTimeMillis()
         if (now - lastPushToastMs < 180_000L) return
@@ -189,6 +90,19 @@ class SyncPlugin : Plugin() {
         if (!pendingPushToast) return
         pendingPushToast = false
         toastPushSync()
+    }
+
+    /** Recarga el estante "Continuar Viendo" desde el datastore para reflejar el progreso restaurado. */
+    private fun refreshResumeShelf() {
+        val act = activity ?: return
+        runCatching {
+            val hvm = androidx.lifecycle.ViewModelProvider(act)[
+                com.lagradost.cloudstream3.ui.home.HomeViewModel::class.java
+            ]
+            hvm.reloadStored()
+        }.onFailure {
+            log("[ui] refreshResumeShelf: fallo ${it}")
+        }
     }
 
     companion object {
@@ -480,24 +394,12 @@ class SyncPlugin : Plugin() {
                 try {
                     for (cat in enabledRestore) {
                         val list = candidates[cat] ?: continue
-                        val sorted = list.sortedBy { it.first.updatedAt }
-                        var combined: BackupFile? = null
-                        var newest: SyncDevice? = null
-                        for ((source, cloudCat) in sorted) {
-                            val prev = combined
-                            combined = if (prev == null) {
-                                cloudCat
-                            } else {
-                                SyncBackup.mergeBackupFiles(
-                                    prev, cloudCat,
-                                    localCategoryTs = 0L,
-                                    cloudPayloadTs = source.updatedAt,
-                                )
-                            }
-                            newest = source
-                        }
-                        val source = newest ?: continue
-                        val cloudCat = combined ?: continue
+                        val best = list.maxWithOrNull(
+                            compareBy<Pair<SyncDevice, BackupFile>> {
+                                SyncBackup.getBackupFileKeys(it.second).size
+                            }.thenBy { it.first.updatedAt }
+                        ) ?: continue
+                        val (source, cloudCat) = best
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
                             localCat, cloudCat,
@@ -505,7 +407,7 @@ class SyncPlugin : Plugin() {
                             cloudPayloadTs = source.updatedAt,
                         )
                         if (merged != localCat) {
-                            log("[restore] $cat: cambio detectado desde ${sorted.size} dispositivo(s)")
+                            log("[restore] $cat: cambio detectado desde ${source.name}")
                             SyncBackup.restore(appCtx, merged, setOf(cat))
                             restoredAny = true
                             when (cat) {

@@ -16,53 +16,49 @@ object SyncBackup {
 
     private const val POSITION_LEAD_SECONDS = 2.0
 
+    /** Ventana en la que una posición menor tras un completado cuenta como re-watch genuino. */
+    private const val COMPLETION_GRACE_SECONDS = 1800L
+
     private val resumeMapper = ObjectMapper()
 
-    /** Secciones del datastore cuyo primer segmento de clave es la cuenta activa. */
+    /** Secciones de reproducción con clave por-cuenta ({keyIndex}/{seccion}/{id}). */
     private val ACCOUNT_SCOPED_SECTIONS = setOf(
         "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
         "result_season", "result_dub", "result_episode", "download_header_cache",
-        "result_favorites_state_data", "result_watch_state", "result_watch_state_data",
     )
 
-    /** Descarta datos por-cuenta obsoletos inyectados por versiones anteriores (prefijos "Account(...)"). */
-    private val RESUME_SECTIONS = setOf(
-        "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
-        "result_season", "result_dub", "result_episode",
-    )
+    private data class ScopedKey(val account: String, val section: String, val id: Int)
 
-    private fun String.isAccountLike(): Boolean =
-        all { it.isDigit() } || startsWith("Account(", ignoreCase = true)
-
-    /** Reescribe el segmento de cuenta de una clave al de la cuenta activa del dispositivo. */
-    fun remapAccountKey(key: String, localAccount: String?): String {
-        if (localAccount.isNullOrEmpty()) return key
-        val parts = key.split('/')
-        if (parts.size < 2) return key
-        if (!parts[0].isAccountLike()) return key
-        if (!ACCOUNT_SCOPED_SECTIONS.contains(parts[1].lowercase())) return key
-        if (parts[0] == localAccount) return key
-        return localAccount + "/" + key.substring(parts[0].length + 1)
+    /** Descompone {cuenta}/{seccion}/{id} tolerando "/" dentro de la cuenta (p.ej. URLs de imagen). */
+    private fun scopedKey(key: String): ScopedKey? {
+        val m = Regex("^(.*)/([a-zA-Z0-9_]+)/([-]?\\d+)$").find(key) ?: return null
+        val id = m.groupValues[3].toIntOrNull() ?: return null
+        if (m.groupValues[2].lowercase() !in ACCOUNT_SCOPED_SECTIONS) return null
+        return ScopedKey(m.groupValues[1], m.groupValues[2], id)
     }
 
-    /** Prefijo de cuenta que CloudStream usa en las claves: el keyIndex activo. */
+    /** Prefijo de cuenta activa que CloudStream usa en las claves: el keyIndex del perfil activo. */
     fun currentAccount(): String? {
         try {
             val acc = DataStoreHelper.getCurrentAccount() ?: return null
-            val byReflection = runCatching {
+            val viaReflection = runCatching {
                 val cls = Class.forName("com.lagradost.cloudstream3.utils.DataStoreHelper\$Account")
                 if (cls.isInstance(acc)) cls.getMethod("getKeyIndex").invoke(acc)?.toString() else null
             }.getOrNull()
-            if (!byReflection.isNullOrBlank()) return byReflection
+            if (!viaReflection.isNullOrBlank()) return viaReflection
             return Regex("keyIndex=(\\d+)").find(acc.toString())?.groupValues?.get(1)
         } catch (t: Throwable) {
             return null
         }
     }
 
-    var probeResumeId: Int? = null
-    var probeResumeKey: String? = null
-    var probeResumeValue: String? = null
+    /** Re-escribe el keyIndex de la cuenta en claves de reproducción al de la cuenta local del dispositivo. */
+    fun remapAccountKey(key: String, localAccount: String?): String {
+        if (localAccount.isNullOrEmpty()) return key
+        val sc = scopedKey(key) ?: return key
+        if (sc.account == localAccount) return key
+        return "$localAccount/${sc.section}/${sc.id}"
+    }
 
     val nonTransferableKeys = listOf(
         "anilist_unixtime", "anilist_token", "anilist_user", "anilist_cached_list",
@@ -184,7 +180,7 @@ object SyncBackup {
         for ((key, value) in allData) {
             val parts = key.split("/")
             if (parts.size != 3) continue
-            if (!parts[0].isAccountLike()) continue
+            if (!parts[0].all { it.isDigit() }) continue
             if (parts[1] != "result_resume_watching_2") continue
             val parentId = parts[2].toIntOrNull() ?: continue
             parents.getOrPut(parts[0]) { HashSet() }.add(parentId)
@@ -214,7 +210,7 @@ object SyncBackup {
     ): Boolean {
         val lowerKey = key.lowercase()
         val parts = key.split("/")
-        val account = if (parts.size >= 2 && parts[0].isAccountLike()) parts[0] else null
+        val account = if (parts.size >= 2 && parts[0].all { it.isDigit() }) parts[0] else null
         val index = account?.let { resumeIndex[it] }
         if (index == null) return true
         if (lowerKey.contains("download_header_cache")) {
@@ -271,16 +267,16 @@ object SyncBackup {
         val settingsRemove = mutableListOf<String>()
         val keepKeys = mutableSetOf<String>()
         if (mergedBackup != null) {
-            mergedBackup.datastore.string?.let { keepKeys += it.keys }
-            mergedBackup.datastore.bool?.let { keepKeys += it.keys }
-            mergedBackup.datastore.int?.let { keepKeys += it.keys }
-            mergedBackup.datastore.long?.let { keepKeys += it.keys }
-            mergedBackup.datastore.float?.let { keepKeys += it.keys }
-            mergedBackup.settings.string?.let { keepKeys += it.keys }
-            mergedBackup.settings.bool?.let { keepKeys += it.keys }
-            mergedBackup.settings.int?.let { keepKeys += it.keys }
-            mergedBackup.settings.long?.let { keepKeys += it.keys }
-            mergedBackup.settings.float?.let { keepKeys += it.keys }
+            mergedBackup.datastore.string?.let { keys -> keepKeys += keys.keys.map { remapAccountKey(it, localAccount) } }
+            mergedBackup.datastore.bool?.let { keys -> keepKeys += keys.keys.map { remapAccountKey(it, localAccount) } }
+            mergedBackup.datastore.int?.let { keys -> keepKeys += keys.keys.map { remapAccountKey(it, localAccount) } }
+            mergedBackup.datastore.long?.let { keys -> keepKeys += keys.keys.map { remapAccountKey(it, localAccount) } }
+            mergedBackup.datastore.float?.let { keys -> keepKeys += keys.keys.map { remapAccountKey(it, localAccount) } }
+            mergedBackup.settings.string?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.bool?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.int?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.long?.let { keys -> keepKeys += keys.keys }
+            mergedBackup.settings.float?.let { keys -> keepKeys += keys.keys }
         }
         for ((key, delTs) in deletions) {
             val k = remapAccountKey(key, localAccount)
@@ -344,8 +340,6 @@ object SyncBackup {
             val mk = remapAccountKey(k, localAccount)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putStringSet(mk, v)
         }
-        var lowBars = mutableListOf<String>()
-        var changedResume = mutableListOf<String>()
         vars.string?.forEach { (k, v) ->
             val mk = remapAccountKey(k, localAccount)
             if (mk.isTransferable() && classifyKey(mk) in enabled) {
@@ -354,57 +348,25 @@ object SyncBackup {
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
                 if (localVal == null || SyncTime.shouldRestore(cloudTs, localTs)) {
                     editor.putString(mk, v)
-                    if (SyncCategory.RESUME_WATCHING in enabled) {
-                        if (mk.contains("video_pos_dur")) {
-                            val pos = resumePosition(v)
-                            val dur = resumeDuration(v)
-                            if (dur > 0.0) {
-                                runCatching {
-                                    DataStoreHelper.setViewPos(
-                                        mk.split("/").last().toInt(),
-                                        pos.toLong(),
-                                        dur.toLong(),
-                                    )
-                                }
+                    if (mk.contains("video_pos_dur")) {
+                        val pos = resumePosition(v)
+                        val dur = resumeDuration(v)
+                        if (pos >= 0.0 && dur > 0.0) {
+                            val id = mk.split("/").last().toIntOrNull()
+                            if (id != null) {
+                                runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
+                                    .onSuccess {
+                                        if (pos < 0.9 * dur) {
+                                            Log.i("SyncStream", "[rw] restore bajo $id ${(100 * pos / dur).toInt()}%")
+                                        }
+                                    }
                             }
-                            if (dur > 0.0 && pos >= 0.0 && pos < 0.9 * dur) {
-                                if (lowBars.size < 10) lowBars.add("${mk.split("/").lastOrNull()}@${(100 * pos / dur).toInt()}%")
-                                if (probeResumeId == null) {
-                                    probeResumeId = mk.split("/").lastOrNull()?.toIntOrNull()
-                                    probeResumeKey = mk
-                                    probeResumeValue = v
-                                }
-                            }
-                        } else if (mk.contains("result_resume_watching_2") && localVal != v && changedResume.size < 10) {
-                            changedResume.add("${mk.split("/").lastOrNull()}=ep${resumeEpisodeId(v)}")
                         }
                     }
                 }
             }
         }
         editor.apply()
-        if (!isSettings) cleanStaleKeys(context, prefs, localAccount)
-        if (lowBars.isNotEmpty() || changedResume.isNotEmpty()) {
-            Log.i("SyncStream", "[rw] restore: bajos=${lowBars.joinToString()} resume=${changedResume.joinToString()}")
-        }
-    }
-
-    private fun cleanStaleKeys(context: Context, prefs: SharedPreferences, localAccount: String?) {
-        val stale = prefs.all.keys.filter { k ->
-            if (k.contains("video_pos_dur/999999001")) return@filter true
-            val parts = k.split('/')
-            if (parts.size < 2) return@filter false
-            val sec = parts[1].lowercase()
-            if (!ACCOUNT_SCOPED_SECTIONS.contains(sec)) return@filter false
-            when {
-                parts[0].startsWith("Account(", ignoreCase = true) -> true
-                parts[0].isAccountLike() && parts[0] != localAccount -> sec in RESUME_SECTIONS
-                else -> false
-            }
-        }
-        if (stale.isEmpty()) return
-        prefs.edit().apply { stale.forEach { remove(it) } }.apply()
-        Log.i("SyncStream", "[rw] limpieza: eliminadas ${stale.size} claves obsoletas")
     }
 
     fun isEmpty(backupFile: BackupFile?): Boolean {
@@ -629,6 +591,30 @@ object SyncBackup {
                         return if (cloudTs >= localTs) Winner.CLOUD else Winner.LOCAL
                     }
                 }
+            }
+
+            val localPos = resumePosition(localVal)
+            val cloudPos = resumePosition(cloudVal)
+            val localDone = isCompletedValue(localPos, resumeDuration(localVal))
+            val cloudDone = isCompletedValue(cloudPos, resumeDuration(cloudVal))
+
+            if (localPos >= 0.0 && cloudPos >= 0.0 && localDone != cloudDone) {
+                val doneIsCloud = cloudDone
+                val doneTs = if (cloudDone) cloudTs else localTs
+                val incompleteTs = if (cloudDone) localTs else cloudTs
+                if (incompleteTs <= doneTs) {
+                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
+                }
+                if (incompleteTs - doneTs > COMPLETION_GRACE_SECONDS) {
+                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
+                }
+            }
+
+            if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) <= POSITION_LEAD_SECONDS) {
+                if (localDone != cloudDone) {
+                    return if (cloudDone) Winner.CLOUD else Winner.LOCAL
+                }
+                return if (cloudTs > localTs) Winner.CLOUD else Winner.LOCAL
             }
         }
 
