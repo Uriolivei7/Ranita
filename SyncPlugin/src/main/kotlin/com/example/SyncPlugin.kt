@@ -45,7 +45,7 @@ class SyncPlugin : Plugin() {
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
-    private val pollMs = 60_000L
+    private val pollMs = 30_000L
     private val syncMutex = Mutex()
 
     @Volatile private var foregroundActivities = 0
@@ -387,11 +387,6 @@ class SyncPlugin : Plugin() {
                         candidates.getOrPut(cat) { mutableListOf() }.add(other to cloudCat)
                     }
                 }
-                if (consumedNow.isNotEmpty()) {
-                    val mergedConsumed = HashMap(SyncStorage.lastRestoredFrom)
-                    consumedNow.forEach { (k, v) -> if (v > (mergedConsumed[k] ?: 0L)) mergedConsumed[k] = v }
-                    SyncStorage.lastRestoredFrom = mergedConsumed
-                }
                 var restoredAny = false
                 var restoredSettings = false
                 var restoredExtensions = false
@@ -428,8 +423,17 @@ class SyncPlugin : Plugin() {
                             restoredSources[cat] = source
                         }
                     }
+                } catch (t: Throwable) {
+                    val nowMs = System.currentTimeMillis()
+                    for (srcId in consumedNow.keys) lastFailedAssembleMs[srcId] = nowMs
+                    throw t
                 } finally {
-                    if (!restoredAny) isRestoring = false
+                    isRestoring = false
+                }
+                if (consumedNow.isNotEmpty()) {
+                    val mergedConsumed = HashMap(SyncStorage.lastRestoredFrom)
+                    consumedNow.forEach { (k, v) -> if (v > (mergedConsumed[k] ?: 0L)) mergedConsumed[k] = v }
+                    SyncStorage.lastRestoredFrom = mergedConsumed
                 }
                 if (restoredAny) {
                     val cats = restoredSources.keys.joinToString { it.key }
