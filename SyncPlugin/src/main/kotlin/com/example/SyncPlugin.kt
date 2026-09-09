@@ -60,6 +60,8 @@ class SyncPlugin : Plugin() {
     @Volatile private var lastPeriodicResumePushMs = 0L
 
     private val periodicResumePushMs = 60_000L
+    @Volatile private var lastResumeWriteMs = 0L
+    private val resumeSettleMs = 120_000L
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
@@ -180,6 +182,7 @@ class SyncPlugin : Plugin() {
 
     private fun markDirty(key: String) {
         val cat = SyncBackup.classifyKey(key) ?: return
+        if (cat == SyncCategory.RESUME_WATCHING) lastResumeWriteMs = System.currentTimeMillis()
         synchronized(dirtyCategories) {
             if (dirtyCategories.add(cat)) {
                 log("[dirty] $cat")
@@ -495,6 +498,11 @@ class SyncPlugin : Plugin() {
                 dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
             }
             if (!forcePush && onlyResumeWatching) {
+                if (System.currentTimeMillis() - lastResumeWriteMs < resumeSettleMs) {
+                    lastStatus = "Avance en curso, push al detenerse"
+                    log("[push] omitido: avance reciente (< ${resumeSettleMs / 1000}s), push al detenerse")
+                    return
+                }
                 val since = System.currentTimeMillis() - lastPeriodicResumePushMs
                 if (since < periodicResumePushMs) {
                     lastStatus = "Esperando cierre de app para push"
