@@ -394,6 +394,7 @@ class SyncPlugin : Plugin() {
                             localCat, cloudCat,
                             localCategoryTs = SyncStorage.categoryTimestamp(cat),
                             cloudPayloadTs = source.updatedAt,
+                            localActive = SyncBackup.activeAccount(appCtx),
                         )
                         if (merged != localCat) {
                             log("[restore] $cat: cambio detectado desde ${source.name}")

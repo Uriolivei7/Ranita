@@ -408,11 +408,12 @@ object SyncBackup {
         cloud: BackupFile,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
+        localActive: String?,
     ): BackupFile {
         val deletions = mergeDeletions(local.deletions, cloud.deletions)
         return BackupFile(
-            datastore = mergeVars(local.datastore, cloud.datastore, deletions, localCategoryTs, cloudPayloadTs),
-            settings = mergeVars(local.settings, cloud.settings, deletions, localCategoryTs, cloudPayloadTs),
+            datastore = mergeVars(local.datastore, cloud.datastore, deletions, localCategoryTs, cloudPayloadTs, localActive),
+            settings = mergeVars(local.settings, cloud.settings, deletions, localCategoryTs, cloudPayloadTs, localActive),
             deletions = deletions,
         )
     }
@@ -433,13 +434,14 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
+        localActive: String?,
     ): BackupVars = BackupVars(
-        bool = mergeValueMap(local.bool, cloud.bool, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
-        int = mergeValueMap(local.int, cloud.int, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
-        float = mergeValueMap(local.float, cloud.float, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
-        long = mergeValueMap(local.long, cloud.long, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
-        string = mergeStringMap(local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
-        stringSet = mergeValueMap(local.stringSet, cloud.stringSet, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        bool = mergeValueMap(local.bool, cloud.bool, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        int = mergeValueMap(local.int, cloud.int, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        float = mergeValueMap(local.float, cloud.float, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        long = mergeValueMap(local.long, cloud.long, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        string = mergeStringMap(local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        stringSet = mergeValueMap(local.stringSet, cloud.stringSet, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
     )
 
     private fun <T> mergeValueMap(
@@ -450,6 +452,7 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
+        localActive: String?,
     ): Map<String, T>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -459,7 +462,7 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                val delTs = deletions[key]
+                val delTs = deletionTs(deletions, key, localActive)
                 if (delTs == null || delTs <= resumeSiblingTs(key, localStrings)) {
                     merged[key] = localVal
                 }
@@ -471,7 +474,7 @@ object SyncBackup {
         }
         for ((key, cloudVal) in cloud) {
             if (!local.containsKey(key)) {
-                val delTs = deletions[key]
+                val delTs = deletionTs(deletions, key, localActive)
                 if (delTs == null || delTs <= resumeSiblingTs(key, cloudStrings)) {
                     merged[key] = cloudVal
                 }
@@ -499,6 +502,24 @@ object SyncBackup {
         return cloudPayloadTs > localCategoryTs
     }
 
+    /**
+     * Busca el timestamp de un tombstone considerando el remapeo de perfiles:
+     * una clave borrada bajo otro keyIndex (mismo section+id) también cuenta
+     * como borrado para el perfil activo local.
+     */
+    private fun deletionTs(deletions: Map<String, Long>, key: String, localActive: String?): Long? {
+        deletions[key]?.let { return it }
+        val sc = scopedKey(key) ?: return null
+        if (localActive == null || sc.account == localActive) return null
+        for ((delKey, delTs) in deletions) {
+            val delSc = scopedKey(delKey) ?: continue
+            if (delSc.section == sc.section && delSc.id == sc.id && delSc.account != localActive) {
+                return delTs
+            }
+        }
+        return null
+    }
+
     private fun resumeSiblingTs(key: String, stringMap: Map<String, String>?): Long {
         if (stringMap == null) return 0L
         val parts = key.split("/")
@@ -524,6 +545,7 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
+        localActive: String?,
     ): Map<String, String>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -536,7 +558,7 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                val delTs = deletions[key]
+                val delTs = deletionTs(deletions, key, localActive)
                 if (delTs == null || delTs <= episodeTimestampFor(key, local, localEpisodeTs)) {
                     merged[key] = localVal
                 }
@@ -556,7 +578,7 @@ object SyncBackup {
         }
         for ((key, cloudVal) in cloud) {
             if (!local.containsKey(key)) {
-                val delTs = deletions[key]
+                val delTs = deletionTs(deletions, key, localActive)
                 if (delTs == null || delTs <= episodeTimestampFor(key, cloud, cloudEpisodeTs)) {
                     merged[key] = cloudVal
                 }
