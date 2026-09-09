@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.lagradost.cloudstream3.utils.DataStoreHelper
 import java.security.MessageDigest
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 object SyncBackup {
 
@@ -385,7 +386,14 @@ object SyncBackup {
                             val id = mk.split("/").last().toIntOrNull()
                             if (id != null) {
                                 runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
-                                    .onSuccess { restoredPositions++ }
+                                    .onSuccess {
+                                        restoredPositions++
+                                        if (restoredPositions <= 10) {
+                                            val prevPos = resumePosition(localVal)
+                                            val prev = if (prevPos >= 0.0) "antes ${(prevPos / 1000.0).roundToInt()}s" else "antes nada"
+                                            Log.i("SyncStream", "[rw] pos $id: ${(pos / 1000.0).roundToInt()}s / ${(dur / 1000.0).roundToInt()}s, $prev")
+                                        }
+                                    }
                             }
                         }
                     }

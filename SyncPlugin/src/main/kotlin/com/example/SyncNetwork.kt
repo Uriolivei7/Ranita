@@ -81,7 +81,8 @@ object SyncNetwork {
             val maxChunk = byIndex.keys.maxOrNull() ?: -1
             val listedTotal = maxChunk + 1
             if ((0 until listedTotal).any { byIndex[it] == null }) {
-                log("[restore] $deviceId: gen ${gen ?: "?"} incompleta, chunks=${byIndex.keys.sorted()}")
+                val missing = (0 until listedTotal).count { byIndex[it] == null }
+                log("[restore] $deviceId: gen ${gen ?: "?"} incompleta (faltan $missing de $listedTotal chunks)")
                 continue
             }
             val draft0 = byIndex[0] ?: continue
@@ -129,7 +130,7 @@ object SyncNetwork {
             }
             return sb.toString()
         }
-        log("[restore] $deviceId: ninguna gen completa, intentando best-effort")
+        log("[restore] $deviceId: ninguna gen completa, best-effort")
         return assembleBestEffort(token, drafts, deviceId)
     }
 
@@ -338,7 +339,6 @@ object SyncNetwork {
             if (pageInfo?.hasNextPage != true || pageInfo.endCursor.isNullOrEmpty()) break
             cursor = pageInfo.endCursor
         }
-        log("fetchDevices: ${all.size} item(s), ${mainDrafts(all).size} dispositivo(s)")
         return all
     }
     private fun parseDraftTitle(title: String): Pair<String, Pair<Long?, Int>> {
@@ -475,7 +475,6 @@ object SyncNetwork {
         val resp = graphql(token, query)
         val ok = resp?.data?.deleteItem?.deletedItemId != null
         if (!ok) err("deleteDraft($itemId) fallo")
-        else log("[push] draft eliminado")
         return ok
     }
 
@@ -504,9 +503,11 @@ object SyncNetwork {
         }
         if (stale.isEmpty()) return
         log("[push] cleanup: ${stale.size} stale drafts de $deviceId")
+        var removed = 0
         for (draft in stale) {
-            deleteDraft(token, projectId, draft.itemId)
+            if (deleteDraft(token, projectId, draft.itemId)) removed++
         }
+        if (removed > 0) log("[push] cleanup: $removed trozo(s) viejos eliminados")
     }
 
     private fun err(msg: String) {

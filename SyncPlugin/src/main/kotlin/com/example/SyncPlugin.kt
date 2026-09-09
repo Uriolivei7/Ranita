@@ -64,6 +64,16 @@ class SyncPlugin : Plugin() {
         Log.i(TAG, msg)
     }
 
+    /** Idle heartbeat: a lo sumo una línea cada 5 min cuando no hay actividad. */
+    private var lastIdleLogMs = 0L
+    private fun logIdle(msg: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastIdleLogMs >= 300_000L) {
+            lastIdleLogMs = now
+            log(msg)
+        }
+    }
+
     private fun isPlayerActivity(activity: Activity): Boolean =
         activity.javaClass.name.contains("player", ignoreCase = true)
 
@@ -299,7 +309,7 @@ class SyncPlugin : Plugin() {
             lastError = SyncNetwork.lastError
             return
         }
-        log("[sync] fetchDevices: ${devices.size} items, ${SyncNetwork.mainDrafts(devices).size} device(s)")
+        logIdle("[sync] ${devices.size} items, ${SyncNetwork.mainDrafts(devices).size} device(s)")
 
         val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
@@ -334,7 +344,7 @@ class SyncPlugin : Plugin() {
                 .sortedByDescending { it.gen ?: it.updatedAt }
 
             if (othersList.isEmpty()) {
-                log("[restore] sin cambios pendientes")
+                logIdle("[restore] sin cambios pendientes")
             } else {
                 isRestoring = true
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
@@ -451,7 +461,7 @@ class SyncPlugin : Plugin() {
                         }
                     }
                 } else {
-                    log("[restore] sin cambios")
+                    logIdle("[restore] sin cambios")
                 }
             }
         }
@@ -487,7 +497,9 @@ class SyncPlugin : Plugin() {
             val ownGens = devices.filter { it.deviceId == deviceId }.mapNotNull { it.gen }.distinct()
             val ownFragmented = ownGens.size > 1
             val ownNeedsHeal = ownIds.size != chunks.size || ownFragmented
-            log("[push] estado: hashIgual=${hash == SyncStorage.lastPushedHash}, ownIds=${ownIds.size}, chunks=${chunks.size}, ownGens=${ownGens.joinToString()}, forceReReg=${SyncStorage.forceReRegister}")
+            if (hash != SyncStorage.lastPushedHash || ownNeedsHeal || ownIds.isEmpty() || SyncStorage.forceReRegister) {
+                log("[push] estado: hashIgual=${hash == SyncStorage.lastPushedHash}, ownIds=${ownIds.size}, chunks=${chunks.size}, ownGens=${ownGens.joinToString()}, forceReReg=${SyncStorage.forceReRegister}")
+            }
 
             if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
                 val newGen = SyncTime.nowEpochSeconds()
@@ -544,7 +556,7 @@ class SyncPlugin : Plugin() {
                 }
             } else {
                 lastStatus = "Sin cambios que subir"
-                log("[push] omitido: sin cambios")
+                logIdle("[push] sin cambios (hashIgual=true)")
             }
         }
 
