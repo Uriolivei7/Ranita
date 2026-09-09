@@ -383,7 +383,8 @@ object SyncBackup {
                 val localVal = prefs.getString(mk, null)
                 val cloudTs = SyncKeyPath.extractTimestamp(v)
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
-                if (localVal == null || SyncTime.shouldRestore(cloudTs, localTs)) {
+
+                if (localVal == null || localVal != v || SyncTime.shouldRestore(cloudTs, localTs)) {
                     editor.putString(mk, v)
                     if (mk.contains("video_pos_dur")) {
                         val pos = resumePosition(v)
