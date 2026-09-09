@@ -345,6 +345,8 @@ object SyncBackup {
         val editor = prefs.edit()
         val localPrefixes = if (isSettings) emptyMap() else localAccountPrefixes(context)
         var restoredPositions = 0
+        var diagSameLogged = 0
+        var diagDiffLogged = 0
 
         vars.bool?.forEach { (k, v) ->
             val mk = localForm(k, localPrefixes)
@@ -373,28 +375,37 @@ object SyncBackup {
                 val cloudTs = SyncKeyPath.extractTimestamp(v)
                 val localTs = SyncKeyPath.extractTimestamp(localVal)
                 val cloudNewer = SyncTime.toEpochSeconds(cloudTs) > SyncTime.toEpochSeconds(localTs)
-
-                if (localVal == null ||
+                val willWrite = localVal == null ||
                     (localVal != v && (cloudNewer || SyncTime.shouldRestore(cloudTs, localTs))) ||
                     cloudNewer
-                ) {
+
+                if (mk.contains("video_pos_dur") && !willWrite && localVal != null && diagSameLogged < 3) {
+                    val pos = resumePosition(v)
+                    val dur = resumeDuration(v)
+                    val id = if (pos >= 0.0 && dur > 0.0) mk.split("/").last().toIntOrNull() else null
+                    if (id != null) {
+                        diagSameLogged++
+                        Log.i("SyncStream", "[rw] pos $id: ${(pos / 1000.0).roundToInt()}s / ${(dur / 1000.0).roundToInt()}s, mismo valor")
+                    }
+                }
+
+                if (willWrite) {
                     editor.putString(mk, v)
                     if (mk.contains("video_pos_dur")) {
                         val pos = resumePosition(v)
                         val dur = resumeDuration(v)
-                        if (pos >= 0.0 && dur > 0.0) {
-                            val id = mk.split("/").last().toIntOrNull()
-                            if (id != null) {
-                                runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
-                                    .onSuccess {
-                                        restoredPositions++
-                                        if (restoredPositions <= 10) {
-                                            val prevPos = resumePosition(localVal)
-                                            val prev = if (prevPos >= 0.0) "antes ${(prevPos / 1000.0).roundToInt()}s" else "antes nada"
-                                            Log.i("SyncStream", "[rw] pos $id: ${(pos / 1000.0).roundToInt()}s / ${(dur / 1000.0).roundToInt()}s, $prev")
-                                        }
+                        val id = if (pos >= 0.0 && dur > 0.0) mk.split("/").last().toIntOrNull() else null
+                        if (id != null) {
+                            runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
+                                .onSuccess {
+                                    restoredPositions++
+                                    if (diagDiffLogged < 4) {
+                                        diagDiffLogged++
+                                        val prevPos = resumePosition(localVal)
+                                        val prev = if (localVal == null) "antes nada" else if (prevPos >= 0.0) "antes ${(prevPos / 1000.0).roundToInt()}s" else "antes otro valor"
+                                        Log.i("SyncStream", "[rw] pos $id: ${(pos / 1000.0).roundToInt()}s / ${(dur / 1000.0).roundToInt()}s, $prev")
                                     }
-                            }
+                                }
                         }
                     }
                 }
@@ -670,7 +681,7 @@ object SyncBackup {
         return if (cloudPayloadTs > localCategoryTs) Winner.CLOUD else Winner.LOCAL
     }
 
-    private fun resumePosition(json: Any?): Double {
+    fun resumePosition(json: Any?): Double {
         if (json !is String) return -1.0
         return try {
             "\"position\":\\s*([\\d.]+)".toRegex().find(json)?.groupValues?.get(1)?.toDouble() ?: -1.0
@@ -679,7 +690,7 @@ object SyncBackup {
         }
     }
 
-    private fun resumeDuration(json: Any?): Double {
+    fun resumeDuration(json: Any?): Double {
         if (json !is String) return -1.0
         return try {
             "\"duration\":\\s*([\\d.]+)".toRegex().find(json)?.groupValues?.get(1)?.toDouble() ?: -1.0
@@ -708,7 +719,7 @@ object SyncBackup {
         return SyncKeyPath.itemTimestamp(key, category, stringMap)
     }
 
-    private fun resumeEpisodeId(json: String): Int? =
+    fun resumeEpisodeId(json: String): Int? =
         try {
             "\"episodeId\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toIntOrNull()
         } catch (_: Exception) {

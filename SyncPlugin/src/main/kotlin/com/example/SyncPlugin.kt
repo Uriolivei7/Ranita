@@ -28,6 +28,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @CloudstreamPlugin
 class SyncPlugin : Plugin() {
@@ -501,6 +502,28 @@ class SyncPlugin : Plugin() {
             val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
             val hash = SyncBackup.computeHash(data)
             val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
+
+            if (hash != SyncStorage.lastPushedHash) {
+                val resumeEntries = toPush.datastore.string
+                    ?.filter { it.key.lowercase().contains("result_resume_watching") }
+                    ?.toList()
+                    ?.sortedByDescending { SyncKeyPath.extractTimestamp(it.second) }
+                    ?.take(3)
+                    ?: emptyList()
+                for ((key, value) in resumeEntries) {
+                    val account = key.split("/").getOrNull(0) ?: continue
+                    val epId = SyncBackup.resumeEpisodeId(value) ?: continue
+                    val posVal = toPush.datastore.string?.get("$account/video_pos_dur/$epId")
+                    val p = if (posVal != null) SyncBackup.resumePosition(posVal) else -1.0
+                    val d = if (posVal != null) SyncBackup.resumeDuration(posVal) else -1.0
+                    val label = when {
+                        posVal == null -> "sin video_pos_dur"
+                        p >= 0.0 && d > 0.0 -> "${(p / 1000.0).roundToInt()}s / ${(d / 1000.0).roundToInt()}s"
+                        else -> "formato raro: ${posVal.take(120)}"
+                    }
+                    log("[push] re-watch top ep $epId: $label")
+                }
+            }
             val myDrafts = devices.filter { it.deviceId == deviceId }
             val ownGens = myDrafts.mapNotNull { it.gen }.distinct()
             val ownFragmented = ownGens.size > 1
@@ -510,7 +533,7 @@ class SyncPlugin : Plugin() {
                 val cid = d.itemContentId ?: d.itemId
                 val index = d.chunkIndex
                 if (cid == null || index < 0) continue
-                existing.putIfAbsent(index, cid)
+                if (!existing.containsKey(index)) existing[index] = cid
             }
             val ownIds = existing
             val registerNew = ownIds.isEmpty()
