@@ -44,7 +44,7 @@ class SyncPlugin : Plugin() {
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     @Volatile private var isRestoring = false
-    private val pollMs = 10_000L
+    private val pollMs = 60_000L
     private val syncMutex = Mutex()
 
     @Volatile private var foregroundActivities = 0
@@ -75,6 +75,9 @@ class SyncPlugin : Plugin() {
     }
 
     private val lastFailedAssembleMs = HashMap<String, Long>()
+
+    private var consecutivePushFailures = 0
+    private var lastPushAttemptMs = 0L
 
     private fun isPlayerActivity(activity: Activity): Boolean =
         activity.javaClass.name.contains("player", ignoreCase = true)
@@ -316,7 +319,7 @@ class SyncPlugin : Plugin() {
         val ownDevice = SyncNetwork.mainDrafts(devices)
             .filter { it.deviceId == deviceId }
             .maxByOrNull { it.gen ?: it.updatedAt }
-        if (ownDevice != null && !SyncStorage.forceReRegister) {
+        if (ownDevice != null) {
             val ownChunks = devices.filter { it.deviceId == deviceId }
             SyncStorage.ownChunkContentIds = ownChunks
                 .filter { it.itemContentId != null }
@@ -324,11 +327,9 @@ class SyncPlugin : Plugin() {
                 .mapValues { (_, ds) -> ds.maxByOrNull { it.gen ?: it.updatedAt }!!.itemContentId!! }
             SyncStorage.ownItemId = ownDevice.itemId
             SyncStorage.ownContentId = ownDevice.itemContentId
-        } else if (ownDevice == null) {
+        } else {
             SyncStorage.ownItemId = null
             SyncStorage.ownContentId = null
-            SyncStorage.ownChunkContentIds = emptyMap()
-            SyncStorage.forceReRegister = false
         }
 
         val enabledBackup = SyncCategory.entries.filter { it != SyncCategory.SEARCH_HISTORY && SyncStorage.isBackupEnabled(it) }.toSet()
@@ -500,18 +501,30 @@ class SyncPlugin : Plugin() {
             val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
             val hash = SyncBackup.computeHash(data)
             val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
-            val ownIds = SyncStorage.ownChunkContentIds
-            val ownGens = devices.filter { it.deviceId == deviceId }.mapNotNull { it.gen }.distinct()
+            val myDrafts = devices.filter { it.deviceId == deviceId }
+            val ownGens = myDrafts.mapNotNull { it.gen }.distinct()
             val ownFragmented = ownGens.size > 1
+
+            val existing = HashMap(SyncStorage.ownChunkContentIds)
+            for (d in myDrafts) {
+                val cid = d.itemContentId ?: d.itemId
+                val index = d.chunkIndex
+                if (cid == null || index < 0) continue
+                existing.putIfAbsent(index, cid)
+            }
+            val ownIds = existing
+            val registerNew = ownIds.isEmpty()
             val ownNeedsHeal = ownIds.size != chunks.size || ownFragmented
-            if (hash != SyncStorage.lastPushedHash || ownNeedsHeal || ownIds.isEmpty() || SyncStorage.forceReRegister) {
+            if (hash != SyncStorage.lastPushedHash || ownNeedsHeal || registerNew || SyncStorage.forceReRegister) {
                 log("[push] estado: hashIgual=${hash == SyncStorage.lastPushedHash}, ownIds=${ownIds.size}, chunks=${chunks.size}, ownGens=${ownGens.joinToString()}, forceReReg=${SyncStorage.forceReRegister}")
             }
 
-            if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
+            if (registerNew) {
                 val newGen = SyncTime.nowEpochSeconds()
                 val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                 if (ids != null) {
+                    consecutivePushFailures = 0
+                    lastPushAttemptMs = System.currentTimeMillis()
                     SyncStorage.ownChunkContentIds = ids.mapIndexed { i, id -> i to id }.toMap()
                     SyncStorage.ownContentId = ids.getOrNull(0)
                     SyncStorage.ownItemId = null
@@ -526,11 +539,20 @@ class SyncPlugin : Plugin() {
                     maybePushToast()
                     SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices, removeAll = true)
                 } else {
+                    consecutivePushFailures++
+                    lastPushAttemptMs = System.currentTimeMillis()
                     lastStatus = "No se pudo crear draft"
                     lastError = SyncNetwork.lastError
                     log("[push] ERROR: registerDevice: ${lastError}")
                 }
-            } else if (hash != SyncStorage.lastPushedHash || ownNeedsHeal) {
+            } else if (hash != SyncStorage.lastPushedHash || ownNeedsHeal || SyncStorage.forceReRegister) {
+                if (consecutivePushFailures >= 3 && !forcePush) {
+                    val since = System.currentTimeMillis() - lastPushAttemptMs
+                    if (since < 90_000L) {
+                        lastStatus = "Sync pendiente (backoff ${(90_000L - since) / 1000}s)"
+                        return
+                    }
+                }
                 val healOnly = hash == SyncStorage.lastPushedHash
                 if (ownFragmented) {
                     log("[push] chunks propios fragmentados (${ownGens.joinToString()}), heal por update")
@@ -540,11 +562,14 @@ class SyncPlugin : Plugin() {
                 val gen = if (healOnly) (ownGens.maxOrNull() ?: SyncTime.nowEpochSeconds()) else SyncTime.nowEpochSeconds()
                 val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
                 if (updated != null) {
+                    consecutivePushFailures = 0
+                    lastPushAttemptMs = System.currentTimeMillis()
                     SyncStorage.ownChunkContentIds = updated
                     SyncStorage.ownContentId = updated[0]
                     SyncStorage.ownItemId = null
                     SyncStorage.syncGen = gen
                     SyncStorage.lastPushedHash = hash
+                    SyncStorage.forceReRegister = false
                     if (onlyResumeWatching) lastPeriodicResumePushMs = System.currentTimeMillis()
                     clearDirtyCategories()
                     updateCategoryTimestamps(enabledBackup)
@@ -553,13 +578,11 @@ class SyncPlugin : Plugin() {
                     maybePushToast()
                     SyncNetwork.cleanupStaleDrafts(token, projectId, deviceId, devices)
                 } else {
-                    SyncStorage.ownContentId = null
-                    SyncStorage.ownItemId = null
-                    SyncStorage.ownChunkContentIds = emptyMap()
-                    SyncStorage.forceReRegister = true
+                    consecutivePushFailures++
+                    lastPushAttemptMs = System.currentTimeMillis()
                     lastStatus = "Fallo al actualizar draft"
                     lastError = SyncNetwork.lastError
-                    log("[push] ERROR: updateDevice: ${lastError}")
+                    log("[push] ERROR: updateDevice (intento $consecutivePushFailures): ${lastError}")
                 }
             } else {
                 lastStatus = "Sin cambios que subir"

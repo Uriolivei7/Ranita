@@ -427,8 +427,13 @@ object SyncNetwork {
                         val body = makeChunkBody(i, chunks.size, chunks[i])
                         val contentId = existing[i]
                         if (contentId != null) {
-                            val ok = updateSingle(token, contentId, title, body)
-                            ok to null
+                            if (updateSingle(token, contentId, title, body)) {
+                                true to null
+                            } else {
+
+                                val (_, newId) = registerSingle(token, projectId, title, body)
+                                (newId != null) to newId
+                            }
                         } else {
                             val (_, newId) = registerSingle(token, projectId, title, body)
                             (newId != null) to newId
@@ -483,7 +488,7 @@ object SyncNetwork {
         projectId: String,
         deviceId: String,
         devices: List<SyncDevice>,
-        removeAll: Boolean = false
+        removeAll: Boolean = false,
     ) {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return
