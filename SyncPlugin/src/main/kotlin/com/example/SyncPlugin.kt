@@ -487,11 +487,9 @@ class SyncPlugin : Plugin() {
             val ownIds = SyncStorage.ownChunkContentIds
             val ownGens = devices.filter { it.deviceId == deviceId }.mapNotNull { it.gen }.distinct()
             val ownFragmented = ownGens.size > 1
+            val ownNeedsHeal = ownIds.size != chunks.size || ownFragmented
 
-            if (ownIds.isEmpty() || SyncStorage.forceReRegister || ownIds.size != chunks.size || ownFragmented) {
-                if (ownFragmented) {
-                    log("[push] chunks propios fragmentados (${ownGens.joinToString()}), re-registro limpio")
-                }
+            if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
                 val newGen = SyncTime.nowEpochSeconds()
                 val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                 if (ids != null) {
@@ -513,8 +511,14 @@ class SyncPlugin : Plugin() {
                     lastError = SyncNetwork.lastError
                     log("[push] ERROR: registerDevice: ${lastError}")
                 }
-            } else if (hash != SyncStorage.lastPushedHash) {
-                val gen = SyncTime.nowEpochSeconds()
+            } else if (hash != SyncStorage.lastPushedHash || ownNeedsHeal) {
+                val healOnly = hash == SyncStorage.lastPushedHash
+                if (ownFragmented) {
+                    log("[push] chunks propios fragmentados (${ownGens.joinToString()}), heal por update")
+                } else if (ownIds.size != chunks.size) {
+                    log("[push] tamaño propio ${ownIds.size} != ${chunks.size} trozo(s), heal por update")
+                }
+                val gen = if (healOnly) (ownGens.maxOrNull() ?: SyncTime.nowEpochSeconds()) else SyncTime.nowEpochSeconds()
                 val updated = SyncNetwork.updateDevice(token, projectId, deviceId, chunks, ownIds, gen)
                 if (updated != null) {
                     SyncStorage.ownChunkContentIds = updated
