@@ -488,6 +488,7 @@ class SyncPlugin : Plugin() {
             val ownGens = devices.filter { it.deviceId == deviceId }.mapNotNull { it.gen }.distinct()
             val ownFragmented = ownGens.size > 1
             val ownNeedsHeal = ownIds.size != chunks.size || ownFragmented
+            log("[push] estado: hashIgual=${hash == SyncStorage.lastPushedHash}, ownIds=${ownIds.size}, chunks=${chunks.size}, ownGens=${ownGens.joinToString()}, forceReReg=${SyncStorage.forceReRegister}")
 
             if (ownIds.isEmpty() || SyncStorage.forceReRegister) {
                 val newGen = SyncTime.nowEpochSeconds()

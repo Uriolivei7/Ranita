@@ -252,10 +252,11 @@ object SyncBackup {
             val id = parts.getOrNull(1)?.toIntOrNull() ?: return false
             return id in index.parentIds
         } else if (lowerKey.contains("video_pos_dur")) {
-            val id = parts.getOrNull(2)?.toIntOrNull() ?: false
+            // Las posiciones se sincronizan siempre: alimentan la barra del "Continuar viendo"
+            // (getViewPos(episodeId)) y la reanudación en el player de cualquier episodio.
+            val id = parts.getOrNull(2)?.toIntOrNull() ?: return false
             if (id !is Int) return false
-            if (id in index.episodeIds) return true
-            return isCompletedValue(resumePosition(value), resumeDuration(value))
+            return true
         } else if (lowerKey.contains("result_season") || lowerKey.contains("result_dub") ||
             lowerKey.contains("result_episode")
         ) {
