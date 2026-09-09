@@ -354,6 +354,7 @@ object SyncBackup {
         val prefs = if (isSettings) context.getDefaultSharedPrefs() else context.getSharedPrefs()
         val editor = prefs.edit()
         val localPrefixes = if (isSettings) emptyMap() else localAccountPrefixes(context)
+        var restoredPositions = 0
 
         vars.bool?.forEach { (k, v) ->
             val mk = localForm(k, localPrefixes)
@@ -390,9 +391,7 @@ object SyncBackup {
                             val id = mk.split("/").last().toIntOrNull()
                             if (id != null) {
                                 runCatching { DataStoreHelper.setViewPos(id, pos.toLong(), dur.toLong()) }
-                                    .onSuccess {
-                                        Log.i("SyncStream", "[rw] restore bajo $id ${(100 * pos / dur).toInt()}%")
-                                    }
+                                    .onSuccess { restoredPositions++ }
                             }
                         }
                     }
@@ -400,6 +399,9 @@ object SyncBackup {
             }
         }
         editor.apply()
+        if (restoredPositions > 0) {
+            Log.i("SyncStream", "[rw] restore: $restoredPositions posiciones restauradas")
+        }
     }
 
     fun isEmpty(backupFile: BackupFile?): Boolean {

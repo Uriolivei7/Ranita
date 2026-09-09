@@ -488,20 +488,20 @@ object SyncNetwork {
     ) {
         val drafts = devices.filter { it.deviceId == deviceId }
         if (drafts.isEmpty()) return
-        val keep = if (removeAll) {
-            emptySet<String>()
+        val stale = if (removeAll) {
+            drafts.toList()
         } else {
-            val anchor = drafts.filter { it.chunkIndex == 0 }.maxByOrNull { it.updatedAt } ?: return
-            val anchorGen = anchor.gen
-            if (anchorGen != null) {
-                drafts.filter { it.gen == anchorGen }.map { it.itemId }.toSet()
-            } else {
-                drafts.filter { kotlin.math.abs(anchor.updatedAt - it.updatedAt) <= 120L }
-                    .map { it.itemId }
-                    .toSet()
+            val bestPerChunk = HashMap<Int, SyncDevice>()
+            for (d in drafts) {
+                val prev = bestPerChunk[d.chunkIndex]
+                val dGen = d.gen ?: 0L
+                val prevGen = prev?.gen ?: 0L
+                if (prev == null || dGen > prevGen || (dGen == prevGen && d.updatedAt > prev.updatedAt)) {
+                    bestPerChunk[d.chunkIndex] = d
+                }
             }
+            drafts.filter { it.itemId != bestPerChunk[it.chunkIndex]?.itemId }
         }
-        val stale = drafts.filter { it.itemId !in keep }
         if (stale.isEmpty()) return
         log("[push] cleanup: ${stale.size} stale drafts de $deviceId")
         for (draft in stale) {

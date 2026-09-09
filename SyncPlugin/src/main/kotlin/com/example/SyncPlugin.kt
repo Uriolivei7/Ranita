@@ -485,8 +485,13 @@ class SyncPlugin : Plugin() {
             val hash = SyncBackup.computeHash(data)
             val chunks = SyncNetwork.splitChunks(SyncNetwork.compressData(data))
             val ownIds = SyncStorage.ownChunkContentIds
+            val ownGens = devices.filter { it.deviceId == deviceId }.mapNotNull { it.gen }.distinct()
+            val ownFragmented = ownGens.size > 1
 
-            if (ownIds.isEmpty() || SyncStorage.forceReRegister || ownIds.size != chunks.size) {
+            if (ownIds.isEmpty() || SyncStorage.forceReRegister || ownIds.size != chunks.size || ownFragmented) {
+                if (ownFragmented) {
+                    log("[push] chunks propios fragmentados (${ownGens.joinToString()}), re-registro limpio")
+                }
                 val newGen = SyncTime.nowEpochSeconds()
                 val ids = SyncNetwork.registerDevice(token, projectId, deviceId, chunks, newGen)
                 if (ids != null) {
