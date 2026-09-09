@@ -16,9 +16,6 @@ object SyncBackup {
 
     private const val POSITION_LEAD_SECONDS = 2.0
 
-    /** Ventana en la que una posición menor tras un completado cuenta como re-watch genuino. */
-    private const val COMPLETION_GRACE_SECONDS = 1800L
-
     private val resumeMapper = ObjectMapper()
 
     val nonTransferableKeys = listOf(
@@ -58,6 +55,7 @@ object SyncBackup {
     private val accountScopedSections = setOf(
         "video_pos_dur", "result_resume_watching", "result_resume_watching_2",
         "result_season", "result_dub", "result_episode", "download_header_cache",
+        "video_watch_state",
     )
 
     private class ScopedKey(
@@ -74,16 +72,11 @@ object SyncBackup {
         return ScopedKey(parts[0], section, parts[2])
     }
 
-    /** Extrae el keyIndex del prefijo de cuenta de un re-watch (formato `N` o `Account(keyIndex=N,...)`). */
     private fun keyIndex(account: String): String? {
         if (account.isNotEmpty() && account.all { it.isDigit() }) return account
         return Regex("keyIndex=(\\d+)").find(account)?.groupValues?.get(1)
     }
 
-    /**
-     * Prefijo local real que usa este dispositivo por cada keyIndex.
-     * El rewatch se escribe de vuelta en el formato local, así la UI lo ve.
-     */
     private fun localAccountPrefixes(context: Context): Map<String, String> {
         val digit = HashMap<String, String>()
         val other = HashMap<String, String>()
@@ -102,7 +95,6 @@ object SyncBackup {
         return result
     }
 
-    /** Re-escribe un re-watch entrante al prefijo local del perfil al que pertenece. */
     private fun localForm(key: String, localPrefixes: Map<String, String>): String {
         val sc = scopedKey(key) ?: return key
         val ki = keyIndex(sc.account) ?: return key
@@ -110,11 +102,6 @@ object SyncBackup {
         return "$prefix/${sc.section}/${sc.id}"
     }
 
-    /**
-     * Timestamp de un tombstone por identidad canónica del perfil:
-     * `N/section/id` y `Account(keyIndex=N,...)/section/id` se consideran la misma clave,
-     * pero NUNCA cruza entre keyIndex distintos.
-     */
     private fun deletionTs(deletions: Map<String, Long>, key: String): Long? {
         deletions[key]?.let { return it }
         val sc = scopedKey(key) ?: return null
@@ -138,7 +125,8 @@ object SyncBackup {
         }
         if (lowerKey.contains("result_resume_watching") || lowerKey.contains("video_pos_dur") ||
             lowerKey.contains("download_header_cache") || lowerKey.contains("result_season") ||
-            lowerKey.contains("result_dub") || lowerKey.contains("result_episode")
+            lowerKey.contains("result_dub") || lowerKey.contains("result_episode") ||
+            lowerKey.contains("video_watch_state")
         ) {
             return SyncCategory.RESUME_WATCHING
         }
@@ -504,12 +492,6 @@ object SyncBackup {
         return merged
     }
 
-    /**
-     * video_pos_dur and other numeric resume keys carry no timestamp of their own,
-     * so they are resolved using the embedded updateTime of the sibling
-     * result_resume_watching_2 entry for the same parent. Only when no embedded
-     * timestamp exists on either side do we fall back to the draft-level timestamps.
-     */
     private fun cloudValueWins(
         key: String,
         localStrings: Map<String, String>?,
@@ -589,7 +571,6 @@ object SyncBackup {
         return merged
     }
 
-    /** Builds a map episodeId -> latest updateTime from all resume watching entries. */
     private fun buildEpisodeTimestampIndex(stringMap: Map<String, String>): Map<Int, Long> {
         val result = HashMap<Int, Long>()
         for ((key, value) in stringMap) {
@@ -643,12 +624,12 @@ object SyncBackup {
                 val doneIsCloud = cloudDone
                 val doneTs = if (cloudDone) cloudTs else localTs
                 val incompleteTs = if (cloudDone) localTs else cloudTs
+
                 if (incompleteTs <= doneTs) {
                     return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
                 }
-                if (incompleteTs - doneTs > COMPLETION_GRACE_SECONDS) {
-                    return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
-                }
+
+                return if (doneIsCloud) Winner.LOCAL else Winner.CLOUD
             }
 
             if (localPos >= 0.0 && cloudPos >= 0.0 && abs(localPos - cloudPos) <= POSITION_LEAD_SECONDS) {
@@ -743,7 +724,6 @@ object SyncBackup {
         return keys
     }
 
-    /** Diagnóstico: timestamp embebido (updateTime) del valor de una clave, en epoch seconds (0 si no tiene). */
     fun debugTs(value: Any?): Long =
         if (value is String) SyncTime.toEpochSeconds(SyncKeyPath.extractTimestamp(value)) else 0L
 

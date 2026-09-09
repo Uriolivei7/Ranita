@@ -518,7 +518,6 @@ object SyncNetwork {
         android.util.Log.i(TAG, msg)
     }
 
-    // ISO8601 -> epoch seconds
     fun parseIsoTime(iso: String?): Long {
         if (iso.isNullOrEmpty()) return 0L
         return try {

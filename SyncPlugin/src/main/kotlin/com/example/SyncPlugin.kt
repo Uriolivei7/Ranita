@@ -57,7 +57,7 @@ class SyncPlugin : Plugin() {
     @Volatile private var pendingPushToast = false
     @Volatile private var playerActivities = 0
     @Volatile private var lastPeriodicResumePushMs = 0L
-    /** Subida periódica de RESUME_WATCHING durante el uso (foreground incluido). */
+
     private val periodicResumePushMs = 60_000L
 
     private fun log(msg: String) {
@@ -67,7 +67,6 @@ class SyncPlugin : Plugin() {
     private fun isPlayerActivity(activity: Activity): Boolean =
         activity.javaClass.name.contains("player", ignoreCase = true)
 
-    /** Los avisos se muestran siempre salvo que el usuario los silencie durante reproducción. */
     private fun canShowToast(): Boolean =
         SyncStorage.toastDuringPlayback || playerActivities == 0
 
