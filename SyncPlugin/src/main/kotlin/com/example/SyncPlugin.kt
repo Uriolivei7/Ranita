@@ -74,6 +74,8 @@ class SyncPlugin : Plugin() {
         }
     }
 
+    private val lastFailedAssembleMs = HashMap<String, Long>()
+
     private fun isPlayerActivity(activity: Activity): Boolean =
         activity.javaClass.name.contains("player", ignoreCase = true)
 
@@ -350,6 +352,9 @@ class SyncPlugin : Plugin() {
                 val candidates = mutableMapOf<SyncCategory, MutableList<Pair<SyncDevice, BackupFile>>>()
                 val consumedNow = mutableMapOf<String, Long>()
                 for (other in othersList) {
+                    val nowMs = System.currentTimeMillis()
+                    val lastFail = lastFailedAssembleMs[other.deviceId]
+                    if (lastFail != null && nowMs - lastFail < 120_000L) continue
                     val payload = SyncNetwork.assemblePayload(token, devices, other.deviceId)
                     var cloudBackup: BackupFile? = null
                     if (payload != null) {
@@ -368,9 +373,11 @@ class SyncPlugin : Plugin() {
                         }
                     }
                     if (cloudBackup == null) {
-                        log("[restore] ${other.name}: payload incompleto, se reintentará")
+                        lastFailedAssembleMs[other.deviceId] = nowMs
+                        log("[restore] ${other.name}: backup incompleto, reintentará en 2 min")
                         continue
                     }
+                    lastFailedAssembleMs.remove(other.deviceId)
                     consumedNow[other.deviceId] = other.gen ?: other.updatedAt
                     for (cat in enabledRestore) {
                         val cloudCat = filterBackup(cloudBackup, cat)
