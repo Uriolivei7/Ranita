@@ -721,7 +721,7 @@ object SyncBackup {
 
     fun resumeEpisodeId(json: String): Int? =
         try {
-            "\"episodeId\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toIntOrNull()
+            "\"episodeId\":\\s*(-?\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toIntOrNull()
         } catch (_: Exception) {
             null
         }

@@ -510,18 +510,25 @@ class SyncPlugin : Plugin() {
                     ?.sortedByDescending { SyncKeyPath.extractTimestamp(it.second) }
                     ?.take(3)
                     ?: emptyList()
+                if (resumeEntries.isEmpty()) {
+                    log("[push] re-watch top ep: ninguna result_resume_watching en backup")
+                }
                 for ((key, value) in resumeEntries) {
                     val account = key.split("/").getOrNull(0) ?: continue
                     val epId = SyncBackup.resumeEpisodeId(value) ?: continue
+                    val vpdCount = toPush.datastore.string?.keys?.count { it.contains("/video_pos_dur/") } ?: 0
                     val posVal = toPush.datastore.string?.get("$account/video_pos_dur/$epId")
+                    val anyPos = toPush.datastore.string?.entries?.firstOrNull { it.key.endsWith("/video_pos_dur/$epId") }
                     val p = if (posVal != null) SyncBackup.resumePosition(posVal) else -1.0
                     val d = if (posVal != null) SyncBackup.resumeDuration(posVal) else -1.0
                     val label = when {
+                        posVal == null && anyPos != null -> "vpd en otra cuenta (${anyPos.key.split("/")[0]}): ${(SyncBackup.resumePosition(anyPos.value) / 1000.0).roundToInt()}s"
                         posVal == null -> "sin video_pos_dur"
                         p >= 0.0 && d > 0.0 -> "${(p / 1000.0).roundToInt()}s / ${(d / 1000.0).roundToInt()}s"
                         else -> "formato raro: ${posVal.take(120)}"
                     }
-                    log("[push] re-watch top ep $epId: $label")
+                    log("[push] re-watch top ep $epId (vpd en backup=$vpdCount): $label")
+                    log("[push] re-watch card $epId: ${value.take(160)}")
                 }
             }
             val myDrafts = devices.filter { it.deviceId == deviceId }
