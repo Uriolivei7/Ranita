@@ -74,40 +74,59 @@ object SyncBackup {
         return ScopedKey(parts[0], section, parts[2])
     }
 
-    /** keyIndex del perfil activo de este dispositivo (lo almacena CloudStream). */
-    fun activeAccount(context: Context): String? {
-        val prefs = context.getSharedPrefs()
-        return try {
-            if (prefs.contains("data_store_helper/account_key_index")) {
-                prefs.getInt("data_store_helper/account_key_index", -1).let {
-                    if (it >= 0) it.toString() else prefs.getString("data_store_helper/account_key_index", null)
-                }
-            } else {
-                prefs.getString("data_store_helper/account_key_index", null)
-            }
-        } catch (_: Exception) {
-            null
-        }
+    /** Extrae el keyIndex del prefijo de cuenta de un re-watch (formato `N` o `Account(keyIndex=N,...)`). */
+    private fun keyIndex(account: String): String? {
+        if (account.isNotEmpty() && account.all { it.isDigit() }) return account
+        return Regex("keyIndex=(\\d+)").find(account)?.groupValues?.get(1)
     }
 
     /**
-     * Solo deja pasar claves de re-watch del perfil ACTIVO de este dispositivo.
-     * Las de otros perfiles (keyIndex distinto) NUNCA viajan, así el receptor
-     * no puede mezclarlas con su propio perfil activo.
+     * Prefijo local real que usa este dispositivo por cada keyIndex.
+     * El rewatch se escribe de vuelta en el formato local, así la UI lo ve.
      */
-    private fun isActiveResumeKey(key: String, activeAccount: String?): Boolean {
-        val sc = scopedKey(key) ?: return true
-        if (activeAccount == null) return false
-        if (sc.account == activeAccount) return true
-        return sc.account.startsWith("Account(", ignoreCase = true) &&
-            Regex("keyIndex=(\\d+)").find(sc.account)?.groupValues?.get(1) == activeAccount
+    private fun localAccountPrefixes(context: Context): Map<String, String> {
+        val digit = HashMap<String, String>()
+        val other = HashMap<String, String>()
+        val seen = HashMap<String, String>()
+        for (key in context.getSharedPrefs().all.keys + context.getDefaultSharedPrefs().all.keys) {
+            val sc = scopedKey(key) ?: continue
+            val ki = keyIndex(sc.account) ?: continue
+            if (seen.containsKey(ki)) continue
+            seen[ki] = sc.account
+            if (sc.account.all { it.isDigit() }) digit[ki] = sc.account else other[ki] = sc.account
+        }
+        val result = HashMap<String, String>()
+        for (ki in seen.keys) {
+            result[ki] = digit[ki] ?: other[ki] ?: ki
+        }
+        return result
     }
 
-    /** Re-escribe el keyIndex de un re-watch entrante al perfil activo local. */
-    private fun remapResumeKey(key: String, localActive: String?): String {
+    /** Re-escribe un re-watch entrante al prefijo local del perfil al que pertenece. */
+    private fun localForm(key: String, localPrefixes: Map<String, String>): String {
         val sc = scopedKey(key) ?: return key
-        if (localActive == null || sc.account == localActive) return key
-        return "$localActive/${sc.section}/${sc.id}"
+        val ki = keyIndex(sc.account) ?: return key
+        val prefix = localPrefixes[ki] ?: ki
+        return "$prefix/${sc.section}/${sc.id}"
+    }
+
+    /**
+     * Timestamp de un tombstone por identidad canónica del perfil:
+     * `N/section/id` y `Account(keyIndex=N,...)/section/id` se consideran la misma clave,
+     * pero NUNCA cruza entre keyIndex distintos.
+     */
+    private fun deletionTs(deletions: Map<String, Long>, key: String): Long? {
+        deletions[key]?.let { return it }
+        val sc = scopedKey(key) ?: return null
+        val ki = keyIndex(sc.account) ?: return null
+        for ((delKey, delTs) in deletions) {
+            val delSc = scopedKey(delKey) ?: continue
+            val delKi = keyIndex(delSc.account) ?: continue
+            if (delKi == ki && delSc.section == sc.section && delSc.id == sc.id) {
+                return delTs
+            }
+        }
+        return null
     }
 
     fun classifyKey(key: String): SyncCategory? {
@@ -146,20 +165,17 @@ object SyncBackup {
         context: Context,
         enabled: Set<SyncCategory>,
     ): BackupFile {
-        val activeAccount = activeAccount(context)
         val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, entry.value, resumeIndex) &&
-                isActiveResumeKey(entry.key, activeAccount)
+                isResumeRelevant(entry.key, entry.value, resumeIndex)
         }
         val allSettings = context.getDefaultSharedPrefs().all.filter { entry ->
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
-                isResumeRelevant(entry.key, entry.value, resumeIndex) &&
-                isActiveResumeKey(entry.key, activeAccount)
+                isResumeRelevant(entry.key, entry.value, resumeIndex)
         }
         val deletions = pruneTombstones(SyncStorage.tombstones())
-            .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled && isActiveResumeKey(key, activeAccount) }
+            .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled }
         return BackupFile(
             datastore = buildVars(allData),
             settings = buildVars(allSettings),
@@ -281,16 +297,16 @@ object SyncBackup {
         val dataPrefs = context.getSharedPrefs()
         val settingsPrefs = context.getDefaultSharedPrefs()
         val now = SyncTime.nowEpochSeconds()
-        val localActive = activeAccount(context)
+        val localPrefixes = localAccountPrefixes(context)
         val dataRemove = mutableListOf<String>()
         val settingsRemove = mutableListOf<String>()
         val keepKeys = mutableSetOf<String>()
         if (mergedBackup != null) {
-            mergedBackup.datastore.string?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
-            mergedBackup.datastore.bool?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
-            mergedBackup.datastore.int?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
-            mergedBackup.datastore.long?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
-            mergedBackup.datastore.float?.let { keys -> keepKeys += keys.keys.map { remapResumeKey(it, localActive) } }
+            mergedBackup.datastore.string?.let { keys -> keepKeys += keys.keys.map { localForm(it, localPrefixes) } }
+            mergedBackup.datastore.bool?.let { keys -> keepKeys += keys.keys.map { localForm(it, localPrefixes) } }
+            mergedBackup.datastore.int?.let { keys -> keepKeys += keys.keys.map { localForm(it, localPrefixes) } }
+            mergedBackup.datastore.long?.let { keys -> keepKeys += keys.keys.map { localForm(it, localPrefixes) } }
+            mergedBackup.datastore.float?.let { keys -> keepKeys += keys.keys.map { localForm(it, localPrefixes) } }
             mergedBackup.settings.string?.let { keys -> keepKeys += keys.keys }
             mergedBackup.settings.bool?.let { keys -> keepKeys += keys.keys }
             mergedBackup.settings.int?.let { keys -> keepKeys += keys.keys }
@@ -298,7 +314,7 @@ object SyncBackup {
             mergedBackup.settings.float?.let { keys -> keepKeys += keys.keys }
         }
         for ((key, delTs) in deletions) {
-            val k = remapResumeKey(key, localActive)
+            val k = localForm(key, localPrefixes)
             if (!k.isTransferable() || classifyKey(k) !in enabled) continue
             if (now - delTs >= TOMBSTONE_TTL_SECONDS) continue
             if (k in keepKeys) continue
@@ -337,30 +353,30 @@ object SyncBackup {
     ) {
         val prefs = if (isSettings) context.getDefaultSharedPrefs() else context.getSharedPrefs()
         val editor = prefs.edit()
-        val localActive = if (isSettings) null else activeAccount(context)
+        val localPrefixes = if (isSettings) emptyMap() else localAccountPrefixes(context)
 
         vars.bool?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putBoolean(mk, v)
         }
         vars.int?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putInt(mk, v)
         }
         vars.float?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putFloat(mk, v)
         }
         vars.long?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putLong(mk, v)
         }
         vars.stringSet?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) editor.putStringSet(mk, v)
         }
         vars.string?.forEach { (k, v) ->
-            val mk = remapResumeKey(k, localActive)
+            val mk = localForm(k, localPrefixes)
             if (mk.isTransferable() && classifyKey(mk) in enabled) {
                 val localVal = prefs.getString(mk, null)
                 val cloudTs = SyncKeyPath.extractTimestamp(v)
@@ -408,12 +424,11 @@ object SyncBackup {
         cloud: BackupFile,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        localActive: String?,
     ): BackupFile {
         val deletions = mergeDeletions(local.deletions, cloud.deletions)
         return BackupFile(
-            datastore = mergeVars(local.datastore, cloud.datastore, deletions, localCategoryTs, cloudPayloadTs, localActive),
-            settings = mergeVars(local.settings, cloud.settings, deletions, localCategoryTs, cloudPayloadTs, localActive),
+            datastore = mergeVars(local.datastore, cloud.datastore, deletions, localCategoryTs, cloudPayloadTs),
+            settings = mergeVars(local.settings, cloud.settings, deletions, localCategoryTs, cloudPayloadTs),
             deletions = deletions,
         )
     }
@@ -434,14 +449,13 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        localActive: String?,
     ): BackupVars = BackupVars(
-        bool = mergeValueMap(local.bool, cloud.bool, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
-        int = mergeValueMap(local.int, cloud.int, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
-        float = mergeValueMap(local.float, cloud.float, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
-        long = mergeValueMap(local.long, cloud.long, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
-        string = mergeStringMap(local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
-        stringSet = mergeValueMap(local.stringSet, cloud.stringSet, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs, localActive),
+        bool = mergeValueMap(local.bool, cloud.bool, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        int = mergeValueMap(local.int, cloud.int, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        float = mergeValueMap(local.float, cloud.float, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        long = mergeValueMap(local.long, cloud.long, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        string = mergeStringMap(local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
+        stringSet = mergeValueMap(local.stringSet, cloud.stringSet, local.string, cloud.string, deletions, localCategoryTs, cloudPayloadTs),
     )
 
     private fun <T> mergeValueMap(
@@ -452,7 +466,6 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        localActive: String?,
     ): Map<String, T>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -462,7 +475,7 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                val delTs = deletionTs(deletions, key, localActive)
+                val delTs = deletionTs(deletions, key)
                 if (delTs == null || delTs <= resumeSiblingTs(key, localStrings)) {
                     merged[key] = localVal
                 }
@@ -474,7 +487,7 @@ object SyncBackup {
         }
         for ((key, cloudVal) in cloud) {
             if (!local.containsKey(key)) {
-                val delTs = deletionTs(deletions, key, localActive)
+                val delTs = deletionTs(deletions, key)
                 if (delTs == null || delTs <= resumeSiblingTs(key, cloudStrings)) {
                     merged[key] = cloudVal
                 }
@@ -502,24 +515,6 @@ object SyncBackup {
         return cloudPayloadTs > localCategoryTs
     }
 
-    /**
-     * Busca el timestamp de un tombstone considerando el remapeo de perfiles:
-     * una clave borrada bajo otro keyIndex (mismo section+id) también cuenta
-     * como borrado para el perfil activo local.
-     */
-    private fun deletionTs(deletions: Map<String, Long>, key: String, localActive: String?): Long? {
-        deletions[key]?.let { return it }
-        val sc = scopedKey(key) ?: return null
-        if (localActive == null || sc.account == localActive) return null
-        for ((delKey, delTs) in deletions) {
-            val delSc = scopedKey(delKey) ?: continue
-            if (delSc.section == sc.section && delSc.id == sc.id && delSc.account != localActive) {
-                return delTs
-            }
-        }
-        return null
-    }
-
     private fun resumeSiblingTs(key: String, stringMap: Map<String, String>?): Long {
         if (stringMap == null) return 0L
         val parts = key.split("/")
@@ -545,7 +540,6 @@ object SyncBackup {
         deletions: Map<String, Long>,
         localCategoryTs: Long,
         cloudPayloadTs: Long,
-        localActive: String?,
     ): Map<String, String>? {
         if (local == null && cloud == null) return null
         if (local == null) return cloud
@@ -558,7 +552,7 @@ object SyncBackup {
         for ((key, localVal) in local) {
             val cloudVal = cloud[key]
             if (cloudVal == null) {
-                val delTs = deletionTs(deletions, key, localActive)
+                val delTs = deletionTs(deletions, key)
                 if (delTs == null || delTs <= episodeTimestampFor(key, local, localEpisodeTs)) {
                     merged[key] = localVal
                 }
@@ -578,7 +572,7 @@ object SyncBackup {
         }
         for ((key, cloudVal) in cloud) {
             if (!local.containsKey(key)) {
-                val delTs = deletionTs(deletions, key, localActive)
+                val delTs = deletionTs(deletions, key)
                 if (delTs == null || delTs <= episodeTimestampFor(key, cloud, cloudEpisodeTs)) {
                     merged[key] = cloudVal
                 }
