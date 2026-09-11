@@ -400,10 +400,10 @@ class SyncPlugin : Plugin() {
                     for (cat in enabledRestore) {
                         val list = candidates[cat] ?: continue
                         val best = list.maxWithOrNull(
-                            compareBy<Pair<SyncDevice, BackupFile>> {
-                                SyncBackup.getBackupFileKeys(it.second).size
-                            }.thenBy { it.first.updatedAt }
+                            compareBy<Pair<SyncDevice, BackupFile>> { it.first.updatedAt }
+                                .thenByDescending { SyncBackup.getBackupFileKeys(it.second).size }
                         ) ?: continue
+                        log("[restore] $cat: fuente ${best.first.name} (${SyncBackup.getBackupFileKeys(best.second).size} llaves, upd ${best.first.updatedAt})")
                         val (source, cloudCat) = best
                         val localCat = filterBackup(localBackup, cat)
                         val merged = SyncBackup.mergeBackupFiles(
