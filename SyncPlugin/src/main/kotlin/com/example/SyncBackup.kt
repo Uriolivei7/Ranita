@@ -641,8 +641,12 @@ object SyncBackup {
 
             if (localPos >= 0.0 && cloudPos >= 0.0 && localDone != cloudDone) {
                 val doneIsCloud = cloudDone
-                val doneTs = if (cloudDone) cloudTs else localTs
-                val incompleteTs = if (cloudDone) localTs else cloudTs
+                val rawDoneTs = if (cloudDone) cloudTs else localTs
+                val rawIncompleteTs = if (cloudDone) localTs else cloudTs
+                val doneTs = if (rawDoneTs > 0L) rawDoneTs
+                else if (doneIsCloud) cloudPayloadTs else localCategoryTs
+                val incompleteTs = if (rawIncompleteTs > 0L) rawIncompleteTs
+                else if (doneIsCloud) localCategoryTs else cloudPayloadTs
 
                 if (incompleteTs <= doneTs) {
                     return if (doneIsCloud) Winner.CLOUD else Winner.LOCAL
