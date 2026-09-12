@@ -23,9 +23,6 @@ class MediaCacheExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        Log.d(TAG, "Extrayendo: $url")
-        Log.d(TAG, "Referer: $referer")
-
         try {
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -42,11 +39,8 @@ class MediaCacheExtractor : ExtractorApi() {
             }
 
             val m3u8Content = m3u8Response.text
-            Log.d(TAG, "M3U8 descargado, parseando variantes...")
 
             val variants = parseM3U8Variants(m3u8Content, url)
-
-            Log.d(TAG, "Encontradas ${variants.size} variantes")
 
             variants.forEach { variant ->
 
@@ -62,8 +56,6 @@ class MediaCacheExtractor : ExtractorApi() {
                         this.headers = headers
                     }
                 )
-
-                Log.d(TAG, "✓ Agregado: ${variant.quality}")
             }
 
         } catch (e: Exception) {

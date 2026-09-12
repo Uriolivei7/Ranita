@@ -652,7 +652,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/UniquestreamProvider.cs3",
     "status": 1,
-    "version": 5,
+    "version": 6,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeStream",
@@ -667,7 +667,7 @@
     ],
     "iconUrl": "https://anime.uniquestream.net/favicon.ico",
     "language": "en",
-    "fileSize": 87000
+    "fileSize": 89000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SyncPlugin.cs3",
