@@ -260,6 +260,12 @@ class MonoschinosProvider : MainAPI() {
                 host.contains("voe") -> {
                     MonosVoe().getUrl(url, mainUrl, subtitleCallback, countingCallback)
                 }
+                host.contains("ok.ru") || host.contains("odnoklassniki") -> {
+                    MonosOkru().getUrl(url, mainUrl, subtitleCallback, countingCallback)
+                }
+                host.contains("solidfiles") -> {
+                    Log.w(TAG, "loadLinks: host muerto (DNS), omitido: $host")
+                }
                 host.contains("filemoon") || host.contains("byse") -> {
                     MonosFilemoon().getUrl(url, mainUrl, subtitleCallback, countingCallback)
                 }
@@ -285,6 +291,7 @@ class MonoschinosProvider : MainAPI() {
             val isCdn = url.contains("cdn-tnmr", ignoreCase = true) ||
                 url.contains("mxcontent", ignoreCase = true) ||
                 url.contains("cloudwindow-route", ignoreCase = true) ||
+                url.contains("okcdn", ignoreCase = true) ||
                 url.contains(".urlset", ignoreCase = true) ||
                 url.contains("abyss", ignoreCase = true) ||
                 url.contains("filemoon", ignoreCase = true) ||
@@ -297,6 +304,7 @@ class MonoschinosProvider : MainAPI() {
                 url.contains("cdn-tnmr") -> "https://luluvdo.com/"
                 url.contains("mxcontent") -> "https://mixdrop.top/"
                 url.contains("cloudwindow-route") -> "https://eugenemakedraw.com/"
+                url.contains("okcdn") -> "https://ok.ru/"
                 else -> extractorLink.referer
             }
             Log.d(TAG, "[intercept] CDN request: ${url.take(120)} referer=$referer")

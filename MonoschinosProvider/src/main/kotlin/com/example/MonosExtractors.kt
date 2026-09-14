@@ -335,6 +335,63 @@ class MonosMixdrop : ExtractorApi() {
     }
 }
 
+class MonosOkru : ExtractorApi() {
+    override val name = "MonosOkru"
+    override val mainUrl = "https://ok.ru"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        val pageUrl = if (url.startsWith("http://")) "https://" + url.removePrefix("http://") else url
+        Log.d(MONOS_TAG, "[Okru] URL: $pageUrl")
+        try {
+            val resp = app.get(pageUrl, headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer" to (referer ?: pageUrl),
+            ), timeout = 20000L)
+            Log.d(MONOS_TAG, "[Okru] HTTP ${resp.code} len=${resp.text.length}")
+            parseHtml(resp.text, MONOS_SOURCE, callback)
+        } catch (e: Exception) {
+            Log.e(MONOS_TAG, "[Okru] Error: ${e.message}", e)
+        }
+    }
+
+    suspend fun parseHtml(
+        html: String,
+        sourceName: String,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        // El JSON viene con entidades HTML (&quot;) y escapes JS (\u0026, \/)
+        val unescaped = html.replace("&quot;", "\"").replace("\\u0026", "&").replace("\\/", "/")
+        val hls = Regex("""hlsManifestUrl"\s*:\s*"([^"]+)""").find(unescaped)?.groupValues?.get(1)
+        if (!hls.isNullOrBlank() && hls.startsWith("http")) {
+            Log.d(MONOS_TAG, "[Okru] HLS: ${hls.take(120)}")
+            callback.invoke(newExtractorLink(sourceName, "$sourceName - Okru", hls, ExtractorLinkType.M3U8) {
+                this.referer = "$mainUrl/"
+                this.headers = mapOf("Origin" to mainUrl)
+            })
+            return true
+        }
+        // Fallback: metadataUrl -> MPD DASH
+        val meta = Regex("""metadataUrl"\s*:\s*"([^"]+)""").find(unescaped)?.groupValues?.get(1)
+        if (!meta.isNullOrBlank() && meta.startsWith("http")) {
+            Log.d(MONOS_TAG, "[Okru] DASH fallback: ${meta.take(120)}")
+            callback.invoke(newExtractorLink(sourceName, "$sourceName - Okru DASH", meta, ExtractorLinkType.DASH) {
+                this.referer = "$mainUrl/"
+                this.headers = mapOf("Origin" to mainUrl)
+            })
+            return true
+        }
+        Log.w(MONOS_TAG, "[Okru] sin hlsManifestUrl ni metadataUrl")
+        return false
+    }
+}
+
 class MonosVoe : ExtractorApi() {
     override val name = "MonosVoe"
     override val mainUrl = "https://voe.sx"
