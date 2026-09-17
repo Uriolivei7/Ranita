@@ -62,12 +62,13 @@ class SyncPlugin : Plugin() {
     private val periodicResumePushMs = 60_000L
     @Volatile private var lastResumeWriteMs = 0L
     private val resumeSettleMs = 120_000L
+    @Volatile private var episodeBoundaryPending = false
+    private val lastObservedEpisodeIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     private fun log(msg: String) {
         Log.i(TAG, msg)
     }
 
-    /** Idle heartbeat: a lo sumo una línea cada 5 min cuando no hay actividad. */
     private var lastIdleLogMs = 0L
     private fun logIdle(msg: String) {
         val now = System.currentTimeMillis()
@@ -155,6 +156,7 @@ class SyncPlugin : Plugin() {
             if (isRestoring || key == null) return@OnSharedPreferenceChangeListener
             if (prefs.contains(key)) {
                 SyncBackup.removeTombstone(key)
+                detectEpisodeBoundary(prefs, key)
             } else {
                 SyncBackup.recordDeletion(key)
             }
@@ -202,6 +204,45 @@ class SyncPlugin : Plugin() {
                 withContext(NonCancellable) {
                     try { runSync() } catch (_: Exception) {}
                 }
+            }
+        }
+    }
+
+    private fun detectEpisodeBoundary(prefs: SharedPreferences, key: String) {
+        val value = prefs.all[key] as? String ?: return
+        val lower = key.lowercase()
+        if (lower.contains("video_pos_dur")) {
+            val pos = SyncBackup.resumePosition(value)
+            val dur = SyncBackup.resumeDuration(value)
+            if (pos >= 0.0 && dur > 0.0 && pos >= 0.9 * dur) {
+                setEpisodeBoundary("ep ${key.substringAfterLast('/')} terminado")
+            }
+            return
+        }
+        if (lower.contains("result_resume_watching_2")) {
+            val parts = key.split("/")
+            if (parts.size != 3) return
+            val ep = SyncBackup.resumeEpisodeId(value) ?: return
+            val last = lastObservedEpisodeIds[parts[0]]
+            if (last != null && last != ep) {
+                setEpisodeBoundary("nuevo episodio $ep")
+            }
+            lastObservedEpisodeIds[parts[0]] = ep
+        } else if (lower.contains("video_watch_state")) {
+            if (value.lowercase().contains("watched")) {
+                setEpisodeBoundary("ep ${key.substringAfterLast('/')} marcado visto")
+            }
+        }
+    }
+
+    private fun setEpisodeBoundary(reason: String) {
+        episodeBoundaryPending = true
+        log("[push] límite de episodio: $reason")
+        if (!SyncStorage.isLoggedIn()) return
+        scope.launch {
+            delay(1_500L)
+            withContext(NonCancellable) {
+                try { runSync() } catch (_: Exception) {}
             }
         }
     }
@@ -432,6 +473,7 @@ class SyncPlugin : Plugin() {
                     throw t
                 } finally {
                     isRestoring = false
+                    lastObservedEpisodeIds.clear()
                 }
                 if (consumedNow.isNotEmpty()) {
                     val mergedConsumed = HashMap(SyncStorage.lastRestoredFrom)
@@ -498,18 +540,22 @@ class SyncPlugin : Plugin() {
                 dirtyCategories.isNotEmpty() && dirtyCategories.all { it == SyncCategory.RESUME_WATCHING }
             }
             if (!forcePush && onlyResumeWatching) {
-                if (System.currentTimeMillis() - lastResumeWriteMs < resumeSettleMs) {
-                    lastStatus = "Avance en curso, push al detenerse"
-                    log("[push] omitido: avance reciente (< ${resumeSettleMs / 1000}s), push al detenerse")
-                    return
+                if (episodeBoundaryPending) {
+                    log("[push] RESUME_WATCHING: límite de episodio pendiente, push inmediato")
+                } else {
+                    if (System.currentTimeMillis() - lastResumeWriteMs < resumeSettleMs) {
+                        lastStatus = "Avance en curso, push al detenerse"
+                        log("[push] omitido: avance reciente (< ${resumeSettleMs / 1000}s), push al detenerse")
+                        return
+                    }
+                    val since = System.currentTimeMillis() - lastPeriodicResumePushMs
+                    if (since < periodicResumePushMs) {
+                        lastStatus = "Esperando cierre de app para push"
+                        log("[push] omitido: solo RESUME_WATCHING, periódico en ${(periodicResumePushMs - since) / 1000}s")
+                        return
+                    }
+                    log("[push] RESUME_WATCHING: push periódico (${since / 1000}s desde el último)")
                 }
-                val since = System.currentTimeMillis() - lastPeriodicResumePushMs
-                if (since < periodicResumePushMs) {
-                    lastStatus = "Esperando cierre de app para push"
-                    log("[push] omitido: solo RESUME_WATCHING, periódico en ${(periodicResumePushMs - since) / 1000}s")
-                    return
-                }
-                log("[push] RESUME_WATCHING: push periódico (${since / 1000}s desde el último)")
             }
             val data = SyncNetwork.json.encodeToString(BackupFile.serializer(), toPush)
             val hash = SyncBackup.computeHash(data)
@@ -650,6 +696,7 @@ class SyncPlugin : Plugin() {
     }
 
     private fun clearDirtyCategories() {
+        episodeBoundaryPending = false
         synchronized(dirtyCategories) {
             dirtyCategories.clear()
         }
