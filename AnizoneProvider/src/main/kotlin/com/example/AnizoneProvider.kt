@@ -334,12 +334,66 @@ class AnizoneProvider : MainAPI() {
         }
     }
 
+    private fun containsCjk(s: String): Boolean {
+        for (c in s) {
+            val code = c.code
+            if (code in 0x3040..0x30FF || code in 0x4E00..0x9FFF ||
+                code in 0x3400..0x4DBF || code in 0xAC00..0xD7AF ||
+                code in 0x0E00..0x0E7F || code in 0xFF66..0xFF9D
+            ) return true
+        }
+        return false
+    }
+
+    private fun cleanTitleText(s: String): String = s.trim().trim('"').trim()
+
+    private fun pickTitle(item: JSONObject): String? {
+        val titleList = item.optJSONObject("title_list")
+        titleList?.optString("1")?.let { cleanTitleText(it) }
+            ?.takeIf { it.isNotBlank() }?.let { return it }
+        cleanTitleText(item.optString("main_title"))
+            .takeIf { it.isNotBlank() && !containsCjk(it) }?.let { return it }
+        if (titleList != null) {
+            val keys = titleList.keys()
+            while (keys.hasNext()) {
+                val v = cleanTitleText(titleList.optString(keys.next()))
+                if (v.isNotBlank() && !containsCjk(v)) return v
+            }
+        }
+        cleanTitleText(item.optString("main_title"))
+            .takeIf { it.isNotBlank() }?.let { return it }
+        if (titleList != null) {
+            val keys = titleList.keys()
+            while (keys.hasNext()) {
+                val v = cleanTitleText(titleList.optString(keys.next()))
+                if (v.isNotBlank()) return v
+            }
+        }
+        return null
+    }
+    
+    private suspend fun findEnglishTitle(detailUrl: String, queryTitle: String): String? {
+        return try {
+            val slug = detailUrl.trimEnd('/').substringAfterLast("/")
+            val q = queryTitle.substringBefore(" — ").trim().trim('"').trim()
+            if (q.isBlank()) return null
+            val doc = app.get("$mainUrl/anime?search=${java.net.URLEncoder.encode(q, "UTF-8")}").document
+            val items = findItemsXData(doc)?.let { parseItemsJson(it) } ?: return null
+            val target = detailUrl.trimEnd('/')
+                .removePrefix("https://").removePrefix("http://")
+            val hit = items.firstOrNull { item ->
+                val u = item.optString("url").trimEnd('/')
+                    .removePrefix("https://").removePrefix("http://")
+                (u.isNotBlank() && u == target) ||
+                    (item.optString("slug").isNotBlank() && item.optString("slug") == slug)
+            } ?: return null
+            pickTitle(hit)
+        } catch (_: Exception) { null }
+    }
+
     private fun toResult(item: JSONObject): SearchResponse? {
         val url = item.optString("url").ifBlank { return null }
-        val titleList = item.optJSONObject("title_list")
-        val title = titleList?.optString("1")?.takeIf { it.isNotBlank() }
-            ?: item.optString("main_title").trim('"')
-        if (title.isBlank()) return null
+        val title = pickTitle(item) ?: return null
         val type = if (item.optString("type") == "Movie") TvType.AnimeMovie else TvType.Anime
         return newMovieSearchResponse(title, url, type) {
             this.posterUrl = item.optString("cover").ifBlank { null }
@@ -373,6 +427,8 @@ class AnizoneProvider : MainAPI() {
             .substringBefore(" — ")
             .ifBlank { doc.title() }
         Log.d("AniZone", "load: extracted title='$title'")
+        val englishTitle = findEnglishTitle(url, title)
+        if (englishTitle != null) Log.d("AniZone", "load: english title='$englishTitle'")
         val bgImage = doc.selectFirst("main img")?.attr("src")
         val synopsis = doc.selectFirst(".sr-only + div")?.text() ?: ""
         val rowLines = doc.select("span.inline-block").map { it.text() }
@@ -497,7 +553,7 @@ class AnizoneProvider : MainAPI() {
             }
         }
 
-        return newAnimeLoadResponse(title, url, TvType.Anime) {
+        return newAnimeLoadResponse(englishTitle ?: title, url, TvType.Anime) {
             this.posterUrl = bgImage
             this.plot = synopsis
             this.tags = genres
