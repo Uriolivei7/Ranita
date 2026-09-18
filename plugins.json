@@ -708,5 +708,24 @@
     "iconUrl": "https://torrentio.strem.fun/images/logo_v1.png",
     "language": "mx",
     "fileSize": 34000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReanimeProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "Re:ANIME",
+    "internalName": "ReanimeProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://reanime.to/",
+    "tvTypes": [
+      "Anime"
+    ],
+    "iconUrl": "https://reanime.to/favicon-32x32.png",
+    "language": "en",
+    "fileSize": 36000
   }
 ]
