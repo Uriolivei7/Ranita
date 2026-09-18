@@ -22,25 +22,6 @@
         "name": "Animeav1Provider"
     },
     {
-        "fileHash": "sha256-87e8db682455b33e4826486716c292d9d47f963da03f0368bcda9531abd3ed22",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 47254,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "Anime",
-            "OVA"
-        ],
-        "version": 5,
-        "internalName": "AnimeflvnetProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/AnimeflvnetProvider.cs3",
-        "name": "AnimeflvnetProvider"
-    },
-    {
         "fileHash": "sha256-46da5432919a7ad6b355c6d96b17a50a5a80b6452f92cc1fbdd3c5f0b08b4dee",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -137,26 +118,6 @@
         "description": "Series b\u00edblicas cristianas gratuitas",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Atalayas21Provider.cs3",
         "name": "Atalayas21Provider"
-    },
-    {
-        "fileHash": "sha256-efb709ad9e2cce89388b6dabcc486a3753334dc84ded142524350aed195687cb",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 48770,
-        "status": 1,
-        "language": "en",
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "Movie",
-            "TvSeries"
-        ],
-        "version": 2,
-        "internalName": "CinemacityProvider",
-        "description": "(Multi-Lang/Audio)",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/CinemacityProvider.cs3",
-        "name": "CinemacityProvider"
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=mundodonghua.com&sz=%size%",
@@ -564,6 +525,26 @@
         "description": "Plugin de PlutoTV",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlutotvProvider.cs3",
         "name": "PlutotvProvider"
+    },
+    {
+        "fileHash": "sha256-76c98758d695a4c8d22c14f657e17834645c20b0499a2004134e2f93e586a276",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 36260,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 1,
+        "internalName": "ReanimeProvider",
+        "description": "Re:ANIME - Animes con audio dual JA/EN y subt\u00edtulos externos",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/ReanimeProvider.cs3",
+        "name": "ReanimeProvider"
     },
     {
         "fileHash": "sha256-47d0f8f106f232cfc2a66f6661bfa5d0400514fc661a6ec6b437f9f9d4eaba2d",
