@@ -527,10 +527,10 @@
         "name": "PlutotvProvider"
     },
     {
-        "fileHash": "sha256-76c98758d695a4c8d22c14f657e17834645c20b0499a2004134e2f93e586a276",
+        "fileHash": "sha256-01d524c11248da43d3d879e8c887d4cbbc428b6faf87b7f874e9781917841599",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 36260,
+        "fileSize": 39106,
         "status": 1,
         "language": "mx",
         "authors": [
