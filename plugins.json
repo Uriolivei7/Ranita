@@ -712,7 +712,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ReanimeProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "Re:ANIME",
@@ -726,6 +726,6 @@
     ],
     "iconUrl": "https://reanime.to/favicon-32x32.png",
     "language": "en",
-    "fileSize": 36000
+    "fileSize": 39000
   }
 ]

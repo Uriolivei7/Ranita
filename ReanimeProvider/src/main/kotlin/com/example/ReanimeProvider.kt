@@ -355,6 +355,14 @@ class ReanimeProvider : MainAPI() {
     // Load (detalle + episodios)
     // ------------------------------------------------------------------
 
+    private data class AnimeRelation(
+        val slug: String,
+        val title: String,
+        val poster: String?,
+        val year: Int?,
+        val isMovie: Boolean,
+    )
+
     private data class AnimeMeta(
         val slug: String,
         val anilistId: Int,
@@ -366,7 +374,15 @@ class ReanimeProvider : MainAPI() {
         val year: Int?,
         val score: Int?,
         val status: String?,
+        val relations: List<AnimeRelation>,
     )
+
+    private fun relationTitle(o: JSONObject): String {
+        val titleObj = o.optJSONObject("title")
+        return titleObj?.optString("english")?.takeIf { it.isNotBlank() }
+            ?: titleObj?.optString("romaji")?.takeIf { it.isNotBlank() }
+            ?: o.optString("anime_id")
+    }
 
     private suspend fun fetchMeta(slug: String): AnimeMeta? {
         return try {
@@ -387,6 +403,20 @@ class ReanimeProvider : MainAPI() {
                 year = json.optInt("season_year", 0).takeIf { it > 0 },
                 score = json.optInt("average_score", 0).takeIf { it > 0 },
                 status = json.optString("status").takeIf { it.isNotBlank() },
+                relations = json.optJSONArray("relations")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val relSlug = o.optString("anime_id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        if (relSlug == slug) return@mapNotNull null
+                        AnimeRelation(
+                            slug = relSlug,
+                            title = relationTitle(o),
+                            poster = o.optJSONObject("cover_image")?.optString("large")?.takeIf { it.isNotBlank() },
+                            year = o.optInt("season_year", 0).takeIf { it > 0 },
+                            isMovie = o.optString("format") == "MOVIE",
+                        )
+                    }
+                } ?: emptyList(),
             )
         } catch (e: Exception) {
             Log.e("Reanime", "fetchMeta $slug fallo: ${e.message}")
@@ -439,6 +469,13 @@ class ReanimeProvider : MainAPI() {
                 "Finished" -> ShowStatus.Completed
                 else -> null
             }
+            this.recommendations = meta.relations.map { rel ->
+                newAnimeSearchResponse(rel.title, "$mainUrl/anime/${rel.slug}",
+                    if (rel.isMovie) TvType.AnimeMovie else TvType.Anime) {
+                    this.posterUrl = rel.poster
+                    this.year = rel.year
+                }
+            }.takeIf { it.isNotEmpty() }
         }
     }
 
@@ -448,14 +485,14 @@ class ReanimeProvider : MainAPI() {
 
     private data class FlixResolve(val masterUrl: String, val subtitles: List<Pair<String, String>>)
 
-    private val activePks = mutableListOf<ByteArray>()
+        private val activePks = mutableListOf<ByteArray>()
 
-    private val SEG_XOR_KEY = byteArrayOf(
-        0x9d.toByte(), 0x2a.toByte(), 0xf1.toByte(), 0x47,
-        0xb3.toByte(), 0x8e.toByte(), 0x5c.toByte(), 0x70.toByte(),
-        0xa6.toByte(), 0x19.toByte(), 0xe4.toByte(), 0x3b.toByte(),
-        0xd8.toByte(), 0x62.toByte(), 0x0f.toByte(), 0xc5.toByte(),
-    )
+        private val SEG_XOR_KEY = byteArrayOf(
+            0x9d.toByte(), 0x2a.toByte(), 0xf1.toByte(), 0x47,
+            0xb3.toByte(), 0x8e.toByte(), 0x5c.toByte(), 0x70.toByte(),
+            0xa6.toByte(), 0x19.toByte(), 0xe4.toByte(), 0x3b.toByte(),
+            0xd8.toByte(), 0x62.toByte(), 0x0f.toByte(), 0xc5.toByte(),
+        )
 
     private fun extractField(html: String, name: String): String? =
         Regex("\"$name\":\"([^\"]*)\"").find(html)?.groupValues?.get(1)
@@ -593,7 +630,7 @@ class ReanimeProvider : MainAPI() {
             }
         }
 
-        val emittedSubs = mutableSetOf<String>()
+            val emittedSubs = mutableSetOf<String>()
         var any = false
         var subsEmitted = false
         for ((srvName, embedLink) in preferred) {
@@ -650,36 +687,36 @@ class ReanimeProvider : MainAPI() {
                 if (url.contains("flixcloud.cc") && url.contains(".m3u8")) {
                     val response = chain.proceed(request)
                     return try {
-                        val bodyText = response.peekBody(2L * 1024 * 1024).string()
-                        if (bodyText.trimStart().startsWith("#EXTM3U")) return response
+                    val bodyText = response.peekBody(2L * 1024 * 1024).string()
+                    if (bodyText.trimStart().startsWith("#EXTM3U")) return response
 
-                        val clean = bodyText.trim().replace(Regex("[^A-Za-z0-9+/=]"), "")
-                        if (clean.length < 16) {
-                            Log.w("Reanime", "interceptor m3u8: no b64 (code=${response.code})")
-                            return response
-                        }
-                        val raw = Base64.decode(clean, Base64.DEFAULT)
+                    val clean = bodyText.trim().replace(Regex("[^A-Za-z0-9+/=]"), "")
+                    if (clean.length < 16) {
+                        Log.w("Reanime", "interceptor m3u8: no b64 (code=${response.code})")
+                        return response
+                    }
+                    val raw = Base64.decode(clean, Base64.DEFAULT)
 
-                        var decodedBody: String? = null
-                        val pks = synchronized(activePks) { activePks.toList() }
-                        for (pk in pks) {
-                            val dec = ByteArray(raw.size) { i ->
-                                (raw[i].toInt() xor pk[i % pk.size].toInt()).toByte()
-                            }
-                            if (String(dec, 0, 7, Charsets.UTF_8) == "#EXTM3U") {
-                                decodedBody = String(dec, Charsets.UTF_8)
-                                break
-                            }
+                    var decodedBody: String? = null
+                    val pks = synchronized(activePks) { activePks.toList() }
+                    for (pk in pks) {
+                        val dec = ByteArray(raw.size) { i ->
+                            (raw[i].toInt() xor pk[i % pk.size].toInt()).toByte()
                         }
-                        if (decodedBody == null) {
-                            Log.w("Reanime", "interceptor m3u8: ningun PK valido (pks=${pks.size})")
-                            return response
+                        if (String(dec, 0, 7, Charsets.UTF_8) == "#EXTM3U") {
+                            decodedBody = String(dec, Charsets.UTF_8)
+                            break
                         }
+                    }
+                    if (decodedBody == null) {
+                        Log.w("Reanime", "interceptor m3u8: ningun PK valido (pks=${pks.size})")
+                        return response
+                    }
 
-                        val contentType = response.body?.contentType()
-                        response.newBuilder()
-                            .body(okhttp3.ResponseBody.create(contentType, decodedBody))
-                            .build()
+                    val contentType = response.body?.contentType()
+                    response.newBuilder()
+                        .body(okhttp3.ResponseBody.create(contentType, decodedBody))
+                        .build()
                     } catch (e: Exception) {
                         Log.w("Reanime", "interceptor m3u8 error: ${e.message}")
                         response
@@ -696,13 +733,13 @@ class ReanimeProvider : MainAPI() {
                     }
 
                     val isPng = head.size >= 4 &&
-                            head[0] == 0x89.toByte() && head[1] == 0x50.toByte() &&
-                            head[2] == 0x4e.toByte() && head[3] == 0x47.toByte()
+                        head[0] == 0x89.toByte() && head[1] == 0x50.toByte() &&
+                        head[2] == 0x4e.toByte() && head[3] == 0x47.toByte()
                     val isRiffWebp = head.size >= 12 &&
-                            head[0] == 0x52.toByte() && head[1] == 0x49.toByte() &&
-                            head[2] == 0x46.toByte() && head[3] == 0x46.toByte() &&
-                            head[8] == 0x57.toByte() && head[9] == 0x45.toByte() &&
-                            head[10] == 0x42.toByte() && head[11] == 0x50.toByte()
+                        head[0] == 0x52.toByte() && head[1] == 0x49.toByte() &&
+                        head[2] == 0x46.toByte() && head[3] == 0x46.toByte() &&
+                        head[8] == 0x57.toByte() && head[9] == 0x45.toByte() &&
+                        head[10] == 0x42.toByte() && head[11] == 0x50.toByte()
 
                     if (!isPng && !isRiffWebp) return response
 
