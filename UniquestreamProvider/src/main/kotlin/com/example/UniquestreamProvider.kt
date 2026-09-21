@@ -136,6 +136,11 @@ class UniqueStreamProvider : MainAPI() {
         return resp
     }
 
+    private fun sourceLabel(id: String): String? = when {
+        id.startsWith("nf_") -> "Netflix"
+        else -> null
+    }
+
     private fun String?.upgradePoster(): String? =
         this?.replace("posters/60x90/", "posters/480x720/")
 
@@ -145,18 +150,18 @@ class UniqueStreamProvider : MainAPI() {
         "es-ES" -> "Español (España)"
         "ja-JP" -> "Japonés"
         "pt-BR" -> "Português (BR)"
-        "de-DE" -> "Deutsch"
-        "fr-FR" -> "Français"
+        "de-DE" -> "Alemán"
+        "fr-FR" -> "Francés"
         "it-IT" -> "Italiano"
-        "zh-CN" -> "中文"
-        "zh-HK" -> "中文 (HK)"
-        "ko-KR" -> "한국어"
-        "ru-RU" -> "Русский"
-        "ar-SA" -> "العربية"
-        "id-ID" -> "Indonesia"
-        "ms-MY" -> "Melayu"
-        "th-TH" -> "ไทย"
-        "vi-VN" -> "Tiếng Việt"
+        "zh-CN" -> "Chino simplificado"
+        "zh-HK" -> "Chino tradicional"
+        "ko-KR" -> "Coreano"
+        "ru-RU" -> "Ruso"
+        "ar-SA" -> "Árabe"
+        "id-ID" -> "Indonesio"
+        "ms-MY" -> "Malayo"
+        "th-TH" -> "Tailandés"
+        "vi-VN" -> "Vietnamita"
         else -> locale
     }
 
@@ -462,7 +467,8 @@ class UniqueStreamProvider : MainAPI() {
         return newTvSeriesLoadResponse(details.title ?: "Sin Título", url, TvType.TvSeries, episodesList) {
             this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
             this.plot = fullPlot
-            this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
+            this.tags = (details.genre?.mapNotNull { it.name } ?: emptyList()) +
+                    listOfNotNull(sourceLabel(cleanId))
             if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
         }
     }
@@ -527,7 +533,8 @@ class UniqueStreamProvider : MainAPI() {
         return newMovieLoadResponse(details.title ?: "Sin Título", url, TvType.AnimeMovie, url) {
             this.posterUrl = details.images?.find { it.type == "poster_tall" }?.url?.upgradePoster()
             this.plot = plot
-            this.tags = details.genre?.mapNotNull { it.name } ?: emptyList()
+            this.tags = (details.genre?.mapNotNull { it.name } ?: emptyList()) +
+                    listOfNotNull(sourceLabel(id))
             details.duration_ms?.let { this.duration = (it / 60000).toInt().coerceAtLeast(1) }
             details.year?.let { this.year = it }
             if (details.rating_avg != null) this.score = Score.from10(details.rating_avg * 2f)
