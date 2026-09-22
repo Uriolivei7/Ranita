@@ -372,10 +372,10 @@
         "name": "LatanimeProvider"
     },
     {
-        "fileHash": "sha256-03d3e75b3948e33d395cda744b8997a8c035ffc6e41248da7f7ea7a85f1ac8e0",
+        "fileHash": "sha256-89e8c614b68a28cff77169ae6ceae274e681092c7087fdb795aa571e65a46993",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 59054,
+        "fileSize": 96014,
         "status": 1,
         "language": "es",
         "authors": [
@@ -569,10 +569,10 @@
         "name": "RetrotveProvider"
     },
     {
-        "fileHash": "sha256-bf02af4d6ea4c0814ed7b688fdfb37d29ad5e3824fb4f12f58f95227808bdf54",
+        "fileHash": "sha256-897dca23b69c63fa431802c03182c428e83df9a5616ca8257d36ac87b53b7af0",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 88836,
+        "fileSize": 88745,
         "status": 1,
         "language": "es",
         "authors": [
@@ -610,10 +610,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-eef1ce4fa8a2eb8244a4b190bdd5d1bf9ebd3a48933fa3daecceb32a82c30f3c",
+        "fileHash": "sha256-c225c21c4fa01cad10761f31c95602a8c54ddf35d8c22e44b4c73dec89eeb70c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 105287,
+        "fileSize": 105274,
         "status": 1,
         "language": "es",
         "authors": [
