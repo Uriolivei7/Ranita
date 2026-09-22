@@ -7,6 +7,8 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -124,10 +126,10 @@ class MhdflixProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         Log.d("Mhdflix-Search", "=== search START - query: '$query' ===")
-
+        
         val searchUrl = "$mainUrl/api/search?query=${query.replace(" ", "+")}&page=1&limit=25"
         Log.d("Mhdflix-Search", "API URL: $searchUrl")
-
+        
         return try {
             val response = app.get(
                 searchUrl,
@@ -137,23 +139,23 @@ class MhdflixProvider : MainAPI() {
                     "Accept" to "application/json, text/plain, */*"
                 )
             ).text
-
+            
             Log.d("Mhdflix-Search", "Response: ${response.take(500)}")
-
+            
             val searchResponse = parseJson<SearchApiResponse>(response)
             val results = searchResponse.data.mapNotNull { item ->
                 val slug = item.slug ?: item.title?.lowercase()?.replace(Regex("[^a-z0-9]+"), "-")?.trim('-') ?: return@mapNotNull null
                 val type = item.type ?: "tv"
                 val url = if (type == "movie") "$mainUrl/movies/${item.id}/$slug" else "$mainUrl/tvs/${item.id}/$slug"
                 val tvType = if (type == "movie") TvType.Movie else TvType.TvSeries
-
+                
                 Log.d("Mhdflix-Search", "  Result: title='${item.title}', poster='${item.poster}', url='$url'")
-
+                
                 newMovieSearchResponse(item.title ?: "", url, tvType) {
                     this.posterUrl = fixUrlPath(item.poster)
                 }
             }
-
+            
             Log.d("Mhdflix-Search", "=== search END - returning ${results.size} results ===")
             results
         } catch (e: Exception) {
@@ -164,7 +166,7 @@ class MhdflixProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         Log.d("Mhdflix-Load", "=== load START - url: $url ===")
-
+        
         if (url.contains("/episode/")) {
             return loadEpisodePage(url)
         }
@@ -173,16 +175,16 @@ class MhdflixProvider : MainAPI() {
         Log.d("Mhdflix-Load", "HTML length: ${html.length}")
 
         val doc = Jsoup.parse(html)
-
+        
         val title = doc.selectFirst("meta[property='og:title']")?.attr("content")
             ?: doc.selectFirst("title")?.text()?.substringBefore("|")?.trim()
             ?: "Sin título"
-
+        
         val poster = doc.selectFirst("meta[property='og:image']")?.attr("content") ?: ""
         val description = doc.selectFirst("meta[property='og:description']")?.attr("content")
             ?: doc.selectFirst("meta[name='description']")?.attr("content")
             ?: ""
-
+        
         val idFromUrl = Regex("""/(?:movies|tvs)/(\d+)/""").find(url)?.groupValues?.get(1)?.toLongOrNull()
         val typeFromUrl = if (url.contains("/movies/")) "movie" else "tv"
 
@@ -219,20 +221,20 @@ class MhdflixProvider : MainAPI() {
             .mapNotNull { card ->
                 val href = card.attr("href")
                 if (href.isBlank() || !href.startsWith("/")) return@mapNotNull null
-
+                
                 val link = "$mainUrl$href"
                 val img = card.selectFirst("img")
                 val poster = img?.attr("src") ?: ""
                 val recTitle = img?.attr("alt") ?: ""
                 val recType = if (href.startsWith("/movies/")) TvType.Movie else TvType.TvSeries
-
+                
                 Log.d("Mhdflix-Load", "  Rec: title='$recTitle', poster='$poster', link='$link'")
-
+                
                 newMovieSearchResponse(recTitle, link, recType) {
                     this.posterUrl = fixUrlPath(poster)
                 }
             }.take(20)
-
+        
         Log.d("Mhdflix-Load", "Total recommendations: ${recommendations.size}")
 
         if (tvType == TvType.Movie) {
@@ -246,7 +248,7 @@ class MhdflixProvider : MainAPI() {
             }
         } else {
             val episodes = loadEpisodesFromApi(idFromUrl, url)
-
+            
             if (episodes.isNotEmpty()) {
                 return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                     this.posterUrl = poster
@@ -257,7 +259,7 @@ class MhdflixProvider : MainAPI() {
                     if (year != null) this.year = year
                 }
             }
-
+            
             Log.d("Mhdflix-Load", "No episodes found via API, returning single episode placeholder")
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, listOf(newEpisode(url) {
                 this.name = title
@@ -274,15 +276,15 @@ class MhdflixProvider : MainAPI() {
 
     private suspend fun loadEpisodesFromApi(tvId: Long?, tvUrl: String): List<Episode> {
         if (tvId == null) return emptyList()
-
+        
         Log.d("Mhdflix-Load", "Fetching seasons for TV ID: $tvId")
-
+        
         val seasonsHeaders = mapOf(
             "User-Agent" to baseHeaders.getValue("User-Agent"),
             "Referer" to "$mainUrl/",
             "Accept" to "application/json, text/plain, */*"
         )
-
+        
         val seasonsResponse = try {
             val res = app.get("$mainUrl/api/series/$tvId/seasons", headers = seasonsHeaders).text
             Log.d("Mhdflix-Load", "Seasons response: ${res.take(300)}")
@@ -291,47 +293,47 @@ class MhdflixProvider : MainAPI() {
             Log.e("Mhdflix-Load", "Failed to fetch seasons: ${e.message}")
             null
         }
-
+        
         if (seasonsResponse?.data.isNullOrEmpty()) {
             Log.d("Mhdflix-Load", "No seasons found")
             return emptyList()
         }
-
+        
         val episodes = mutableListOf<Episode>()
-
+        
         for (season in seasonsResponse.data) {
             val seasonId = season.id ?: continue
             val seasonNum = season.seasonNumber ?: continue
-
+            
             Log.d("Mhdflix-Load", "Fetching episodes for season $seasonNum (id=$seasonId)")
-
+            
             val episodesHeaders = mapOf(
                 "User-Agent" to baseHeaders.getValue("User-Agent"),
                 "Referer" to "$tvUrl?seasson=$seasonId",
                 "Accept" to "application/json, text/plain, */*"
             )
-
+            
             var page = 1
             var hasMore = true
-
+            
             while (hasMore) {
                 try {
                     val epUrl = "$mainUrl/api/series/season/$seasonId/episodes?page=$page"
                     Log.d("Mhdflix-Load", "  Requesting: $epUrl with Referer: ${episodesHeaders["Referer"]}")
                     val res = app.get(epUrl, headers = episodesHeaders).text
                     Log.d("Mhdflix-Load", "  Response: ${res.take(200)}")
-
+                    
                     val epResponse = tryParseJson<EpisodesApiResponse>(res)
                     val seasonEpisodes = epResponse?.data ?: emptyList()
-
+                    
                     Log.d("Mhdflix-Load", "  Season $seasonNum page $page: ${seasonEpisodes.size} episodes")
-
+                    
                     for (ep in seasonEpisodes) {
                         val epId = ep.idEpisodios ?: continue
                         val epNum = ep.numEpisode ?: continue
                         val epTitle = ep.title?.takeIf { it.isNotBlank() } ?: "Episodio $epNum"
                         val epPoster = ep.posterPath?.takeIf { it.isNotBlank() }?.let { fixUrlPath(it) } ?: "$mainUrl/_next/image?url=%2Fnone-image.png&w=640&q=75"
-
+                        
                         episodes.add(newEpisode("$mainUrl/tvs/episode/$epId") {
                             this.name = epTitle
                             this.season = seasonNum
@@ -340,7 +342,7 @@ class MhdflixProvider : MainAPI() {
                             this.description = ep.overview?.takeIf { it.isNotBlank() }
                         })
                     }
-
+                    
                     hasMore = seasonEpisodes.isNotEmpty() && seasonEpisodes.size >= 20
                     page++
                 } catch (e: Exception) {
@@ -349,27 +351,27 @@ class MhdflixProvider : MainAPI() {
                 }
             }
         }
-
+        
         Log.d("Mhdflix-Load", "Total episodes loaded: ${episodes.size}")
         return episodes
     }
 
     private suspend fun loadEpisodePage(url: String): LoadResponse? {
         Log.d("Mhdflix-EpPage", "=== loadEpisodePage - url: $url ===")
-
+        
         val epId = Regex("""/episode/(\d+)""").find(url)?.groupValues?.get(1)
         val epUrl = "$mainUrl/api/links?id=$epId&type=episode"
-
+        
         var episodeTitle: String
         var description: String
         var poster: String
-
+        
         try {
             val html = app.get(url, headers = baseHeaders).text
             val doc = Jsoup.parse(html)
             episodeTitle = doc.selectFirst("meta[property='og:title']")?.attr("content")
                 ?: doc.selectFirst("title")?.text()?.substringBefore("|")?.trim()
-                        ?: "Episodio $epId"
+                ?: "Episodio $epId"
             description = doc.selectFirst("meta[property='og:description']")?.attr("content") ?: ""
             poster = doc.selectFirst("meta[property='og:image']")?.attr("content") ?: ""
         } catch (e: Exception) {
@@ -377,7 +379,7 @@ class MhdflixProvider : MainAPI() {
             description = ""
             poster = ""
         }
-
+        
         Log.d("Mhdflix-EpPage", "episodeTitle: $episodeTitle, epId: $epId")
 
         val serieMatch = Regex("""/tvs/(\d+)/([^/]+)""").find(url)
@@ -402,17 +404,17 @@ class MhdflixProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d("Mhdflix-Links", "=== loadLinks START - data: $data ===")
-
+        
         val contentInfo = extractContentInfo(data)
         if (contentInfo == null) {
             Log.e("Mhdflix-Links", "Could not extract ID from: $data")
             return false
         }
-
+        
         val (id, type) = contentInfo
         val apiUrl = "$mainUrl/api/links?id=$id&type=$type"
         Log.d("Mhdflix-Links", "API URL: $apiUrl")
-
+        
         return try {
             val response = app.get(
                 apiUrl,
@@ -422,9 +424,9 @@ class MhdflixProvider : MainAPI() {
                     "Accept" to "application/json, text/plain, */*"
                 )
             ).text
-
+            
             Log.d("Mhdflix-Links", "Response: $response")
-
+            
             when {
                 response.trim().startsWith("[") -> {
                     val links = parseJson<List<ApiLink>>(response)
@@ -487,6 +489,267 @@ class MhdflixProvider : MainAPI() {
         )
     }
 
+    private fun isDirectMediaUrl(url: String): Boolean {
+        val path = url.substringAfter("://").substringAfter("/")
+        return path.contains(".mp4", ignoreCase = true) ||
+               path.contains(".m3u8", ignoreCase = true) ||
+               path.contains(".mkv", ignoreCase = true) ||
+               path.contains(".webm", ignoreCase = true) ||
+               path.contains(".ts", ignoreCase = true) ||
+               path.contains(".avi", ignoreCase = true) ||
+               path.contains("streamtape", ignoreCase = true)
+    }
+
+    private fun fixEmbedUrl(url: String): String {
+        return url
+            .replaceFirst("https://minochinos.com", "https://vidhidepro.com")
+            .replaceFirst("https://hglink.to", "https://streamwish.to")
+            .replaceFirst("https://swdyu.com", "https://streamwish.to")
+            .replaceFirst("https://mivalyo.com", "https://vidhidepro.com")
+            .replaceFirst("https://dinisglows.com", "https://vidhidepro.com")
+            .replaceFirst("https://dhtpre.com", "https://vidhidepro.com")
+            .replaceFirst("https://bysedikamoum.com", "https://filemoon.sx")
+            .replaceFirst("https://filemoon.link", "https://filemoon.sx")
+    }
+
+    private fun unpackDeanEdwards(packed: String, base: Int, count: Int, dictRaw: String): String? {
+        return try {
+            val k = dictRaw.split("|").toTypedArray()
+            val result = StringBuilder(packed)
+
+            for (idx in count - 1 downTo 0) {
+                val key = idx.toString(base)
+                val value = k.getOrElse(idx) { "" }
+                if (key.isNotEmpty() && value.isNotEmpty()) {
+                    val replaced = Regex("\\b${Regex.escape(key)}\\b").replace(result, Regex.escapeReplacement(value))
+                    result.clear()
+                    result.append(replaced)
+                }
+            }
+            result.toString().replace("\\'", "'")
+        } catch (_: Exception) { null }
+    }
+
+    private fun isVidHideFamily(url: String): Boolean {
+        val h = try { java.net.URL(url).host.lowercase() } catch (_: Exception) { "" }
+        return h.contains("vidhide") || h.contains("filelions")
+    }
+
+    private fun parseHlsLinksMap(unpacked: String): Map<String, String> {
+        val out = mutableMapOf<String, String>()
+        Regex("""links\s*[=:]\s*\{([^}]+)\}""", RegexOption.DOT_MATCHES_ALL).find(unpacked)?.let { block ->
+            Regex(""""(hls\d)"\s*:\s*"([^"]+)"""").findAll(block.groupValues[1]).forEach { m ->
+                out[m.groupValues[1]] = m.groupValues[2]
+            }
+        }
+        if (out.isEmpty()) {
+            Regex(""""(hls\d)"\s*:\s*"([^"]+)"""").findAll(unpacked).forEach { m ->
+                out[m.groupValues[1]] = m.groupValues[2]
+            }
+        }
+        return out
+    }
+
+    private suspend fun tryVidHideProMh(
+        url: String,
+        referer: String,
+        languageName: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Int {
+        try {
+            Log.d("Mhdflix-Links", "[VH-Pro] trying $url")
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                "Accept" to "*/*",
+                "Referer" to referer,
+            )
+            val res = app.get(url, headers = headers, timeout = 20000L)
+            if (!res.isSuccessful) {
+                Log.w("Mhdflix-Links", "[VH-Pro] HTTP ${res.code}")
+                return 0
+            }
+            val html = res.text
+
+            var linksMap: Map<String, String>? = null
+            val packerRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
+            for (pm in packerRegex.findAll(html)) {
+                val decoded = unpackDeanEdwards(
+                    pm.groupValues[1],
+                    pm.groupValues[2].toIntOrNull() ?: 36,
+                    pm.groupValues[3].toIntOrNull() ?: 0,
+                    pm.groupValues[4]
+                ) ?: continue
+                val found = parseHlsLinksMap(decoded)
+                if (found.isNotEmpty()) {
+                    linksMap = found
+                    break
+                }
+            }
+            if (linksMap.isNullOrEmpty()) {
+                Log.w("Mhdflix-Links", "[VH-Pro] sin links{hls} en $url")
+                return 0
+            }
+
+            val preferOrder = listOf("hls2", "hls3", "hls4")
+            val orderedKeys = preferOrder.filter { linksMap.containsKey(it) } +
+                linksMap.keys.filter { it !in preferOrder }
+
+            data class Variant(val key: String, val url: String)
+            val resolved = orderedKeys.mapNotNull { key ->
+                var u = linksMap[key] ?: return@mapNotNull null
+                if (u.startsWith("//")) u = "https:$u"
+                if (u.startsWith("/")) u = "https://vidhidepro.com$u"
+                if (!u.startsWith("http")) return@mapNotNull null
+                Variant(key, u)
+            }
+            if (resolved.isEmpty()) return 0
+
+            val probeHeaders = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                "Referer" to url,
+            )
+            val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
+            coroutineScope {
+                resolved.map { v ->
+                    async {
+                        try {
+                            val r = app.get(v.url, headers = probeHeaders, timeout = 10000L)
+                            val ok = r.isSuccessful && r.text.trimStart().startsWith("#EXTM3U")
+                            Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} -> ${r.code} m3u8=$ok")
+                            if (ok) reachable.add(v)
+                        } catch (_: Exception) { }
+                    }
+                }.awaitAll()
+            }
+            val toEmit = if (reachable.isNotEmpty()) {
+                orderedKeys.mapNotNull { k -> reachable.firstOrNull { it.key == k } }
+            } else {
+                Log.w("Mhdflix-Links", "[VH-Pro] ningún master responde, emitiendo todos igual")
+                resolved
+            }
+
+            val vidHeaders = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                "Referer" to url,
+                "Origin" to url.substringBeforeLast("/"),
+            )
+            for (v in toEmit) {
+                Log.d("Mhdflix-Links", "[VH-Pro] emit ${v.key} url=${v.url.take(120)}")
+                callback(newExtractorLink("MHDFLIX", "VidHidePro - ${v.key} [$languageName]", v.url, ExtractorLinkType.M3U8) {
+                    this.referer = url
+                    this.headers = vidHeaders
+                })
+            }
+            Log.d("Mhdflix-Links", "[VH-Pro] emitted ${toEmit.size} variants")
+            return toEmit.size
+        } catch (e: Exception) {
+            Log.e("Mhdflix-Links", "[VH-Pro] error: ${e.message}")
+            return 0
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private suspend fun inlineExtract(
+        url: String,
+        referer: String,
+        prefixName: String,
+        languageName: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        var found = false
+        try {
+            val resp = app.get(url, headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer" to referer,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ), timeout = 15000L)
+            val html = resp.text
+
+            val m3u8Regex = Regex("""(https?://[^"'<>\s]+\.(?:m3u8|mp4)[^"'<>\s]*)""")
+            val directMatch = m3u8Regex.find(html)
+            if (directMatch != null) {
+                callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", directMatch.value, referer, Qualities.Unknown.value, INFER_TYPE))
+                return true
+            }
+
+            try {
+                val evalFn = "eval(function(p,a,c,k,e,d){"
+                val evalStart = html.indexOf(evalFn)
+                if (evalStart >= 0) {
+                    val callStart = html.indexOf("}('", evalStart)
+                    if (callStart >= 0) {
+                        var argIdx = callStart + 2
+                        if (argIdx < html.length && html[argIdx] == '\'') argIdx++
+                        if (argIdx < html.length) {
+                            val pStart = argIdx
+                            while (argIdx < html.length && html[argIdx] != '\'') argIdx++
+                            if (argIdx < html.length) {
+                                val p = html.substring(pStart, argIdx); argIdx++
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                val aStart = argIdx
+                                while (argIdx < html.length && html[argIdx].isDigit()) argIdx++
+                                val a = html.substring(aStart, argIdx).toIntOrNull() ?: 36
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                val cStart = argIdx
+                                while (argIdx < html.length && html[argIdx].isDigit()) argIdx++
+                                val c = html.substring(cStart, argIdx).toIntOrNull() ?: 0
+                                if (argIdx < html.length && html[argIdx] == ',') argIdx++
+                                while (argIdx < html.length && html[argIdx] == ' ') argIdx++
+                                if (argIdx < html.length && html[argIdx] == '\'') {
+                                    argIdx++
+                                    val kStart = argIdx
+                                    while (argIdx < html.length && html[argIdx] != '\'') argIdx++
+                                    if (argIdx < html.length) {
+                                        val k = html.substring(kStart, argIdx).split("|")
+                                        var decoded = p
+                                        for (idx in k.indices.reversed()) {
+                                            if (k[idx].isBlank()) continue
+                                            decoded = decoded.replace(Regex("\\b${idx.toString(a)}\\b"), k[idx])
+                                        }
+                                        val decodedM3u8 = m3u8Regex.find(decoded)
+                                        if (decodedM3u8 != null) {
+                                            callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", decodedM3u8.value, referer, Qualities.Unknown.value, INFER_TYPE))
+                                            return true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+
+            val doc = resp.document
+            doc.select("iframe[src]").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank() && !src.contains("undefined")) {
+                    val iframeUrl = fixEmbedUrl(fixUrl(src))
+                    Log.d("Mhdflix-Links", "Fallback: following iframe to $iframeUrl")
+                    loadExtractor(iframeUrl, referer, subtitleCallback) { link ->
+                        if (link.url.isNotBlank()) {
+                            val videoLink = ExtractorLink(
+                                source = prefixName,
+                                name = "${link.name} [$languageName]",
+                                url = link.url,
+                                referer = link.referer.ifBlank { "" },
+                                quality = link.quality,
+                                type = link.type
+                            )
+                            videoLink.headers = link.headers
+                            callback.invoke(videoLink)
+                            found = true
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) { }
+        return found
+    }
+
     @Suppress("DEPRECATION")
     private fun createSubtitleFile(lang: String, url: String): SubtitleFile {
         return SubtitleFile(
@@ -503,31 +766,19 @@ class MhdflixProvider : MainAPI() {
     ): Boolean {
         Log.d("Mhdflix-Links", "Processing ${links.size} links with referer: $referer")
 
-        val extractorDomains = setOf(
-            "dood", "doodstream", "streamwish", "filelions", "streamhub",
-            "luluvdo", "netu", "uqload", "mixdrop", "netuplayer",
-            "bysejikuar", "vidhidepro", "voe", "streamvid",
-            "filemoon", "mp4upload", "gdriveplayer", "ok.ru", "vk",
-            "streamtape", "filemoon0", "gupload", "savefiles", "streamp2p",
-            "cubeembed", "rpmvid", "sendvid"
-        )
-
         val directLinks = mutableListOf<ApiLink>()
         val extractorLinks = mutableListOf<Pair<ApiLink, String>>()
 
         for (item in links) {
             val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl
             if (videoUrl.isNullOrBlank() || videoUrl.contains("undefined")) continue
-            val hasExtractor = extractorDomains.any { domain -> videoUrl.contains(domain, ignoreCase = true) }
-            val isDirect = videoUrl.contains(".mp4", ignoreCase = true) || videoUrl.contains("streamtape", ignoreCase = true)
-            if ((isDirect && !hasExtractor) || !hasExtractor) {
+            if (isDirectMediaUrl(videoUrl)) {
                 directLinks.add(item)
             } else {
                 extractorLinks.add(item to videoUrl)
             }
         }
 
-        // Process direct links immediately (no blocking)
         var found = false
         for (item in directLinks) {
             val videoUrl = item.url ?: item.embedUrl ?: item.iframeUrl ?: continue
@@ -551,7 +802,6 @@ class MhdflixProvider : MainAPI() {
             }
         }
 
-        // Process extractor links in parallel, emit as each completes
         if (extractorLinks.isNotEmpty()) {
             coroutineScope {
                 extractorLinks.map { (item, videoUrl) ->
@@ -559,9 +809,28 @@ class MhdflixProvider : MainAPI() {
                         val serverName = item.server?.name ?: item.serverName ?: "Server"
                         val languageName = item.language?.name ?: item.languageName ?: "Latino"
                         val linkName = "$serverName - $languageName"
+                        val fixedUrl = fixEmbedUrl(videoUrl)
+                        var foundByExtractor = false
+
+                        if (isVidHideFamily(fixedUrl)) {
+                            try {
+                                val n = tryVidHideProMh(fixedUrl, referer, languageName, subtitleCallback) { link ->
+                                    callback.invoke(link)
+                                    found = true
+                                }
+                                if (n > 0) {
+                                    foundByExtractor = true
+                                    Log.d("Mhdflix-Links", "VidHide custom OK: $serverName ($n links)")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Mhdflix-Links", "VidHide custom falló: ${e.message}")
+                            }
+                        }
+                        if (!foundByExtractor) {
                         try {
                             val ok = withTimeout(20000L) {
-                                loadExtractor(videoUrl, referer, subtitleCallback) { link ->
+                                loadExtractor(fixedUrl, referer, subtitleCallback) { link ->
+                                    Log.d("Mhdflix-Links", "Extractor callback: url=${link.url.take(100)}, source=${link.source}")
                                     if (link.url.isNotBlank()) {
                                         @Suppress("DEPRECATION")
                                         val videoLink = ExtractorLink(
@@ -575,6 +844,7 @@ class MhdflixProvider : MainAPI() {
                                         videoLink.headers = link.headers
                                         callback.invoke(videoLink)
                                         found = true
+                                        foundByExtractor = true
                                     }
                                 }
                             }
@@ -583,9 +853,21 @@ class MhdflixProvider : MainAPI() {
                             }
                             if (ok) Log.d("Mhdflix-Links", "Extractor OK: $serverName")
                         } catch (e: TimeoutCancellationException) {
-                            Log.w("Mhdflix-Links", "Extractor timed out (20s): $serverName - $videoUrl")
+                            Log.w("Mhdflix-Links", "Extractor timed out (20s): $serverName")
                         } catch (e: Exception) {
                             Log.e("Mhdflix-Links", "Extractor failed: $serverName - ${e.message}")
+                        }
+                        }
+
+                        if (!foundByExtractor) {
+                            Log.d("Mhdflix-Links", "Inline fallback for: $fixedUrl")
+                            try {
+                                if (inlineExtract(fixedUrl, referer, linkName, languageName, subtitleCallback, callback)) {
+                                    found = true
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Mhdflix-Links", "Inline fallback error: ${e.message}")
+                            }
                         }
                     }
                 }

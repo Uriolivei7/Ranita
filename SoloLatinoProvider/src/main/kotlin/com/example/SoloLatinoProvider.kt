@@ -774,7 +774,7 @@ suspend fun loadSourceNameExtractor(
     val knownHosts = listOf("vidhidepro.com", "voe.sx", "streamwish.to")
     val domain = try { java.net.URL(url).host } catch (_: Exception) { "" }
     val customHandled = when {
-        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, subtitleCallback) { link ->
+        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback) { link ->
             count++
             outerScope.launch { callback.invoke(link) }
         }
@@ -881,6 +881,7 @@ private suspend fun tryExtractSubsFromM3u8(
 private suspend fun tryVidHideProExtraction(
     url: String,
     referer: String,
+    languageName: String,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
@@ -972,7 +973,7 @@ private suspend fun tryVidHideProExtraction(
         for (v in toEmit) {
             if (firstM3u8 == null) firstM3u8 = v.url
             Log.d("SoloLatino", "[VH-Pro] emit ${v.key} url=${v.url.take(120)}")
-            callback(newExtractorLink("SoloLatino", "VidHidePro - ${v.key}", v.url, ExtractorLinkType.M3U8) {
+            callback(newExtractorLink("SoloLatino", "VidHidePro - ${v.key} [$languageName]", v.url, ExtractorLinkType.M3U8) {
                 this.referer = url
                 this.headers = vidHeaders
             })

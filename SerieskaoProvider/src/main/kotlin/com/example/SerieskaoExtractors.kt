@@ -534,6 +534,7 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
 private suspend fun tryVidHideProExtraction(
     url: String,
     referer: String,
+    languageName: String,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
 ): Boolean {
@@ -625,7 +626,7 @@ private suspend fun tryVidHideProExtraction(
         for (v in toEmit) {
             if (firstM3u8 == null) firstM3u8 = v.url
             Log.d(KAO_TAG, "[VH-Pro] emit ${v.key} url=${v.url.take(120)}")
-            callback(newExtractorLink("SeriesKao", "VidHidePro - ${v.key}", v.url, ExtractorLinkType.M3U8) {
+            callback(newExtractorLink("SeriesKao", "VidHidePro - ${v.key} [$languageName]", v.url, ExtractorLinkType.M3U8) {
                 this.referer = url
                 this.headers = vidHeaders
             })
@@ -764,7 +765,7 @@ suspend fun loadKaoSourceExtractor(
 
     val domain = try { java.net.URL(url).host } catch (_: Exception) { "" }
     val customHandled = when {
-        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, subtitleCallback) { link ->
+        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback) { link ->
             count++
             outerScope.launch { callback.invoke(link) }
         }
