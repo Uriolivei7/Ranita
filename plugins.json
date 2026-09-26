@@ -569,10 +569,10 @@
         "name": "RetrotveProvider"
     },
     {
-        "fileHash": "sha256-086b5f1d0c51a5dc3dc90b3a8a38c2b4cd29a016ba66b990014e2fe415c89129",
+        "fileHash": "sha256-569d927dc889b09e352b2799ff09a966d9328125bd36be45fcf1332cbd3f2e50",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 89156,
+        "fileSize": 90157,
         "status": 1,
         "language": "es",
         "authors": [
