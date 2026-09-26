@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.*
 import okhttp3.Interceptor
+import java.util.concurrent.TimeUnit
 
 class SerieskaoProvider : MainAPI() {
     override var mainUrl = "https://serieskao.top"
@@ -74,7 +75,10 @@ class SerieskaoProvider : MainAPI() {
                 .header("Accept", "*/*")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()
-            val response = chain.proceed(newRequest)
+            val response = chain
+                .withConnectTimeout(30, TimeUnit.SECONDS)
+                .withReadTimeout(30, TimeUnit.SECONDS)
+                .proceed(newRequest)
             Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type","?")} url=${url.take(100)}")
             response
         }

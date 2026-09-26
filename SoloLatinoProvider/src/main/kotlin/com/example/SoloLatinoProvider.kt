@@ -30,6 +30,7 @@ import okhttp3.Interceptor
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.util.Date
+import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -51,6 +52,8 @@ class SoloLatinoProvider : MainAPI() {
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
+
+    private val cloudflareKiller = CloudflareKiller()
 
     private val baseHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
@@ -75,7 +78,7 @@ class SoloLatinoProvider : MainAPI() {
         for (i in 0 until retries) {
             try {
                 Log.d("SoloLatino", "safeAppGet - Intento ${i + 1}/$retries para URL: $url")
-                val res = app.get(url, timeout = timeoutMs, headers = baseHeaders)
+                val res = app.get(url, timeout = timeoutMs, headers = baseHeaders, interceptor = cloudflareKiller)
                 Log.d("SoloLatino", "safeAppGet - HTTP ${res.code} para URL: $url")
                 when {
                     res.isSuccessful -> return res.text
@@ -100,7 +103,7 @@ class SoloLatinoProvider : MainAPI() {
 
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
         val cdnDomains = listOf("dramiyos", "phtilzjvfok", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou")
-        // Los dominios hls3 rotan (.shop/.space/.store/.sbs): matchear por path en vez de marca
+
         val cdnPaths = listOf("/hls2/", "/hls3/", ".urlset/")
         return Interceptor { chain ->
             val request = chain.request()
@@ -117,7 +120,10 @@ class SoloLatinoProvider : MainAPI() {
                 .header("Accept", "*/*")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()
-            val response = chain.proceed(newRequest)
+            val response = chain
+                .withConnectTimeout(30, TimeUnit.SECONDS)
+                .withReadTimeout(30, TimeUnit.SECONDS)
+                .proceed(newRequest)
             Log.d("SoloLatino", "[intercept] CDN response: ${response.code} ${response.header("content-type","?")} url=${url.take(100)}")
             response
         }
@@ -955,8 +961,8 @@ private suspend fun tryVidHideProExtraction(
         val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
         resolved.amap { v ->
             try {
-                val code = withTimeoutOrNull(10000L) {
-                    app.get(v.url, headers = probeHeaders, timeout = 10000L).code
+                val code = withTimeoutOrNull(20000L) {
+                    app.get(v.url, headers = probeHeaders, timeout = 20000L).code
                 } ?: -1
                 Log.d("SoloLatino", "[VH-Pro] probe ${v.key} -> $code")
                 if (code in 200..299) reachable.add(v)

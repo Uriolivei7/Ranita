@@ -608,8 +608,8 @@ private suspend fun tryVidHideProExtraction(
         val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
         resolved.amap { v ->
             try {
-                val code = withTimeoutOrNull(10000L) {
-                    app.get(v.url, headers = probeHeaders, timeout = 10000L).code
+                val code = withTimeoutOrNull(20000L) {
+                    app.get(v.url, headers = probeHeaders, timeout = 20000L).code
                 } ?: -1
                 Log.d(KAO_TAG, "[VH-Pro] probe ${v.key} -> $code")
                 if (code in 200..299) reachable.add(v)
