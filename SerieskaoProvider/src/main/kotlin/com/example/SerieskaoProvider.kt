@@ -420,7 +420,16 @@ class SerieskaoProvider : MainAPI() {
         Log.d(TAG, "loadLinks challenge=$embedChallenge salt=$embedSalt")
 
         val langMap = mapOf("LAT" to "LATINO", "ESP" to "CASTELLANO", "SUB" to "SUBTITULADO")
-        val aesKey = withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+        Log.d(TAG, "loadLinks resolviendo PoW...")
+        val aesKey = try {
+
+            withTimeout(30000L) {
+                withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadLinks PoW error/timeout (${e.message}) -> loadExtractor directo")
+            null
+        }
         if (aesKey == null) {
             Log.e(TAG, "loadLinks PoW failed -> loadExtractor directo")
             loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
