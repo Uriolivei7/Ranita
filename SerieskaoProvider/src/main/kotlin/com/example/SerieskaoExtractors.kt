@@ -775,7 +775,40 @@ suspend fun loadKaoSourceExtractor(
             outerScope.launch { callback.invoke(link) }
         }
         domain.contains("streamwish") -> {
-            loadExtractor(url, referer, subtitleCallback) { link -> emitWrapped(link) }
+
+            var directOk = false
+            try {
+                val staticHtml = app.get(
+                    url,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                        "Referer" to (referer ?: url),
+                    ),
+                    timeout = 15000L
+                ).text
+                if (KaoStreamWish().parseHtml(staticHtml, url, referer ?: url, "SeriesKao") { link ->
+                        count++
+                        outerScope.launch {
+                            callback.invoke(
+                                newExtractorLink("SeriesKao", "$source[StreamWish]", link.url) {
+                                    this.quality = link.quality
+                                    this.type = link.type
+                                    this.referer = link.referer
+                                    this.headers = link.headers
+                                    this.extractorData = link.extractorData
+                                }
+                            )
+                        }
+                    }) {
+                    Log.d(KAO_TAG, "[SW] parseo estático OK: $url")
+                    directOk = true
+                }
+            } catch (e: Exception) {
+                Log.d(KAO_TAG, "[SW] parseo estático falló: ${e.message}")
+            }
+            if (!directOk) {
+                loadExtractor(url, referer, subtitleCallback) { link -> emitWrapped(link) }
+            }
             if (count == 0) {
                 Log.d(KAO_TAG, "[SW] extractor 0 links, probando WebView: $url")
                 val rendered = renderViaWebView(url, referer, readyJs = SW_READY_JS)
