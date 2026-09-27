@@ -727,5 +727,26 @@
     "iconUrl": "https://reanime.to/favicon-32x32.png",
     "language": "en",
     "fileSize": 39000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PoseidonHDProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "PoseidonHD2",
+    "internalName": "PoseidonHDProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://www.poseidonhd2.co/",
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Cartoon"
+    ],
+    "iconUrl": "https://www.poseidonhd2.co/favicon-32x32.png",
+    "language": "en",
+    "fileSize": 39000
   }
 ]
