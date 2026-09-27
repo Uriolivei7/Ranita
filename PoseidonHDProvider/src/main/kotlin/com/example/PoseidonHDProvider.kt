@@ -11,7 +11,7 @@ class PoseidonHDProvider : MainAPI() {
     override var name = "PoseidonHD2"
     override var lang = "mx"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Cartoon)
 
     override val mainPage = mainPageOf(
         "/series" to "Series",
