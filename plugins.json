@@ -527,6 +527,27 @@
         "name": "PlutotvProvider"
     },
     {
+        "iconUrl": "https://www.poseidonhd2.co/favicon.ico",
+        "fileHash": "sha256-c0d9a409d0c4220b60c2d2ae1a67ba5e6da6abe5ea881916e843c7b8b3e53387",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 52938,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "PoseidonHDProvider",
+        "description": "Pel\u00edculas y Series de PoseidonHD2",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PoseidonHDProvider.cs3",
+        "name": "PoseidonHDProvider"
+    },
+    {
         "fileHash": "sha256-01d524c11248da43d3d879e8c887d4cbbc428b6faf87b7f874e9781917841599",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
