@@ -490,6 +490,9 @@ class SoloLatinoProvider : MainAPI() {
                             .trim()
                         Log.d("SoloLatino", "embed69 - dataLink JSON: ${dataLinkJson.take(300)}")
 
+                        val serversList = tryParseJson<List<ServersByLang>>(dataLinkJson)
+                            ?: resolveDataLinkExpr(dataLinkJson)?.let { tryParseJson<List<ServersByLang>>(it) }
+
                         val pageHtml = embedResp.text
                         val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
                         val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
@@ -499,7 +502,7 @@ class SoloLatinoProvider : MainAPI() {
                         }
                         Log.d("SoloLatino", "embed69 - challenge=$embedChallenge salt=$embedSalt")
 
-                        tryParseJson<List<ServersByLang>>(dataLinkJson)?.amap { lang ->
+                        serversList?.amap { lang ->
                             val encryptedLinks = lang.sortedEmbeds.mapNotNull { it.link }
                             if (encryptedLinks.isEmpty()) return@amap
                             Log.d("SoloLatino", "embed69 - ${encryptedLinks.size} enlaces encriptados para ${lang.videoLanguage}")
@@ -610,6 +613,41 @@ private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray?
     }
     Log.e("SoloLatino", "embed69 PoW - no solution found after $maxAttempts attempts")
     return null
+}
+
+private fun resolveDataLinkExpr(rawExpression: String?): String? {
+    if (rawExpression.isNullOrBlank()) return null
+    var expr = rawExpression.trim().trimEnd(';')
+    fun String.removeOuterCall(prefix: String): String? {
+        if (!startsWith(prefix, ignoreCase = true) || !endsWith(')')) return null
+        val start = indexOf('(')
+        val end = lastIndexOf(')')
+        if (start == -1 || end == -1 || end <= start) return null
+        return substring(start + 1, end).trim()
+    }
+    fun String.trimMatchingQuotes(): String =
+        if ((startsWith('"') && endsWith('"')) || (startsWith('\'') && endsWith('\''))) {
+            substring(1, length - 1)
+        } else this
+    while (true) {
+        val next = expr.removeOuterCall("window.JSON.parse")
+            ?: expr.removeOuterCall("JSON.parse")
+            ?: expr.removeOuterCall("window.decodeURIComponent")?.trimMatchingQuotes()?.let {
+                runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull()
+            }
+            ?: expr.removeOuterCall("decodeURIComponent")?.trimMatchingQuotes()?.let {
+                runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull()
+            }
+            ?: expr.removeOuterCall("window.atob")?.trimMatchingQuotes()?.let {
+                runCatching { String(Base64.decode(it, Base64.DEFAULT)) }.getOrNull()
+            }
+            ?: expr.removeOuterCall("atob")?.trimMatchingQuotes()?.let {
+                runCatching { String(Base64.decode(it, Base64.DEFAULT)) }.getOrNull()
+            }
+            ?: break
+        expr = next
+    }
+    return expr.trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
 }
 
 private fun decryptAESLocal(encryptedBase64: String, aesKey: ByteArray): String? {
@@ -796,7 +834,17 @@ suspend fun loadSourceNameExtractor(
                 if (rendered != null) {
                     SoloStreamWish().parseHtml(rendered, url, referer ?: url, "SoloLatino") { link ->
                         count++
-                        outerScope.launch { callback.invoke(link) }
+                        outerScope.launch {
+                            callback.invoke(
+                                newExtractorLink("SoloLatino", "$source[StreamWish]", link.url) {
+                                    this.quality = link.quality
+                                    this.type = link.type
+                                    this.referer = link.referer
+                                    this.headers = link.headers
+                                    this.extractorData = link.extractorData
+                                }
+                            )
+                        }
                     }
                 }
                 if (count == 0) Log.w("SoloLatino", "[SW] WebView sin links: $url")
@@ -961,6 +1009,7 @@ private suspend fun tryVidHideProExtraction(
         val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
         resolved.amap { v ->
             try {
+
                 val code = withTimeoutOrNull(20000L) {
                     app.get(v.url, headers = probeHeaders, timeout = 20000L).code
                 } ?: -1

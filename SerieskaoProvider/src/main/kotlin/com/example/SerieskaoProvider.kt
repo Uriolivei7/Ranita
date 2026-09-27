@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -393,14 +394,16 @@ class SerieskaoProvider : MainAPI() {
             return@coroutineScope false
         }
 
-        val dataLinkMatch = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""").find(playerHtml)
-        if (dataLinkMatch == null) {
+        val rawMatch = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""").find(playerHtml)?.groupValues?.get(1)
+            ?: Regex("""dataLink\s*=\s*([^;]+);""", RegexOption.DOT_MATCHES_ALL)
+                .find(playerHtml)?.groupValues?.get(1)?.let { resolveDataLinkExpr(it) }
+        if (rawMatch == null) {
             Log.e(TAG, "loadLinks sin dataLink en playerUrl -> loadExtractor directo")
             loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
             return@coroutineScope true
         }
 
-        val jsonStr = dataLinkMatch.groupValues[1]
+        val jsonStr = rawMatch
         Log.d(TAG, "loadLinks dataLink JSON len=${jsonStr.length}")
         val items = tryParseJson<List<DataLinkEntry>>(jsonStr)
         if (items == null) {
@@ -451,6 +454,41 @@ class SerieskaoProvider : MainAPI() {
             }
         }
         return@coroutineScope true
+    }
+
+    private fun resolveDataLinkExpr(rawExpression: String?): String? {
+        if (rawExpression.isNullOrBlank()) return null
+        var expr = rawExpression.trim().trimEnd(';')
+        fun String.removeOuterCall(prefix: String): String? {
+            if (!startsWith(prefix, ignoreCase = true) || !endsWith(')')) return null
+            val start = indexOf('(')
+            val end = lastIndexOf(')')
+            if (start == -1 || end == -1 || end <= start) return null
+            return substring(start + 1, end).trim()
+        }
+        fun String.trimMatchingQuotes(): String =
+            if ((startsWith('"') && endsWith('"')) || (startsWith('\'') && endsWith('\''))) {
+                substring(1, length - 1)
+            } else this
+        while (true) {
+            val next = expr.removeOuterCall("window.JSON.parse")
+                ?: expr.removeOuterCall("JSON.parse")
+                ?: expr.removeOuterCall("window.decodeURIComponent")?.trimMatchingQuotes()?.let {
+                    runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull()
+                }
+                ?: expr.removeOuterCall("decodeURIComponent")?.trimMatchingQuotes()?.let {
+                    runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull()
+                }
+                ?: expr.removeOuterCall("window.atob")?.trimMatchingQuotes()?.let {
+                    runCatching { String(Base64.decode(it, Base64.DEFAULT)) }.getOrNull()
+                }
+                ?: expr.removeOuterCall("atob")?.trimMatchingQuotes()?.let {
+                    runCatching { String(Base64.decode(it, Base64.DEFAULT)) }.getOrNull()
+                }
+                ?: break
+            expr = next
+        }
+        return expr.trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
     }
 
     data class DataLinkEntry(

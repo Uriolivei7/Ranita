@@ -203,7 +203,6 @@ class PoseidonHDProvider : MainAPI() {
             this.extractorData = link.extractorData
         }
     }
-
     private suspend fun loadExtractorWrapped(
         url: String,
         referer: String,
@@ -258,6 +257,77 @@ class PoseidonHDProvider : MainAPI() {
             false
         }
     }
+    private suspend fun tryStreamWishStatic(
+        url: String,
+        referer: String,
+        langTag: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val html = app.get(url, headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                "Referer" to referer,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ), timeout = 15000L).text
+            var found = false
+            suspend fun emit(raw: String) {
+                var r = raw.replace("\\/", "/").trim()
+                if (r.startsWith("//")) r = "https:$r"
+                if (!r.startsWith("http")) return
+                if (!r.contains(".m3u8") && !r.contains(".mp4")) return
+                val type = if (r.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
+                Log.d("PoseidonHD", "[SW] estático: ${r.take(120)}")
+                callback(newExtractorLink("PoseidonHD2", "$langTag[StreamWish]", r, type) {
+                    this.referer = referer
+                    this.headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                        "Referer" to referer,
+                        "Accept" to "*/*",
+                    )
+                })
+                found = true
+            }
+            val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
+            val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
+            val fileRegex = Regex("""(?:file|src)\s*:\s*["']((?:https?:)?//[^"']+)["']""")
+            m3u8Regex.findAll(html).forEach { emit(it.groupValues[1]) }
+            if (!found) fileRegex.findAll(html).forEach { emit(it.groupValues[1]) }
+            if (!found) mp4Regex.findAll(html).forEach { emit(it.groupValues[1]) }
+            if (!found) {
+                val packerRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
+                for (pm in packerRegex.findAll(html)) {
+                    val decoded = unpackDeanEdwardsPoseidon(
+                        pm.groupValues[1],
+                        pm.groupValues[2].toIntOrNull() ?: 36,
+                        pm.groupValues[3].toIntOrNull() ?: 0,
+                        pm.groupValues[4]
+                    ) ?: continue
+                    m3u8Regex.findAll(decoded).forEach { emit(it.groupValues[1]) }
+                    if (!found) fileRegex.findAll(decoded).forEach { emit(it.groupValues[1]) }
+                    if (found) break
+                }
+            }
+            if (found) Log.d("PoseidonHD", "[SW] estático OK: $url")
+            found
+        } catch (e: Exception) {
+            Log.d("PoseidonHD", "[SW] estático falló: ${e.message}")
+            false
+        }
+    }
+
+    private fun unpackDeanEdwardsPoseidon(p: String, a: Int, c: Int, kRaw: String): String? {
+        return try {
+            val kList = kRaw.split('|')
+            var decoded = p
+            for (i in kList.indices.reversed()) {
+                val w = kList[i]
+                if (w.isBlank()) continue
+                decoded = decoded.replace(Regex("\\b${i.toString(a)}\\b"), Regex.escapeReplacement(w))
+            }
+            decoded.replace("\\'", "'")
+        } catch (_: Exception) { null }
+    }
 
     override suspend fun loadLinks(
         data: String,
@@ -307,7 +377,8 @@ class PoseidonHDProvider : MainAPI() {
                     }
                     if (link.contains("player.poseidonhd2.co")) {
                         try {
-                            val playerHtml = app.get(link).text
+
+                            val playerHtml = app.get(link, timeout = 30000L).text
                             Log.d("PoseidonHD", "loadLinks: player html ${playerHtml.length}")
                             val realUrl = Regex("""var url = '([^']+)';?""").find(playerHtml)?.groupValues?.get(1)
                                 ?: Regex("""iframe[^>]+src=['"]([^'"]+)['"]""").find(playerHtml)?.groupValues?.get(1)
@@ -317,6 +388,9 @@ class PoseidonHDProvider : MainAPI() {
                                 if ((realHost.contains("byse", ignoreCase = true) || realHost.contains("filemoon", ignoreCase = true)) &&
                                     tryBysePoseidon(realUrl, data, langTag, countingSub) { countingCallback(it) }) {
                                     Log.d("PoseidonHD", "loadLinks: Byse OK [$langTag]")
+                                } else if (realHost.contains("streamwish", ignoreCase = true) &&
+                                    tryStreamWishStatic(realUrl, link, langTag, countingSub) { countingCallback(it) }) {
+                                    Log.d("PoseidonHD", "loadLinks: SW estático OK [$langTag]")
                                 } else {
                                     loadExtractorWrapped(realUrl, data, langTag, countingSub, countingCallback)
                                 }
