@@ -815,7 +815,17 @@ suspend fun loadKaoSourceExtractor(
                 if (rendered != null) {
                     KaoStreamWish().parseHtml(rendered, url, referer ?: url, "SeriesKao") { link ->
                         count++
-                        outerScope.launch { callback.invoke(link) }
+                        outerScope.launch {
+                            callback.invoke(
+                                newExtractorLink("SeriesKao", "$source[StreamWish]", link.url) {
+                                    this.quality = link.quality
+                                    this.type = link.type
+                                    this.referer = link.referer
+                                    this.headers = link.headers
+                                    this.extractorData = link.extractorData
+                                }
+                            )
+                        }
                     }
                 }
                 if (count == 0) Log.w(KAO_TAG, "[SW] WebView sin links: $url")
