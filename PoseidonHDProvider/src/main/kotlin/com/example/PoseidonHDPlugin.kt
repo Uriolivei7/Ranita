@@ -7,6 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class PoseidonHDPlugin: Plugin() {
     override fun load(context: Context) {
+        PoseidonHDProvider.pluginContext = context
         registerMainAPI(PoseidonHDProvider())
     }
 }

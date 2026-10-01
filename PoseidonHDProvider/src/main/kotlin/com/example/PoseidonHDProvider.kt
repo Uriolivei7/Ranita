@@ -1,12 +1,26 @@
 package com.example
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
 import org.json.JSONObject
 
 class PoseidonHDProvider : MainAPI() {
+    companion object {
+        var pluginContext: Context? = null
+    }
     override var mainUrl = "https://www.poseidonhd2.co"
     override var name = "PoseidonHD2"
     override var lang = "mx"
@@ -27,6 +41,8 @@ class PoseidonHDProvider : MainAPI() {
             else -> url
         }
     }
+
+    private val TAG = "PoseidonHD"
 
     private fun parseNextData(html: String): JSONObject? {
         return try {
@@ -270,14 +286,26 @@ class PoseidonHDProvider : MainAPI() {
                 "Referer" to referer,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             ), timeout = 15000L).text
+            parseStreamWishHtmlPoseidon(html, url, referer, langTag, callback)
+        } catch (e: Exception) {
+            Log.d("PoseidonHD", "[SW] estático falló: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun parseStreamWishHtmlPoseidon(
+        html: String,
+        pageUrl: String,
+        referer: String,
+        langTag: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
             var found = false
-            suspend fun emit(raw: String) {
-                var r = raw.replace("\\/", "/").trim()
-                if (r.startsWith("//")) r = "https:$r"
-                if (!r.startsWith("http")) return
-                if (!r.contains(".m3u8") && !r.contains(".mp4")) return
-                val type = if (r.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
-                Log.d("PoseidonHD", "[SW] estático: ${r.take(120)}")
+            var emittedAny = false
+            val pending = mutableListOf<Pair<String, ExtractorLinkType?>>()
+            suspend fun emitLink(r: String, type: ExtractorLinkType?) {
+                Log.d(TAG, "[SW] hallado: ${r.take(120)}")
                 callback(newExtractorLink("PoseidonHD2", "$langTag[StreamWish]", r, type) {
                     this.referer = referer
                     this.headers = mapOf(
@@ -286,7 +314,20 @@ class PoseidonHDProvider : MainAPI() {
                         "Accept" to "*/*",
                     )
                 })
+                emittedAny = true
+            }
+            suspend fun emit(raw: String) {
+                var r = raw.replace("\\/", "/").trim()
+                if (r.startsWith("//")) r = "https:$r"
+                if (!r.startsWith("http")) return
+                if (!r.contains(".m3u8") && !r.contains(".mp4")) return
+                val type = if (r.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
                 found = true
+                if (probeSwMaster(r, referer)) {
+                    emitLink(r, type)
+                } else {
+                    pending.add(r to type)
+                }
             }
             val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
             val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
@@ -308,10 +349,36 @@ class PoseidonHDProvider : MainAPI() {
                     if (found) break
                 }
             }
-            if (found) Log.d("PoseidonHD", "[SW] estático OK: $url")
+            if (!emittedAny && pending.isNotEmpty()) {
+                Log.w(TAG, "[SW] ningún master responde, emitiendo todos igual")
+                for ((pu, ptype) in pending) emitLink(pu, ptype)
+            }
+            if (emittedAny) {
+                Log.d(TAG, "[SW] OK: $pageUrl")
+            } else if (!found) {
+                Log.d(TAG, "[SW] 0 links (challenge?) len=${html.length} url=${pageUrl.take(80)}")
+            }
             found
         } catch (e: Exception) {
-            Log.d("PoseidonHD", "[SW] estático falló: ${e.message}")
+            Log.d("PoseidonHD", "[SW] parse falló: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun probeSwMaster(url: String, referer: String): Boolean {
+        return try {
+            val ok = kotlinx.coroutines.withTimeoutOrNull(12000L) {
+                val r = app.get(url, headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                    "Referer" to referer,
+                    "Accept" to "*/*",
+                ), timeout = 12000L)
+                r.isSuccessful && r.text.trimStart().startsWith("#EXTM3U")
+            } ?: false
+            Log.d(TAG, "[SW] probe master -> $ok url=${url.take(80)}")
+            ok
+        } catch (e: Exception) {
+            Log.d(TAG, "[SW] probe master error: ${e.message}")
             false
         }
     }
@@ -388,9 +455,18 @@ class PoseidonHDProvider : MainAPI() {
                                 if ((realHost.contains("byse", ignoreCase = true) || realHost.contains("filemoon", ignoreCase = true)) &&
                                     tryBysePoseidon(realUrl, data, langTag, countingSub) { countingCallback(it) }) {
                                     Log.d("PoseidonHD", "loadLinks: Byse OK [$langTag]")
-                                } else if (realHost.contains("streamwish", ignoreCase = true) &&
-                                    tryStreamWishStatic(realUrl, link, langTag, countingSub) { countingCallback(it) }) {
-                                    Log.d("PoseidonHD", "loadLinks: SW estático OK [$langTag]")
+                                } else if (realHost.contains("streamwish", ignoreCase = true)) {
+
+                                    if (tryStreamWishStatic(realUrl, link, langTag, countingSub) { countingCallback(it) }) {
+                                        Log.d("PoseidonHD", "loadLinks: SW estático OK [$langTag]")
+                                    } else if (runCatching {
+                                            val rendered = renderViaWebViewPoseidon(realUrl, link, readyJs = SW_READY_JS_POSEIDON)
+                                            rendered != null && parseStreamWishHtmlPoseidon(rendered, realUrl, link, langTag) { countingCallback(it) }
+                                        }.getOrDefault(false)) {
+                                        Log.d("PoseidonHD", "loadLinks: SW WebView OK [$langTag]")
+                                    } else {
+                                        loadExtractorWrapped(realUrl, data, langTag, countingSub, countingCallback)
+                                    }
                                 } else {
                                     loadExtractorWrapped(realUrl, data, langTag, countingSub, countingCallback)
                                 }
@@ -430,5 +506,99 @@ class PoseidonHDProvider : MainAPI() {
         Log.d("PoseidonHD", "loadLinks: FIN iframe path emitidos=${emitted.get()} found=$found")
         if (emitted.get() == 0) Log.e("PoseidonHD", "loadLinks: 0 links emitidos (iframe fallback) -> 'enlaces no encontrados'")
         return emitted.get() > 0
+    }
+}
+
+private const val SW_READY_JS_POSEIDON = "h.includes('.m3u8')||h.includes('jwplayer')"
+private const val DUMP_JS_POSEIDON = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
+
+private suspend fun renderViaWebViewPoseidon(pageUrl: String, referer: String?, waitMs: Long = 12000L, readyJs: String? = null): String? {
+    return withContext(Dispatchers.Main) {
+        val appCtx = PoseidonHDProvider.pluginContext?.applicationContext ?: run {
+            Log.d("PoseidonHD", "[WebView] sin context")
+            return@withContext null
+        }
+        var webView: WebView? = null
+        val mainHandler = Handler(Looper.getMainLooper())
+        try {
+            webView = WebView(appCtx)
+            webView.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                cacheMode = WebSettings.LOAD_NO_CACHE
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+            }
+            val deferred = CompletableDeferred<String?>()
+            val polls = java.util.concurrent.atomic.AtomicInteger(0)
+            val maxPolls = (waitMs / 2000L).toInt().coerceAtLeast(1)
+            fun dump() {
+                if (deferred.isCompleted) return
+                try {
+                    webView?.evaluateJavascript(DUMP_JS_POSEIDON, null)
+                } catch (_: Exception) {
+                    if (!deferred.isCompleted) deferred.complete(null)
+                }
+            }
+            fun pollOnce() {
+                if (deferred.isCompleted) return
+                try {
+                    webView?.evaluateJavascript(
+                        "(function(){try{var h=document.documentElement.outerHTML;NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()",
+                        null
+                    )
+                } catch (_: Exception) {
+                    if (!deferred.isCompleted) deferred.complete(null)
+                }
+            }
+            webView.addJavascriptInterface(object {
+                @JavascriptInterface
+                fun onHtml(html: String) {
+                    if (!deferred.isCompleted) deferred.complete(html)
+                }
+
+                @JavascriptInterface
+                fun onPoll(ready: Boolean) {
+                    mainHandler.post {
+                        if (deferred.isCompleted) return@post
+                        if (ready) {
+                            Log.d("PoseidonHD", "[WebView] listo antes de tiempo, dumpeando")
+                            dump()
+                            return@post
+                        }
+                        if (polls.incrementAndGet() >= maxPolls) {
+                            dump()
+                        } else {
+                            mainHandler.postDelayed({ pollOnce() }, 2000L)
+                        }
+                    }
+                }
+            }, "NativeBridge")
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    polls.set(0)
+                    if (readyJs != null) {
+                        mainHandler.postDelayed({ pollOnce() }, 2000L)
+                    } else {
+                        mainHandler.postDelayed({ dump() }, waitMs)
+                    }
+                }
+
+                override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                    if (!deferred.isCompleted) deferred.complete(null)
+                }
+            }
+            if (!referer.isNullOrBlank()) webView.loadUrl(pageUrl, mapOf("Referer" to referer))
+            else webView.loadUrl(pageUrl)
+            Log.d("PoseidonHD", "[WebView] renderizando ${pageUrl.take(100)}")
+            withTimeoutOrNull(waitMs + 15000L) { deferred.await() }
+        } catch (e: Exception) {
+            Log.w("PoseidonHD", "[WebView] error: ${e.message}")
+            null
+        } finally {
+            try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
+            try { webView?.destroy() } catch (_: Exception) {}
+        }
     }
 }
