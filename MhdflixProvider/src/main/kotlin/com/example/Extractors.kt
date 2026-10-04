@@ -421,7 +421,7 @@ open class MhdflixVoe : ExtractorApi() {
                     val mUrl = "$mirror/e/$id"
                     if (mUrl == currentUrl) continue
                     try {
-                        val mHtml = app.get(mUrl, headers = voeHeaders + ("Referer" to currentUrl), timeout = 10000L).text
+                        val mHtml = app.get(mUrl, headers = voeHeaders + ("Referer" to currentUrl), timeout = 10L).text
                         if (parseHtml(mHtml, mUrl, subtitleCallback, callback)) {
                             Log.d("MhdflixVoe", "[Voe] mirror OK: $mirror")
                             return@withTimeoutOrNull

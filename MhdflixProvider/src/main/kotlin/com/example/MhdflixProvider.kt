@@ -490,6 +490,9 @@ class MhdflixProvider : MainAPI() {
     }
 
     private fun isDirectMediaUrl(url: String): Boolean {
+        
+        val lower = url.lowercase()
+        if (lower.contains("/e/") || lower.contains("/v/") || lower.contains("/embed")) return false
         val path = url.substringAfter("://").substringAfter("/")
         return path.contains(".mp4", ignoreCase = true) ||
                path.contains(".m3u8", ignoreCase = true) ||
@@ -498,6 +501,49 @@ class MhdflixProvider : MainAPI() {
                path.contains(".ts", ignoreCase = true) ||
                path.contains(".avi", ignoreCase = true) ||
                path.contains("streamtape", ignoreCase = true)
+    }
+
+    private fun isMediaCandidate(cand: String, pageUrl: String): Boolean {
+        val c = cand.trimEnd('/')
+        if (c.equals(pageUrl.trimEnd('/'), ignoreCase = true)) return false
+        val cl = c.lowercase()
+        if (cl.contains("/e/") || cl.contains("/v/") || cl.contains("/embed")) return false
+        return true
+    }
+
+    private suspend fun tryStreamTapeExtract(
+        url: String,
+        referer: String,
+        languageName: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val html = app.get(url, headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                "Referer" to referer,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ), timeout = 15L).text
+            val m = Regex("""["']((?:https?://[^"'<>]+)?/?get_video\?[^"'<>\s]+)["']""").find(html)
+                ?: run {
+                    Log.w("Mhdflix-Links", "[StreamTape] sin get_video en $url")
+                    return false
+                }
+            var videoUrl = m.groupValues[1].replace("\\/", "/").replace("&amp;", "&").trim()
+            if (videoUrl.startsWith("/")) videoUrl = "https://streamtape.com$videoUrl"
+            if (!videoUrl.startsWith("http")) return false
+            Log.d("Mhdflix-Links", "[StreamTape] get_video -> ${videoUrl.take(120)}")
+            callback(newExtractorLink("MHDFLIX", "StreamTape - $languageName", videoUrl, ExtractorLinkType.VIDEO) {
+                this.referer = url
+                this.headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                    "Referer" to url,
+                )
+            })
+            true
+        } catch (e: Exception) {
+            Log.w("Mhdflix-Links", "[StreamTape] error: ${e.message}")
+            false
+        }
     }
 
     private fun fixEmbedUrl(url: String): String {
@@ -564,7 +610,7 @@ class MhdflixProvider : MainAPI() {
                 "Accept" to "*/*",
                 "Referer" to referer,
             )
-            val res = app.get(url, headers = headers, timeout = 20000L)
+            val res = app.get(url, headers = headers, timeout = 20L)
             if (!res.isSuccessful) {
                 Log.w("Mhdflix-Links", "[VH-Pro] HTTP ${res.code}")
                 return 0
@@ -614,7 +660,7 @@ class MhdflixProvider : MainAPI() {
                 resolved.map { v ->
                     async {
                         try {
-                            val r = app.get(v.url, headers = probeHeaders, timeout = 10000L)
+                            val r = app.get(v.url, headers = probeHeaders, timeout = 10L)
                             val ok = r.isSuccessful && r.text.trimStart().startsWith("#EXTM3U")
                             Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} -> ${r.code} m3u8=$ok")
                             if (ok) reachable.add(v)
@@ -664,13 +710,16 @@ class MhdflixProvider : MainAPI() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Referer" to referer,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            ), timeout = 15000L)
+            ), timeout = 15L)
             val html = resp.text
 
             val m3u8Regex = Regex("""(https?://[^"'<>\s]+\.(?:m3u8|mp4)[^"'<>\s]*)""")
-            val directMatch = m3u8Regex.find(html)
+            // Nunca emitir la propia página embed como media (su slug puede
+            // terminar en .mp4) → 3003 garantizado en ExoPlayer.
+            val directMatch = m3u8Regex.findAll(html).map { it.value }
+                .firstOrNull { isMediaCandidate(it, url) }
             if (directMatch != null) {
-                callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", directMatch.value, referer, Qualities.Unknown.value, INFER_TYPE))
+                callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", directMatch, referer, Qualities.Unknown.value, INFER_TYPE))
                 return true
             }
 
@@ -710,9 +759,10 @@ class MhdflixProvider : MainAPI() {
                                             if (k[idx].isBlank()) continue
                                             decoded = decoded.replace(Regex("\\b${idx.toString(a)}\\b"), k[idx])
                                         }
-                                        val decodedM3u8 = m3u8Regex.find(decoded)
+                                        val decodedM3u8 = m3u8Regex.findAll(decoded).map { it.value }
+                                            .firstOrNull { isMediaCandidate(it, url) }
                                         if (decodedM3u8 != null) {
-                                            callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", decodedM3u8.value, referer, Qualities.Unknown.value, INFER_TYPE))
+                                            callback.invoke(createExtractorLink(prefixName, "${prefixName} [$languageName]", decodedM3u8, referer, Qualities.Unknown.value, INFER_TYPE))
                                             return true
                                         }
                                     }
@@ -824,6 +874,19 @@ class MhdflixProvider : MainAPI() {
                                 }
                             } catch (e: Exception) {
                                 Log.e("Mhdflix-Links", "VidHide custom falló: ${e.message}")
+                            }
+                        }
+                        if (!foundByExtractor && fixedUrl.contains("streamtape", ignoreCase = true)) {
+                            try {
+                                if (tryStreamTapeExtract(fixedUrl, referer, languageName) { link ->
+                                        callback.invoke(link)
+                                        found = true
+                                    }) {
+                                    foundByExtractor = true
+                                    Log.d("Mhdflix-Links", "StreamTape custom OK: $serverName")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Mhdflix-Links", "StreamTape custom falló: ${e.message}")
                             }
                         }
                         if (!foundByExtractor) {
