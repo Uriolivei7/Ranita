@@ -528,10 +528,10 @@
     },
     {
         "iconUrl": "https://www.poseidonhd2.co/favicon.ico",
-        "fileHash": "sha256-623f29dca7e114c5848808412dc4165bc9a2c90a5a3a638722d7cb9f1bdc2440",
+        "fileHash": "sha256-9515ede79a212a1307aa42f73f36e5725ea9f02d6493eac5c3fa6d72a581534d",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 73980,
+        "fileSize": 73978,
         "status": 1,
         "language": "es",
         "authors": [
@@ -590,10 +590,10 @@
         "name": "RetrotveProvider"
     },
     {
-        "fileHash": "sha256-119eabdd7f88b76c11d2fe6e21293c24097700ee26ad650659371f8007de4589",
+        "fileHash": "sha256-7ed7a5453ed9c145bf1e23a994bb3a7ba1860c130da0fc5194079c519ecc618c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 91585,
+        "fileSize": 91578,
         "status": 1,
         "language": "es",
         "authors": [
@@ -631,10 +631,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-b7013cc9d0f3991a55731cc8b6fa15d9b55398b18ba6088b95c3f7e855f378aa",
+        "fileHash": "sha256-c2ec5369c40e4f10e36f542ab41e02dcff1e3599cf0bb8cf2b99605a67382b71",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 107454,
+        "fileSize": 107430,
         "status": 1,
         "language": "es",
         "authors": [
