@@ -313,7 +313,7 @@ class KaoStreamWish {
                         val ihtml = app.get(resolveUrl(src), headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                             "Referer" to pageUrl,
-                        ), timeout = 15000L).text
+                        ), timeout = 15L).text
                         for (m in m3u8Regex.findAll(ihtml)) {
                             Log.d(KAO_TAG, "[SW] M3U8 (iframe): ${m.value.take(120)}")
                             callback.invoke(newExtractorLink(sourceName, sourceName, m.value) { this.referer = linkReferer })
@@ -401,7 +401,7 @@ private suspend fun scanPageForSubs(pageUrl: String, subtitleCallback: (Subtitle
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         )
-        val html = app.get(pageUrl, headers = scanHeaders, timeout = 20000L).text
+        val html = app.get(pageUrl, headers = scanHeaders, timeout = 20L).text
         scanHtmlForSubs(html, pageUrl.substringBeforeLast("/"), subtitleCallback)
     } catch (e: Exception) {
         Log.d(KAO_TAG, "[PageSubs] Error al escanear $pageUrl: ${e.message}")
@@ -418,7 +418,7 @@ private suspend fun tryExtractSubsFromM3u8(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
         if (referer != null) subHeaders["Referer"] = referer
-        val manifest = app.get(m3u8Url, headers = subHeaders, timeout = 20000L).text
+        val manifest = app.get(m3u8Url, headers = subHeaders, timeout = 20L).text
         val baseUrl = m3u8Url.substringBeforeLast("/")
         var count = 0
         Regex("""#EXT-X-MEDIA:TYPE=SUBTITLES[^#]*""", RegexOption.IGNORE_CASE).findAll(manifest).forEach { mediaBlock ->
@@ -545,7 +545,7 @@ private suspend fun tryVidHideProExtraction(
             "Accept" to "*/*",
             "Referer" to referer,
         )
-        val res = app.get(url, headers = headers, timeout = 20000L)
+        val res = app.get(url, headers = headers, timeout = 20L)
         if (!res.isSuccessful) {
             Log.w(KAO_TAG, "[VH-Pro] HTTP ${res.code}")
             return false
@@ -610,7 +610,7 @@ private suspend fun tryVidHideProExtraction(
             try {
 
                 val code = withTimeoutOrNull(20000L) {
-                    app.get(v.url, headers = probeHeaders, timeout = 20000L).code
+                    app.get(v.url, headers = probeHeaders, timeout = 20L).code
                 } ?: -1
                 Log.d(KAO_TAG, "[VH-Pro] probe ${v.key} -> $code")
                 if (code in 200..299) reachable.add(v)
@@ -670,7 +670,7 @@ private suspend fun tryVoeExtraction(
                     try {
                         val mUrl = "https://$mirror$hashPath"
                         Log.d(KAO_TAG, "[Voe] probando mirror: $mUrl")
-                        val mHtml = app.get(mUrl, headers = headers + ("Referer" to url), timeout = 10000L).text
+                        val mHtml = app.get(mUrl, headers = headers + ("Referer" to url), timeout = 10L).text
                         if (KaoVoeExtractor().parseHtml(mHtml, mUrl, "SeriesKao", subtitleCallback, callback)) {
                             Log.d(KAO_TAG, "[Voe] mirror $mirror OK")
                             mirrorOk.set(true)
@@ -680,20 +680,20 @@ private suspend fun tryVoeExtraction(
             }
             return mirrorOk.get()
         }
-        val res = app.get(url, headers = headers, timeout = 15000L, allowRedirects = false)
+        val res = app.get(url, headers = headers, timeout = 15L, allowRedirects = false)
         val redirectUrl = res.headers["Location"] ?: res.url
         Log.d(KAO_TAG, "[Voe] status=${res.code} redirect=$redirectUrl")
 
         val finalUrl = if (res.code in 301..303) {
             val h2 = headers + ("Referer" to url)
-            val res2 = app.get(redirectUrl, headers = h2, timeout = 15000L)
+            val res2 = app.get(redirectUrl, headers = h2, timeout = 15L)
             res2.url
         } else {
             redirectUrl
         }
         Log.d(KAO_TAG, "[Voe] finalUrl=$finalUrl")
 
-        val finalHtml = app.get(finalUrl, headers = headers, timeout = 15000L).text
+        val finalHtml = app.get(finalUrl, headers = headers, timeout = 15L).text
 
         if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge")) {
             Log.w(KAO_TAG, "[Voe] CAPTCHA detected at $finalUrl")
@@ -784,7 +784,7 @@ suspend fun loadKaoSourceExtractor(
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
                         "Referer" to (referer ?: url),
                     ),
-                    timeout = 15000L
+                    timeout = 15L
                 ).text
                 if (KaoStreamWish().parseHtml(staticHtml, url, referer ?: url, "SeriesKao") { link ->
                         count++
@@ -873,7 +873,7 @@ suspend fun extractKaoEmbed69(
             "Accept" to "*/*",
             "Referer" to referer,
         )
-        val embedResp = app.get(embedUrl, headers = embed69Headers, timeout = 30000L)
+        val embedResp = app.get(embedUrl, headers = embed69Headers, timeout = 30L)
         Log.d(KAO_TAG, "embed69 - HTTP ${embedResp.code}, length=${embedResp.text.length}")
         val embedDoc = embedResp.document
         val embedPageHtml = embedResp.text

@@ -244,7 +244,7 @@ class PoseidonHDProvider : MainAPI() {
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
                     "Referer" to parent,
                     "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                ), timeout = 15000L).text
+                ), timeout = 15L).text
             } catch (_: Exception) { null }
             if (probe == null || !probe.contains("Byse Frontend")) {
                 Log.d("PoseidonHD", "[Byse] no es Byse Frontend, se omite")
@@ -285,7 +285,7 @@ class PoseidonHDProvider : MainAPI() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
                 "Referer" to referer,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            ), timeout = 15000L).text
+            ), timeout = 15L).text
             parseStreamWishHtmlPoseidon(html, url, referer, langTag, callback)
         } catch (e: Exception) {
             Log.d("PoseidonHD", "[SW] estático falló: ${e.message}")
@@ -372,7 +372,7 @@ class PoseidonHDProvider : MainAPI() {
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
                     "Referer" to referer,
                     "Accept" to "*/*",
-                ), timeout = 12000L)
+                ), timeout = 12L)
                 r.isSuccessful && r.text.trimStart().startsWith("#EXTM3U")
             } ?: false
             Log.d(TAG, "[SW] probe master -> $ok url=${url.take(80)}")
@@ -445,7 +445,7 @@ class PoseidonHDProvider : MainAPI() {
                     if (link.contains("player.poseidonhd2.co")) {
                         try {
 
-                            val playerHtml = app.get(link, timeout = 30000L).text
+                            val playerHtml = app.get(link, timeout = 30L).text
                             Log.d("PoseidonHD", "loadLinks: player html ${playerHtml.length}")
                             val realUrl = Regex("""var url = '([^']+)';?""").find(playerHtml)?.groupValues?.get(1)
                                 ?: Regex("""iframe[^>]+src=['"]([^'"]+)['"]""").find(playerHtml)?.groupValues?.get(1)

@@ -73,7 +73,7 @@ class SoloLatinoProvider : MainAPI() {
         url: String,
         retries: Int = 3,
         delayMs: Long = 2000L,
-        timeoutMs: Long = 20000L
+        timeoutMs: Long = 20L
     ): String? {
         for (i in 0 until retries) {
             try {
@@ -98,7 +98,7 @@ class SoloLatinoProvider : MainAPI() {
         return null
     }
 
-    private suspend fun safeAppGetDoc(url: String, timeoutMs: Long = 30000L) =
+    private suspend fun safeAppGetDoc(url: String, timeoutMs: Long = 30L) =
         app.get(url, timeout = timeoutMs, headers = baseHeaders).document
 
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
@@ -352,13 +352,13 @@ class SoloLatinoProvider : MainAPI() {
         var sessionCookies = mapOf<String, String>()
 
         try {
-            app.get("$mainUrl/sanctum/csrf-cookie", headers = baseHeaders, timeout = 15000L).also {
+            app.get("$mainUrl/sanctum/csrf-cookie", headers = baseHeaders, timeout = 15L).also {
                 Log.d("SoloLatino", "loadLinks - Sanctum GET HTTP ${it.code}, cookies=${it.cookies}")
                 if (it.cookies.isNotEmpty()) sessionCookies = sessionCookies + it.cookies
             }
         } catch (_: Exception) { }
 
-        val pageResp = app.get(targetUrl, headers = baseHeaders, cookies = sessionCookies, timeout = 30000L)
+        val pageResp = app.get(targetUrl, headers = baseHeaders, cookies = sessionCookies, timeout = 30L)
         Log.d("SoloLatino", "loadLinks - Page GET HTTP ${pageResp.code}, cookies=${pageResp.cookies}")
         if (!pageResp.isSuccessful) return false
         if (pageResp.cookies.isNotEmpty()) sessionCookies = sessionCookies + pageResp.cookies
@@ -407,7 +407,7 @@ class SoloLatinoProvider : MainAPI() {
                         json = mapOf("t" to token),
                         headers = apiHeaders,
                         cookies = sessionCookies,
-                        timeout = 15000L
+                        timeout = 15L
                     )
                     Log.d("SoloLatino", "loadLinks - POST /api/player-url HTTP ${apiResp.code}, body=${apiResp.text.take(200)}")
                     val playerData = tryParseJson<PlayerUrlResponse>(apiResp.text)
@@ -431,7 +431,7 @@ class SoloLatinoProvider : MainAPI() {
                         json = mapOf("t" to lazyToken),
                         headers = apiHeaders,
                         cookies = sessionCookies,
-                        timeout = 15000L
+                        timeout = 15L
                     )
                     tryParseJson<PlayerUrlResponse>(apiResp.text)?.let { data ->
                         if (!data.url.isNullOrBlank()) serverUrls.add(data.url)
@@ -471,7 +471,7 @@ class SoloLatinoProvider : MainAPI() {
                         "Accept" to "*/*",
                         "Referer" to fixedSrc,
                     )
-                    val embedResp = app.get(fixedSrc, headers = embed69Headers, timeout = 30000L)
+                    val embedResp = app.get(fixedSrc, headers = embed69Headers, timeout = 30L)
                     Log.d("SoloLatino", "embed69 - HTTP ${embedResp.code}, length=${embedResp.text.length}")
                     val embedDoc = embedResp.document
                     val dataLinkScript = embedDoc.select("script")
@@ -489,6 +489,7 @@ class SoloLatinoProvider : MainAPI() {
                             .substringBefore(";")
                             .trim()
                         Log.d("SoloLatino", "embed69 - dataLink JSON: ${dataLinkJson.take(300)}")
+
 
                         val serversList = tryParseJson<List<ServersByLang>>(dataLinkJson)
                             ?: resolveDataLinkExpr(dataLinkJson)?.let { tryParseJson<List<ServersByLang>>(it) }
@@ -561,7 +562,7 @@ class SoloLatinoProvider : MainAPI() {
                     val cleanUrl = fixHostsLinks(fixedSrc)
                     Log.d("SoloLatino", "generic - intentando loadExtractor con: $cleanUrl")
                     try {
-                        val genResp = app.get(cleanUrl, headers = baseHeaders, timeout = 15000L)
+                        val genResp = app.get(cleanUrl, headers = baseHeaders, timeout = 15L)
                         Log.d("SoloLatino", "generic - respuesta HTTP ${genResp.code}, length=${genResp.text.length}")
                         genResp.document.select("iframe").forEach { iframe ->
                             val iframeSrc = iframe.attr("src")
@@ -614,6 +615,7 @@ private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray?
     Log.e("SoloLatino", "embed69 PoW - no solution found after $maxAttempts attempts")
     return null
 }
+
 
 private fun resolveDataLinkExpr(rawExpression: String?): String? {
     if (rawExpression.isNullOrBlank()) return null
@@ -896,7 +898,7 @@ private suspend fun scanPageForSubs(pageUrl: String, subtitleCallback: (Subtitle
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         )
-        val html = app.get(pageUrl, headers = scanHeaders, timeout = 20000L).text
+        val html = app.get(pageUrl, headers = scanHeaders, timeout = 20L).text
         scanHtmlForSubs(html, pageUrl.substringBeforeLast("/"), subtitleCallback)
     } catch (e: Exception) {
         Log.d("SoloLatino", "[PageSubs] Error al escanear $pageUrl: ${e.message}")
@@ -913,7 +915,7 @@ private suspend fun tryExtractSubsFromM3u8(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
         if (referer != null) subHeaders["Referer"] = referer
-        val manifest = app.get(m3u8Url, headers = subHeaders, timeout = 20000L).text
+        val manifest = app.get(m3u8Url, headers = subHeaders, timeout = 20L).text
         val baseUrl = m3u8Url.substringBeforeLast("/")
         var count = 0
         Regex("""#EXT-X-MEDIA:TYPE=SUBTITLES[^#]*""", RegexOption.IGNORE_CASE).findAll(manifest).forEach { mediaBlock ->
@@ -946,7 +948,7 @@ private suspend fun tryVidHideProExtraction(
             "Accept" to "*/*",
             "Referer" to referer,
         )
-        val res = app.get(url, headers = headers, timeout = 20000L)
+        val res = app.get(url, headers = headers, timeout = 20L)
         if (!res.isSuccessful) {
             Log.w("SoloLatino", "[VH-Pro] HTTP ${res.code}")
             return false
@@ -1011,7 +1013,7 @@ private suspend fun tryVidHideProExtraction(
             try {
 
                 val code = withTimeoutOrNull(20000L) {
-                    app.get(v.url, headers = probeHeaders, timeout = 20000L).code
+                    app.get(v.url, headers = probeHeaders, timeout = 20L).code
                 } ?: -1
                 Log.d("SoloLatino", "[VH-Pro] probe ${v.key} -> $code")
                 if (code in 200..299) reachable.add(v)
@@ -1106,7 +1108,7 @@ private suspend fun tryVoeExtraction(
                     try {
                         val mUrl = "https://$mirror$hashPath"
                         Log.d("SoloLatino", "[Voe] probando mirror: $mUrl")
-                        val mHtml = app.get(mUrl, headers = headers + ("Referer" to url), timeout = 10000L).text
+                        val mHtml = app.get(mUrl, headers = headers + ("Referer" to url), timeout = 10L).text
                         if (VoeExtractor().parseHtml(mHtml, mUrl, "SoloLatino", subtitleCallback, callback)) {
                             Log.d("SoloLatino", "[Voe] mirror $mirror OK")
                             mirrorOk.set(true)
@@ -1116,20 +1118,20 @@ private suspend fun tryVoeExtraction(
             }
             return mirrorOk.get()
         }
-        val res = app.get(url, headers = headers, timeout = 15000L, allowRedirects = false)
+        val res = app.get(url, headers = headers, timeout = 15L, allowRedirects = false)
         val redirectUrl = res.headers["Location"] ?: res.url
         Log.d("SoloLatino", "[Voe] status=${res.code} redirect=$redirectUrl")
 
         val finalUrl = if (res.code in 301..303) {
             val h2 = headers + ("Referer" to url)
-            val res2 = app.get(redirectUrl, headers = h2, timeout = 15000L)
+            val res2 = app.get(redirectUrl, headers = h2, timeout = 15L)
             res2.url
         } else {
             redirectUrl
         }
         Log.d("SoloLatino", "[Voe] finalUrl=$finalUrl")
 
-        val finalHtml = app.get(finalUrl, headers = headers, timeout = 15000L).text
+        val finalHtml = app.get(finalUrl, headers = headers, timeout = 15L).text
 
         if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge")) {
             Log.w("SoloLatino", "[Voe] CAPTCHA detected at $finalUrl")

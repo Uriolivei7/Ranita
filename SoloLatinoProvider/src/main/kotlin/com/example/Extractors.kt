@@ -211,7 +211,7 @@ class SoloStreamWish : ExtractorApi() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Referer" to (referer ?: url),
-            ), timeout = 20000L)
+            ), timeout = 20L)
             Log.d("SoloLatino", "[SW] HTTP ${resp.code} len=${resp.text.length}")
             parseHtml(resp.text, url, referer ?: url, name, callback)
         } catch (e: Exception) {
@@ -298,7 +298,7 @@ class SoloStreamWish : ExtractorApi() {
                         val ihtml = app.get(resolveUrl(src), headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                             "Referer" to pageUrl,
-                        ), timeout = 15000L).text
+                        ), timeout = 15L).text
                         for (m in m3u8Regex.findAll(ihtml)) {
                             Log.d("SoloLatino", "[SW] M3U8 (iframe): ${m.value.take(120)}")
                             callback.invoke(newExtractorLink(sourceName, sourceName, m.value) { this.referer = linkReferer })
@@ -349,7 +349,7 @@ class SoloVidHide : ExtractorApi() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Referer" to (referer ?: url),
-            ), timeout = 20000L)
+            ), timeout = 20L)
             Log.d("SoloLatino", "[VH] HTTP ${resp.code} len=${resp.text.length} snippet=${resp.text.take(600).replace("\n"," ")}")
             val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
             val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
@@ -421,7 +421,7 @@ class SoloFileMoon : ExtractorApi() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Referer" to url,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            ), timeout = 20000L)
+            ), timeout = 20L)
             val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
             val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|ts)[^"'\s<>]*)""")
             var found = false
