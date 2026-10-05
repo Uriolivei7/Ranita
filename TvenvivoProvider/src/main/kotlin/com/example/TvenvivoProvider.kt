@@ -27,7 +27,7 @@ class TvenvivoProvider : MainAPI() {
     companion object {
         var pluginContext: android.content.Context? = null
     }
-    override var mainUrl = "https://www.tvenvivo2.com/"
+    override var mainUrl = "https://www.tvenvivo.org/"
     override var name = "TVenVIVO"
 
     override val supportedTypes = setOf(
@@ -279,6 +279,14 @@ class TvenvivoProvider : MainAPI() {
             }
 
             val optionLinksBuilder = mutableListOf<String>()
+
+            Regex("""SOURCES\s*=\s*\{([^}]+)\}""", RegexOption.DOT_MATCHES_ALL).find(mainPageResponse.text)?.let { m ->
+                Regex("""["']((?:https?:)?//[^"']+)["']""").findAll(m.groupValues[1]).forEach { u ->
+                    var s = u.groupValues[1]
+                    if (s.startsWith("//")) s = "https:$s"
+                    if (s.isNotBlank()) optionLinksBuilder.add(s)
+                }
+            }
             doc.select("button[data-src], a[data-src], [data-src]").forEach {
                 val ds = it.attr("data-src")
                 if (ds.isNotBlank()) optionLinksBuilder.add(ds)
@@ -425,7 +433,7 @@ class TvenvivoProvider : MainAPI() {
                         return@withTimeout true
                     }
 
-                    val playlistFromJs = Regex("""(?:var\s+src|source|file)\s*=\s*["']([^"']*playlist\.php[^"']*)["']""", RegexOption.IGNORE_CASE)
+                    val playlistFromJs = Regex("""(?:(?:var|let|const)\s+src|source|file)\s*=\s*["']([^"']*playlist\.php[^"']*)["']""", RegexOption.IGNORE_CASE)
                         .find(streamHtml)?.groupValues?.get(1)
                         ?.replace("\\/", "/")
                         ?.replace("&amp;", "&")
@@ -490,7 +498,7 @@ class TvenvivoProvider : MainAPI() {
                     Log.w("Tvenvivo", "Opción ${displayIndex + 1}: stream.php falló ${streamResp?.code ?: "timeout"}")
                 }
 
-                val jsPlaylistUrlForWv = Regex("""(?:var\s+src|source|file)\s*=\s*["']([^"']*playlist\.php[^"']*)["']""", RegexOption.IGNORE_CASE)
+                val jsPlaylistUrlForWv = Regex("""(?:(?:var|let|const)\s+src|source|file)\s*=\s*["']([^"']*playlist\.php[^"']*)["']""", RegexOption.IGNORE_CASE)
                     .find(streamResp?.text ?: "")?.groupValues?.get(1)?.replace("\\/", "/")?.replace("&amp;", "&")
                     ?.let { if (it.startsWith("http")) it else "$streamOrigin/$it" }
                 val playlistInfo = interceptPlaylistViaWebView(streamUrl, mainHeaders, canal, target, sig, streamOrigin, playlistUrl = playlistUrl, altPlaylistUrl = jsPlaylistUrlForWv)
@@ -679,7 +687,7 @@ class TvenvivoProvider : MainAPI() {
 
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                         val url = request?.url?.toString() ?: return false
-                        if (url.contains("tvenvivo2.com") || url.contains("javascript:")) {
+                        if (url.contains("tvenvivo.org") || url.contains("tvenvivo2.com") || url.contains("javascript:")) {
                             return true
                         }
                         return false
