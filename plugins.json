@@ -220,10 +220,10 @@
         "name": "GloboViewProvider"
     },
     {
-        "fileHash": "sha256-ee278dc4d3f73a31a8773bf1ebd05a18e6bda4564efab0c54c3260e8d830be55",
+        "fileHash": "sha256-8b9eeef08e95d6effb911c3ab1e0a03664b5aeedb0c8a61f9b63996187b91b62",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 65207,
+        "fileSize": 64544,
         "status": 1,
         "language": "es",
         "authors": [
@@ -528,10 +528,10 @@
     },
     {
         "iconUrl": "https://www.poseidonhd2.co/favicon.ico",
-        "fileHash": "sha256-9515ede79a212a1307aa42f73f36e5725ea9f02d6493eac5c3fa6d72a581534d",
+        "fileHash": "sha256-33f4dc291b69140f5e6cc36dfac37482d3b6efbca0193047a24e26a2f436e1d9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 73978,
+        "fileSize": 75270,
         "status": 1,
         "language": "es",
         "authors": [
