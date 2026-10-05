@@ -9,6 +9,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import okhttp3.Interceptor
+import java.util.concurrent.TimeUnit
 
 class GnulaProvider : MainAPI() {
     override var mainUrl = "https://gnula.life"
@@ -18,6 +20,40 @@ class GnulaProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon)
 
     private val TAG = "GNULA"
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        val cdnMarks = listOf(
+            "premilkyway", "cloudatacdn", "cloudwindow", "dramiyos", "acek-cdn",
+            "vidhide", "filemoon", "cyou", "streamtape", "dood", "uqload",
+            "waaw", "hqq", "netu", ".m3u8", ".ts", ".mp4", "/hls2/", "/hls3/",
+            ".urlset/", "get_video", "/e/", "/download"
+        )
+        return Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            if (cdnMarks.none { url.contains(it, ignoreCase = true) }) {
+                return@Interceptor chain.proceed(request)
+            }
+            Log.d(TAG, "[intercept] CDN request: ${url.take(120)}")
+            val newRequest = request.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .header("Accept", "*/*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+
+            val withRef = if (extractorLink.referer.isNotBlank()) {
+                newRequest.newBuilder().header("Referer", extractorLink.referer).build()
+            } else {
+                newRequest
+            }
+            val response = chain
+                .withConnectTimeout(30, TimeUnit.SECONDS)
+                .withReadTimeout(30, TimeUnit.SECONDS)
+                .proceed(withRef)
+            Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type", "?")} url=${url.take(100)}")
+            response
+        }
+    }
 
     private fun getNextData(res: String): PageProps? {
         return try {
@@ -64,9 +100,7 @@ class GnulaProvider : MainAPI() {
             try {
                 val isSeriesSection = url.contains("/series/", ignoreCase = true)
                 val sectionPrefix = if (isSeriesSection) "series" else "movies"
-                Log.d(TAG, "getMainPage: Fetching '$title' -> $url")
                 val res = app.get(url).text
-                Log.d(TAG, "getMainPage: '$title' respuesta ${res.length} chars")
                 val pProps = getNextData(res)
                 val results = pProps?.results?.data?.mapNotNull { item ->
                     val slugName = item.slug.name ?: item.url.slug?.substringAfterLast("/") ?: return@mapNotNull null
@@ -76,10 +110,8 @@ class GnulaProvider : MainAPI() {
                         this.posterUrl = fixImageUrl(item.images.poster)
                         this.year = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
                     }
-                    Log.d(TAG, "getMainPage: Item '${item.titles.name}' -> $finalUrl (type=$tvType, slugName=$slugName)")
                     itemResult
                 } ?: emptyList()
-                Log.d(TAG, "getMainPage: '$title' produjo ${results.size} resultados")
                 if (results.isNotEmpty()) items.add(HomePageList(title, results))
             } catch (e: Exception) { Log.e(TAG, "MainPage Error: ${e.message}") }
         }
@@ -93,7 +125,6 @@ class GnulaProvider : MainAPI() {
             val url = "$mainUrl/search?q=${query.trim().replace(" ", "+")}"
             Log.d(TAG, "search: URL -> $url")
             val res = app.get(url).text
-            Log.d(TAG, "search: Respuesta ${res.length} chars")
             val pProps = getNextData(res)
             if (pProps?.results?.data == null) {
                 Log.w(TAG, "search: results.data es null en la respuesta")
@@ -101,7 +132,6 @@ class GnulaProvider : MainAPI() {
             val results = pProps?.results?.data?.mapNotNull { item ->
                 val urlSlug = item.url.slug
                 val nameSlug = item.slug.name
-                Log.d(TAG, "search: raw — url.slug='$urlSlug' slug.name='$nameSlug' releaseDate=${item.releaseDate}")
                 val slugName = nameSlug ?: urlSlug?.substringAfterLast("/")
                 if (slugName == null) {
                     Log.w(TAG, "search: Item sin slug, saltando")
@@ -118,7 +148,6 @@ class GnulaProvider : MainAPI() {
                     typePath == "series" -> TvType.TvSeries
                     else -> TvType.Movie
                 }
-                Log.d(TAG, "search: Item '${item.titles.name}' url.slug=$urlSlug slug.name=$nameSlug -> $finalUrl (tvType=$tvType)")
                 newMovieSearchResponse(item.titles.name ?: "Sin título", finalUrl, tvType) {
                     this.posterUrl = fixImageUrl(item.images.poster)
                 }
@@ -152,28 +181,22 @@ class GnulaProvider : MainAPI() {
         val numericId = if (pathSegments.size >= 2) pathSegments.getOrNull(1) else null
         val fullSlugPath = if (pathSegments.size >= 2) pathSegments.drop(2).joinToString("/") else slugRaw
 
-        Log.d(TAG, "load: parsed — type=$originalType numericId=$numericId slugRaw=$slugRaw fullSlugPath=$fullSlugPath pathSegments=$pathSegments")
-
         var pProps: PageProps? = null
         var actualUrl = url
         val triedUrls = mutableSetOf(url)
 
-        Log.d(TAG, "load [E1]: x-nextjs-data header -> $url")
         try {
             val res = app.get(url, headers = nextJsHeaders)
             actualUrl = res.url
             pProps = getNextData(res.text)
-            if (pProps?.post != null || pProps?.data != null) Log.d(TAG, "load [E1]: OK")
         } catch (e: Exception) { Log.w(TAG, "load [E1]: Error -> ${e.message}") }
 
         if (pProps?.post == null && pProps?.data == null) {
-            Log.d(TAG, "load [E2]: Sin header especial -> $url")
             triedUrls.add(url)
             try {
                 val res = app.get(url, headers = plainHeaders)
                 actualUrl = res.url
                 pProps = getNextData(res.text)
-                if (pProps?.post != null || pProps?.data != null) Log.d(TAG, "load [E2]: OK")
             } catch (e: Exception) { Log.w(TAG, "load [E2]: Error -> ${e.message}") }
         }
 
@@ -193,12 +216,10 @@ class GnulaProvider : MainAPI() {
                 if (trial in triedUrls) continue
                 triedUrls.add(trial)
                 try {
-                    Log.d(TAG, "load [E3]: path completo -> $trial")
                     val res = app.get(trial, headers = nextJsHeaders)
                     val props = getNextData(res.text)
                     if (props?.post != null || props?.data != null) {
                         pProps = props; actualUrl = res.url
-                        Log.d(TAG, "load [E3]: OK en $trial")
                         break
                     }
                 } catch (e: Exception) { Log.w(TAG, "load [E3]: Error -> ${e.message}") }
@@ -225,46 +246,17 @@ class GnulaProvider : MainAPI() {
                 if (trial in triedUrls) continue
                 triedUrls.add(trial)
                 try {
-                    Log.d(TAG, "load [E4]: varias combinaciones -> $trial")
                     val res = app.get(trial, headers = plainHeaders)
                     val props = getNextData(res.text)
                     if (props?.post != null || props?.data != null) {
                         pProps = props; actualUrl = res.url
-                        Log.d(TAG, "load [E4]: OK en $trial")
                         break
                     }
                 } catch (e: Exception) { Log.w(TAG, "load [E4]: Error -> ${e.message}") }
             }
         }
 
-        if (pProps?.post == null && pProps?.data == null) {
-            val trials = mutableListOf(url)
-            if (numericId != null) {
-                val slugPart = if (pathSegments.size >= 3) pathSegments.drop(2).joinToString("/") else slugRaw
-                val otherType = if (isOriginalSeries) "movies" else "series"
-                trials.add("$mainUrl/$originalType/$slugPart")
-                trials.add("$mainUrl/$otherType/$slugPart")
-            }
-            trials.add("$mainUrl/$originalType/$slugRaw")
-            trials.add("${mainUrl}/${if (isOriginalSeries) "movies" else "series"}/$slugRaw")
-
-            for (trialUrl in trials) {
-                if (trialUrl in triedUrls) continue
-                triedUrls.add(trialUrl)
-                try {
-                    Log.d(TAG, "load [E5]: Regex fallback -> $trialUrl")
-                    val html = app.get(trialUrl).text
-                    val jsonMatch = Regex("""\{\\"titles\\":\{""").find(html)
-                    if (jsonMatch != null) {
-                        val startIdx = maxOf(0, jsonMatch.range.first - 20)
-                        val snippet = html.substring(startIdx, minOf(html.length, startIdx + 2000))
-                        Log.d(TAG, "load [E5]: Posible JSON encontrado, snippet: ${snippet.take(300)}")
-                    }
-                } catch (e: Exception) { Log.w(TAG, "load [E5]: Error -> ${e.message}") }
-            }
-        }
-
-        val finalProps = pProps ?: throw ErrorLoadingException("No se encontró pProps después de 5 estrategias")
+        val finalProps = pProps ?: throw ErrorLoadingException("No se encontró pProps después de 4 estrategias")
         val post = finalProps.post ?: finalProps.data ?: throw ErrorLoadingException("No se encontró post/data")
         Log.d(TAG, "load: Estrategia exitosa, actualUrl=$actualUrl título='${post.titles.name}'")
 
@@ -293,13 +285,11 @@ class GnulaProvider : MainAPI() {
                     this.posterUrl = item.images.backdrop ?: item.images.poster
                 })
             }
-            Log.d(TAG, "Recomendados cargados: ${recommendations.size}")
         } catch (e: Exception) {
             Log.e(TAG, "Error al cargar recomendados: ${e.message}")
         }
 
         return if (!post.seasons.isNullOrEmpty()) {
-            Log.d(TAG, "load: Es serie — ${post.seasons.size} temporadas")
             val episodes: List<Episode> = post.seasons.flatMap { season: Season ->
                 season.episodes.map { ep: SeasonEpisode ->
                     val sNum = ep.slug.season ?: season.number?.toString() ?: "1"
@@ -322,8 +312,6 @@ class GnulaProvider : MainAPI() {
                 }
             }
 
-            Log.d(TAG, "load: Total ${episodes.size} episodios generados")
-
             newTvSeriesLoadResponse(title, actualUrl, TvType.TvSeries, episodes.reversed()) {
                 this.posterUrl = mainPoster
                 this.plot = post.overview
@@ -334,7 +322,6 @@ class GnulaProvider : MainAPI() {
                 this.duration = duration
             }
         } else {
-            Log.d(TAG, "load: Es película — '$title' ($year)")
             newMovieLoadResponse(title, actualUrl, TvType.Movie, actualUrl) {
                 this.posterUrl = mainPoster
                 this.plot = post.overview
@@ -370,10 +357,9 @@ class GnulaProvider : MainAPI() {
             val playersEpisode = pProps?.episode?.players
             val playersPost = pProps?.post?.players
             val playersData = pProps?.data?.players
-            Log.d(TAG, "loadLinks: players — episode=$playersEpisode post=$playersPost data=$playersData")
-
             val players = playersEpisode ?: playersPost ?: playersData
-            Log.d(TAG, "loadLinks: players elegido = $players")
+            val counts = players?.let { "latino=${it.latino.size} spanish=${it.spanish.size} english=${it.english.size}" } ?: "null"
+            Log.d(TAG, "loadLinks: players ($counts)")
 
             if (players == null) {
                 Log.w(TAG, "loadLinks: No se encontraron reproductores (players es null)")
@@ -392,19 +378,23 @@ class GnulaProvider : MainAPI() {
                 players.english to "Subtitulado"
             )
 
-            var found = false
+            val emitted = java.util.concurrent.atomic.AtomicInteger(0)
+            val countingCb: (ExtractorLink) -> Unit = {
+                emitted.incrementAndGet()
+                callback(it)
+            }
             for ((list, langName) in langs) {
                 if (list.isNotEmpty()) {
                     Log.d(TAG, "loadLinks: Procesando ${list.size} enlaces para idioma [$langName]")
-                    processLinks(list, langName, data, callback)
-                    found = true
+                    processLinks(list, langName, data, countingCb)
                 } else {
                     Log.d(TAG, "loadLinks: Lista vacía para idioma [$langName]")
                 }
             }
 
-            if (!found) Log.w(TAG, "loadLinks: Todas las listas de idiomas vacías")
-            found
+            Log.d(TAG, "loadLinks: FIN emitidos=${emitted.get()}")
+            if (emitted.get() == 0) Log.e(TAG, "loadLinks: 0 links emitidos -> 'enlaces no encontrados'")
+            emitted.get() > 0
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks: Error fatal -> ${e.message}")
             false
@@ -417,7 +407,6 @@ class GnulaProvider : MainAPI() {
         refererUrl: String,
         callback: (ExtractorLink) -> Unit
     ) {
-        Log.d(TAG, "processLinks [$lang]: Procesando ${list.size} regiones")
         list.forEachIndexed { idx, region ->
             try {
                 val targetUrl = if (!region.result.isNullOrBlank()) region.result else region.url ?: region.link ?: ""
@@ -438,11 +427,15 @@ class GnulaProvider : MainAPI() {
                         ioSafe {
                             Log.d(TAG, "processLinks [$lang][$idx]: Extractor devolvió link source=${link.source} url=${link.url.take(80)}")
                             val finalLink = newExtractorLink(
-                                source = link.source,
+                                source = "GNULA",
                                 name = "${link.name} [$lang]",
                                 url = link.url,
                                 type = if (link.isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                            )
+                            ) {
+                                this.referer = link.referer
+                                this.headers = link.headers
+                                this.extractorData = link.extractorData
+                            }
                             callback.invoke(finalLink)
                         }
                     }

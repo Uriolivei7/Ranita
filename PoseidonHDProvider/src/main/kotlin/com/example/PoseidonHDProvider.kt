@@ -14,8 +14,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Interceptor
 import org.jsoup.Jsoup
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class PoseidonHDProvider : MainAPI() {
     companion object {
@@ -43,6 +45,40 @@ class PoseidonHDProvider : MainAPI() {
     }
 
     private val TAG = "PoseidonHD"
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        val cdnMarks = listOf(
+            "premilkyway", "dramiyos", "acek-cdn", "vidhidepro", "vidhide",
+            "filemoon", "byse", "cyou", "dood", "streamtape", "uqload", "waaw",
+            ".m3u8", ".ts", ".mp4", "/hls2/", "/hls3/", ".urlset/", "get_video",
+            "/e/", "/v/", "/download"
+        )
+        return Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            if (cdnMarks.none { url.contains(it, ignoreCase = true) }) {
+                return@Interceptor chain.proceed(request)
+            }
+            Log.d(TAG, "[intercept] CDN request: ${url.take(120)}")
+            val newRequest = request.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .header("Accept", "*/*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+
+            val withRef = if (extractorLink.referer.isNotBlank()) {
+                newRequest.newBuilder().header("Referer", extractorLink.referer).build()
+            } else {
+                newRequest
+            }
+            val response = chain
+                .withConnectTimeout(30, TimeUnit.SECONDS)
+                .withReadTimeout(30, TimeUnit.SECONDS)
+                .proceed(withRef)
+            Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type", "?")} url=${url.take(100)}")
+            response
+        }
+    }
 
     private fun parseNextData(html: String): JSONObject? {
         return try {
