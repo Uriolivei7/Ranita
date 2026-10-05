@@ -753,10 +753,10 @@
     },
     {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-f1e6d52d88659b9cede5e6fc2d6ab003ae0e541ea6d358d55993eb00631146f5",
+        "fileHash": "sha256-ec2b3c2fc6527d8386c897b50644e90f6ab1649bf3daa66dd57cc94fa4fa34d3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 46838,
+        "fileSize": 47153,
         "status": 1,
         "language": "mx",
         "authors": [
