@@ -120,27 +120,6 @@
         "name": "Atalayas21Provider"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=mundodonghua.com&sz=%size%",
-        "fileHash": "sha256-ba6f0e137a48f803d951125f422c395ab363346f764578fdf1d27d0a4c5e686d",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 24551,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Stormunblessed"
-        ],
-        "tvTypes": [
-            "Anime",
-            "OVA",
-            "AnimeMovie"
-        ],
-        "version": 3,
-        "internalName": "DonghualifeProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DonghualifeProvider.cs3",
-        "name": "DonghualifeProvider"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
         "fileHash": "sha256-3a0526376f3485af62bc3a293bfec6045404c3cc4b8b3ba46df91f071adee5e1",
         "apiVersion": 1,
@@ -590,6 +569,25 @@
         "name": "RetrotveProvider"
     },
     {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=seriesdonghua.com&sz=%size%",
+        "fileHash": "sha256-4709c664ac0e89228a447231b27b0a27459cf46a3d08f752db53dd8246baa88f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 53064,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 4,
+        "internalName": "SeriesdonghuaProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SeriesdonghuaProvider.cs3",
+        "name": "SeriesdonghuaProvider"
+    },
+    {
         "fileHash": "sha256-7ed7a5453ed9c145bf1e23a994bb3a7ba1860c130da0fc5194079c519ecc618c",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
@@ -791,5 +789,24 @@
         "description": "Espa\u00f1ola (Spanish) Anime Extension",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/UniquestreamProvider.cs3",
         "name": "UniquestreamProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%",
+        "fileHash": "sha256-21da03569d9d7a4ab551b782714a90d44bffe67d6b088a829c6e098a827eb955",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 60633,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 6,
+        "internalName": "VeranimeProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VeranimeProvider.cs3",
+        "name": "VeranimeProvider"
     }
 ]
