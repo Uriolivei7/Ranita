@@ -5,9 +5,10 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class DonghualifePlugin: Plugin() {
+class SeriesdonghuaPlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(DonghualifeProvider())
+        SeriesdonghuaProvider.pluginContext = context
+        registerMainAPI(SeriesdonghuaProvider())
         registerExtractorAPI(RumbleExtractor())
     }
 }
