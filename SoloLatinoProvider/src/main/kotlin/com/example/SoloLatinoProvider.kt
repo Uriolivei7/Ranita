@@ -857,20 +857,39 @@ suspend fun loadSourceNameExtractor(
     }
 
     if (!customHandled || count == 0) {
-        Log.d("SoloLatino", "loadSourceNameExtractor [$source] fallback to loadExtractor: $url")
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            count++
-            Log.d("SoloLatino", "loadSourceNameExtractor [$source] -> ${link.source} ${link.url.take(80)} q=${link.quality} type=${link.type}")
-            outerScope.launch {
-                callback.invoke(
-                    newExtractorLink("SoloLatino", "$source[${link.source}]", link.url) {
-                        this.quality = link.quality
-                        this.type = link.type
-                        this.referer = link.referer
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
-                )
+        if (domain.contains("voe.sx")) {
+
+            Log.d("SoloLatino", "loadSourceNameExtractor [$source] directo a VoeExtractor: $url")
+            VoeExtractor().getUrl(url, referer, subtitleCallback) { link ->
+                count++
+                outerScope.launch {
+                    callback.invoke(
+                        newExtractorLink("SoloLatino", "$source[${link.source}]", link.url) {
+                            this.quality = link.quality
+                            this.type = link.type
+                            this.referer = link.referer
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
+                }
+            }
+        } else {
+            Log.d("SoloLatino", "loadSourceNameExtractor [$source] fallback to loadExtractor: $url")
+            loadExtractor(url, referer, subtitleCallback) { link ->
+                count++
+                Log.d("SoloLatino", "loadSourceNameExtractor [$source] -> ${link.source} ${link.url.take(80)} q=${link.quality} type=${link.type}")
+                outerScope.launch {
+                    callback.invoke(
+                        newExtractorLink("SoloLatino", "$source[${link.source}]", link.url) {
+                            this.quality = link.quality
+                            this.type = link.type
+                            this.referer = link.referer
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
+                }
             }
         }
     }
@@ -1082,6 +1101,18 @@ private fun unpackPackedJS(html: String): String? {
     return unescaped
 }
 
+private fun webViewCookies(url: String): Map<String, String> {
+    return try {
+        val raw = android.webkit.CookieManager.getInstance().getCookie(url) ?: return emptyMap()
+        raw.split(";").mapNotNull { part ->
+            val kv = part.trim().split("=", limit = 2)
+            if (kv.size == 2 && kv[0].isNotBlank()) kv[0].trim() to kv[1] else null
+        }.toMap()
+    } catch (_: Exception) {
+        emptyMap()
+    }
+}
+
 private suspend fun tryVoeExtraction(
     url: String,
     referer: String,
@@ -1131,14 +1162,18 @@ private suspend fun tryVoeExtraction(
         }
         Log.d("SoloLatino", "[Voe] finalUrl=$finalUrl")
 
-        val finalHtml = app.get(finalUrl, headers = headers, timeout = 15L).text
+        val finalResp = app.get(finalUrl, headers = headers, timeout = 15L)
+        val finalHtml = finalResp.text
+        val finalCookies = finalResp.cookies
 
-        if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge")) {
-            Log.w("SoloLatino", "[Voe] CAPTCHA detected at $finalUrl")
+        if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge") || finalHtml.contains("altcha-widget")) {
+            Log.w("SoloLatino", "[Voe] challenge detectado en $finalUrl")
+
+            if (VoeExtractor().parseHtml(finalHtml, finalUrl, "SoloLatino", subtitleCallback, callback, finalCookies)) return true
             if (tryMirrors()) return true
             Log.d("SoloLatino", "[Voe] probando WebView (Altcha se auto-resuelve): $finalUrl")
             val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback)) {
+            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback, webViewCookies(finalUrl))) {
                 Log.d("SoloLatino", "[Voe] WebView fallback emitió links")
                 return true
             }
@@ -1151,10 +1186,12 @@ private suspend fun tryVoeExtraction(
         val videoUrl = m3u8 ?: mp4
         if (videoUrl == null) {
             Log.w("SoloLatino", "[Voe] no m3u8/mp4 found in $finalUrl")
+
+            if (VoeExtractor().parseHtml(finalHtml, finalUrl, "SoloLatino", subtitleCallback, callback, finalCookies)) return true
             if (tryMirrors()) return true
             Log.d("SoloLatino", "[Voe] probando WebView: $finalUrl")
             val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback)) {
+            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback, webViewCookies(finalUrl))) {
                 Log.d("SoloLatino", "[Voe] WebView fallback emitió links")
                 return true
             }
