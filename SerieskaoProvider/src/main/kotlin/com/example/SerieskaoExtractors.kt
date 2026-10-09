@@ -15,6 +15,8 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.net.URLEncoder
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -194,13 +196,14 @@ class KaoVoeExtractor {
                 m3u8,
                 "$pageOrigin/",
                 headers = mapOf("Origin" to "$pageOrigin/"),
+                name = "Voe",
             ).forEach(callback)
             emitted = true
         }
         if (mp4 != null) {
             Log.d(KAO_TAG, "[Voe] Found MP4: ${mp4.take(100)}")
             callback.invoke(
-                newExtractorLink("$sourceName MP4", "$sourceName MP4", mp4, INFER_TYPE) {
+                newExtractorLink(sourceName, "Voe (MP4)", mp4, INFER_TYPE) {
                     this.referer = pageUrl
                     this.quality = Qualities.Unknown.value
                 }
@@ -648,8 +651,11 @@ private const val SW_READY_JS = "h.includes('.m3u8')||h.includes('jwplayer')"
 private const val VOE_READY_JS = "(!h.includes('altcha-widget'))&&(h.includes('.m3u8')||h.includes('application/json'))"
 private const val DUMP_JS = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
 
+private val webViewMutex = Mutex()
+
 private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: Long = 12000L, readyJs: String? = null): String? {
-    return withContext(Dispatchers.Main) {
+    webViewMutex.withLock {
+        return withContext(Dispatchers.Main) {
         val appCtx = SerieskaoProvider.pluginContext?.applicationContext ?: run {
             Log.w(KAO_TAG, "[WebView] sin context")
             return@withContext null
@@ -729,12 +735,16 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
             else webView.loadUrl(pageUrl)
             Log.d(KAO_TAG, "[WebView] renderizando ${pageUrl.take(100)}")
             withTimeoutOrNull(waitMs + 15000L) { deferred.await() }
-        } catch (e: Exception) {
-            Log.w(KAO_TAG, "[WebView] error: ${e.message}")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+
+            Log.w(KAO_TAG, "[WebView] error grave: ${t::class.simpleName}: ${t.message}")
             null
         } finally {
             try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
             try { webView?.destroy() } catch (_: Exception) {}
+        }
         }
     }
 }
@@ -881,7 +891,7 @@ private suspend fun tryVoeExtraction(    url: String,
             val hashPath = try { java.net.URL(url).path } catch (_: Exception) { "" }
             if (!hashPath.startsWith("/e/")) return false
 
-            val mirrors = listOf("yip.su", "tubelessceliolymph.com")
+            val mirrors = listOf("teresapoliticallearn.com", "yip.su", "tubelessceliolymph.com")
             val mirrorOk = java.util.concurrent.atomic.AtomicBoolean(false)
             withTimeoutOrNull(20000L) {
                 mirrors.amap { mirror ->
@@ -904,19 +914,31 @@ private suspend fun tryVoeExtraction(    url: String,
         val redirectUrl = res.headers["Location"] ?: res.url
         Log.d(KAO_TAG, "[Voe] status=${res.code} redirect=$redirectUrl")
 
-        val finalUrl = if (res.code in 301..303) {
+        var finalUrl = if (res.code in 301..303) {
             val h2 = headers + ("Referer" to url)
             val res2 = app.get(redirectUrl, headers = h2, timeout = 15L)
             res2.url
         } else {
             redirectUrl
         }
-        Log.d(KAO_TAG, "[Voe] finalUrl=$finalUrl")
 
         val finalResp = app.get(finalUrl, headers = headers, timeout = 15L)
-        val finalHtml = finalResp.text
+        var finalHtml = finalResp.text
+        var finalCookies = finalResp.cookies
 
-        val finalCookies = finalResp.cookies
+        val jsRedirectRegex = Regex("""window\.location\.href\s*=\s*['\"](https?://[^'\"]+)['\"]""")
+        var voeHops = 0
+        while (voeHops++ < 3) {
+            val target = jsRedirectRegex.find(finalHtml)?.groupValues?.get(1)?.trim()
+                ?.replace("\\/", "/")?.replace("\\u002F", "/")?.replace("\\u002f", "/")
+            if (target.isNullOrBlank() || target == finalUrl) break
+            Log.d(KAO_TAG, "[Voe] JS redirect ($voeHops) -> $target")
+            val rr = app.get(target, headers = headers + ("Referer" to finalUrl), timeout = 15L)
+            finalCookies = finalCookies + rr.cookies
+            finalUrl = rr.url
+            finalHtml = rr.text
+        }
+        Log.d(KAO_TAG, "[Voe] finalUrl=$finalUrl")
 
         if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge") || finalHtml.contains("altcha-widget")) {
             Log.w(KAO_TAG, "[Voe] challenge detectado en $finalUrl")
