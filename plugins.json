@@ -437,6 +437,27 @@
         "name": "NetflixmirrorProvider"
     },
     {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=ok.ru&sz=%size%",
+        "fileHash": "sha256-acc4636e86ac20d0170ffaab172ec690f79fed025d201f452ab3c3cf04aaff5f",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 32528,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "OkruProvider",
+        "description": "Proveedor + extractor OK.ru",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OkruProvider.cs3",
+        "name": "OkruProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=onetouchtv.xyz/&sz=%size%",
         "jarFileSize": 169537,
         "fileHash": "sha256-470cfe7765d033fea784b3a2875554cafb2b6e70f7ac2bf9003121980d88a5ce",
