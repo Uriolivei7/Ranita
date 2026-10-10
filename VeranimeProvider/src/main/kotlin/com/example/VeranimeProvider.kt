@@ -1,6 +1,13 @@
 package com.example
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -9,19 +16,32 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "VerAnime"
 
 
 class VeranimeProvider : MainAPI() {
+    companion object {
+        var pluginContext: Context? = null
+        const val SW_READY_JS = "h.includes('.m3u8')||h.includes('jwplayer')"
+        const val SW_DUMP_JS = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
+    }
+
     override var mainUrl = "https://veranime.ninja"
     override var name = "AnimeNINJA"
     override var lang = "mx"
@@ -60,10 +80,31 @@ class VeranimeProvider : MainAPI() {
         return object : Interceptor {
             override fun intercept(chain: Interceptor.Chain): Response {
                 val request = chain.request()
-                if (request.url.host.contains("zilla-networks.com")) {
+                val host = request.url.host
+                if (host.contains("zilla-networks.com")) {
                     val builder = request.newBuilder()
                     zillaHeaders.forEach { (k, v) -> builder.header(k, v) }
                     return chain.proceed(builder.build())
+                }
+                if (host.contains("premilkyway")) {
+                    val ref = extractorLink.referer?.takeIf { it.isNotBlank() } ?: "https://streamwish.to/"
+                    val origin = try {
+                        val u = java.net.URL(ref)
+                        "${u.protocol}://${u.host}"
+                    } catch (_: Exception) { "https://streamwish.to" }
+                    Log.d(TAG, "[intercept] SW CDN: ${request.url.toString().take(120)}")
+                    val newRequest = request.newBuilder()
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .header("Referer", ref)
+                        .header("Origin", origin)
+                        .header("Accept", "*/*")
+                        .build()
+                    val response = chain
+                        .withConnectTimeout(30, TimeUnit.SECONDS)
+                        .withReadTimeout(30, TimeUnit.SECONDS)
+                        .proceed(newRequest)
+                    Log.d(TAG, "[intercept] SW CDN response: ${response.code} ${response.header("content-type", "?")}")
+                    return response
                 }
                 return chain.proceed(request)
             }
@@ -314,6 +355,103 @@ class VeranimeProvider : MainAPI() {
         return true
     }
 
+    private val webViewMutex = Mutex()
+
+    private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: Long = 12000L, readyJs: String? = null): String? {
+        webViewMutex.withLock {
+            return withContext(Dispatchers.Main) {
+            val appCtx = pluginContext?.applicationContext ?: run {
+                Log.w(TAG, "[WebView] sin context")
+                return@withContext null
+            }
+            var webView: WebView? = null
+            val mainHandler = Handler(Looper.getMainLooper())
+            try {
+                webView = WebView(appCtx)
+                webView.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    mediaPlaybackRequiresUserGesture = false
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    cacheMode = WebSettings.LOAD_NO_CACHE
+                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+                val deferred = CompletableDeferred<String?>()
+                val polls = java.util.concurrent.atomic.AtomicInteger(0)
+                val maxPolls = (waitMs / 2000L).toInt().coerceAtLeast(1)
+                fun dump() {
+                    if (deferred.isCompleted) return
+                    try {
+                        webView?.evaluateJavascript(SW_DUMP_JS, null)
+                    } catch (_: Exception) {
+                        if (!deferred.isCompleted) deferred.complete(null)
+                    }
+                }
+                fun pollOnce() {
+                    if (deferred.isCompleted) return
+                    try {
+                        webView?.evaluateJavascript(
+                            "(function(){try{var h=document.documentElement.outerHTML;NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()",
+                            null
+                        )
+                    } catch (_: Exception) {
+                        if (!deferred.isCompleted) deferred.complete(null)
+                    }
+                }
+                webView.addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun onHtml(html: String) {
+                        if (!deferred.isCompleted) deferred.complete(html)
+                    }
+
+                    @JavascriptInterface
+                    fun onPoll(ready: Boolean) {
+                        mainHandler.post {
+                            if (deferred.isCompleted) return@post
+                            if (ready) {
+                                Log.d(TAG, "[WebView] listo antes de tiempo, dumpeando")
+                                dump()
+                                return@post
+                            }
+                            if (polls.incrementAndGet() >= maxPolls) {
+                                dump()
+                            } else {
+                                mainHandler.postDelayed({ pollOnce() }, 2000L)
+                            }
+                        }
+                    }
+                }, "NativeBridge")
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        polls.set(0)
+                        if (readyJs != null) {
+                            mainHandler.postDelayed({ pollOnce() }, 2000L)
+                        } else {
+                            mainHandler.postDelayed({ dump() }, waitMs)
+                        }
+                    }
+
+                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                        if (!deferred.isCompleted) deferred.complete(null)
+                    }
+                }
+                if (!referer.isNullOrBlank()) webView.loadUrl(pageUrl, mapOf("Referer" to referer))
+                else webView.loadUrl(pageUrl)
+                Log.d(TAG, "[WebView] renderizando ${pageUrl.take(100)}")
+                withTimeoutOrNull(waitMs + 15000L) { deferred.await() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Log.w(TAG, "[WebView] error grave: ${t::class.simpleName}: ${t.message}")
+                null
+            } finally {
+                try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
+                try { webView?.destroy() } catch (_: Exception) {}
+            }
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -439,6 +577,10 @@ class VeranimeProvider : MainAPI() {
             return true
         }
         if (loadExtractorCollect(fixed, embedUrl, subtitleCallback, callback, label)) return true
+        if (fixed.contains("streamwish", ignoreCase = true)) {
+            if (emitStreamwishFresh(fixed, embedUrl, label, callback)) return true
+            if (emitStreamwishWebView(fixed, embedUrl, label, callback)) return true
+        }
         Log.w(TAG, "sin links para $label (${fixed.take(80)})")
         return false
     }
@@ -504,6 +646,10 @@ class VeranimeProvider : MainAPI() {
                 return false
             }
             if (loadExtractorCollect(fixed, embedUrl, subtitleCallback, callback, label)) return true
+            if (fixed.contains("streamwish", ignoreCase = true)) {
+                if (emitStreamwishFresh(fixed, embedUrl, label, callback)) return true
+                if (emitStreamwishWebView(fixed, embedUrl, label, callback)) return true
+            }
             Log.w(TAG, "sin links para $label (${fixed.take(80)})")
             return false
     }
@@ -553,5 +699,176 @@ class VeranimeProvider : MainAPI() {
             Log.w(TAG, "byse error: ${e.message}")
             false
         }
+    }
+    
+    private val freshHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .cookieJar(okhttp3.CookieJar.NO_COOKIES)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    private suspend fun fetchStreamwishFresh(pageUrl: String, hubUrl: String): String? {
+        return try {
+            withTimeoutOrNull(25_000L) {
+                withContext(Dispatchers.IO) {
+                    val req = okhttp3.Request.Builder()
+                        .url(pageUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .header("Referer", hubUrl)
+                        .build()
+                    freshHttpClient.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) {
+                            Log.w(TAG, "[SW] fresh fetch code=${resp.code}")
+                            null
+                        } else {
+                            resp.body?.string()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "[SW] fresh fetch falló: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun emitStreamwishFresh(
+        pageUrl: String,
+        hubUrl: String,
+        label: String,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        val html = fetchStreamwishFresh(pageUrl, hubUrl) ?: return false
+        Log.d(TAG, "[SW] fresh fetch len=${html.length}")
+        val urls = try {
+            parseStreamwishHtml(html, pageUrl)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "[SW] fresh parse falló: ${e.message}")
+            emptyList()
+        }
+        if (urls.isEmpty()) return false
+        for (u in urls) {
+            val isHls = u.contains(".m3u8")
+            callback(newExtractorLink(name, "$label [SW]", u, if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                this.referer = pageUrl
+                this.headers = browserHeaders + ("Referer" to pageUrl)
+                this.quality = Qualities.Unknown.value
+            })
+        }
+        Log.d(TAG, "[SW] fresh OK: ${urls.size} urls -> $label")
+        return true
+    }
+
+    private fun unpackDeanEdwards(packed: String, base: Int, count: Int, dictRaw: String): String? {
+        return try {
+            val k = dictRaw.split("|").toTypedArray()
+            val result = StringBuilder(packed)
+            for (idx in count - 1 downTo 0) {
+                val key = idx.toString(base)
+                val value = k.getOrElse(idx) { "" }
+                if (key.isNotEmpty() && value.isNotEmpty()) {
+                    val replaced = Regex("\\b${Regex.escape(key)}\\b").replace(result, Regex.escapeReplacement(value))
+                    result.clear()
+                    result.append(replaced)
+                }
+            }
+            result.toString().replace("\\'", "'")
+        } catch (_: Exception) { null }
+    }
+
+    private suspend fun parseStreamwishHtml(html: String, pageUrl: String): List<String> {
+        val out = mutableListOf<String>()
+        fun resolveUrl(u: String): String {
+            var r = u.replace("\\/", "/").trim()
+            if (r.startsWith("//")) r = "https:$r"
+            if (r.startsWith("/")) {
+                val base = try {
+                    val uu = java.net.URL(pageUrl)
+                    "${uu.protocol}://${uu.host}"
+                } catch (_: Exception) { "" }
+                r = base + r
+            }
+            return r
+        }
+        val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
+        val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
+        val fileRegex = Regex("""(?:file|src)\s*:\s*["']((?:https?:)?//[^"']+)["']""")
+        for (m in m3u8Regex.findAll(html)) out.add(m.value)
+        if (out.isEmpty()) {
+            for (m in fileRegex.findAll(html)) {
+                val f = resolveUrl(m.groupValues[1])
+                if (f.contains(".m3u8") || f.contains(".mp4") || f.contains(".m4v")) out.add(f)
+            }
+        }
+        if (out.isEmpty()) {
+            for (m in mp4Regex.findAll(html)) out.add(m.value)
+        }
+        if (out.isEmpty()) {
+            val packerRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
+            for (pm in packerRegex.findAll(html)) {
+                try {
+                    val decoded = unpackDeanEdwards(
+                        pm.groupValues[1],
+                        pm.groupValues[2].toIntOrNull() ?: 36,
+                        pm.groupValues[3].toIntOrNull() ?: 0,
+                        pm.groupValues[4]
+                    ) ?: continue
+                    for (m in m3u8Regex.findAll(decoded)) {
+                        Log.d(TAG, "[SW] M3U8 (eval): ${m.value.take(120)}")
+                        out.add(m.value)
+                    }
+                    if (out.isEmpty()) for (m in fileRegex.findAll(decoded)) {
+                        val f = resolveUrl(m.groupValues[1])
+                        if (f.contains(".m3u8") || f.contains(".mp4") || f.contains(".m4v")) out.add(f)
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
+                if (out.isNotEmpty()) break
+            }
+        }
+        if (out.isEmpty()) {
+            Log.w(TAG, "[SW] No M3U8/MP4 pageHasJW=${html.contains("jwplayer")} hasSources=${html.contains("sources")} hasEval=${html.contains("eval(")} len=${html.length}")
+        }
+        return out.distinct()
+    }
+
+    private suspend fun emitStreamwishWebView(
+        pageUrl: String,
+        hubUrl: String,
+        label: String,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        Log.d(TAG, "[SW] WebView fallback: $pageUrl")
+        val rendered = try {
+            renderViaWebView(pageUrl, hubUrl, readyJs = SW_READY_JS)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "[SW] WebView falló: ${e.message}")
+            null
+        } ?: return false
+        val urls = try {
+            parseStreamwishHtml(rendered, pageUrl)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "[SW] parse falló: ${e.message}")
+            emptyList()
+        }
+        if (urls.isEmpty()) return false
+        for (u in urls) {
+            val isHls = u.contains(".m3u8")
+            callback(newExtractorLink(name, "$label [SW-Web]", u, if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                this.referer = pageUrl
+                this.headers = browserHeaders + ("Referer" to pageUrl)
+                this.quality = Qualities.Unknown.value
+            })
+        }
+        Log.d(TAG, "[SW] WebView OK: ${urls.size} urls -> $label")
+        return true
     }
 }

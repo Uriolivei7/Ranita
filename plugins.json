@@ -732,7 +732,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VeranimeProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "AnimeNINJA",
@@ -746,7 +746,7 @@
     ],
     "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=128",
     "language": "mx",
-    "fileSize": 60000
+    "fileSize": 74000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SeriesdonghuaProvider.cs3",
