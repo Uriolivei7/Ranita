@@ -1020,7 +1020,17 @@ suspend fun loadKaoSourceExtractor(
         }
         domain.contains("voe.sx") -> tryVoeExtraction(url, referer ?: url, subtitleCallback) { link ->
             count++
-            outerScope.launch { callback.invoke(link) }
+            outerScope.launch {
+                callback.invoke(
+                    newExtractorLink("SeriesKao", "$source[${link.name}]", link.url) {
+                        this.quality = link.quality
+                        this.type = link.type
+                        this.referer = link.referer
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    }
+                )
+            }
         }
         domain.contains("streamwish") -> {
 
