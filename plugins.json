@@ -588,10 +588,10 @@
         "name": "SeriesdonghuaProvider"
     },
     {
-        "fileHash": "sha256-ddbc3119bfda854b85d99e50943a1ae285967c78e5a0782fb02b10bcee6e7154",
+        "fileHash": "sha256-fb06c566c5e01542c8035f1808c3247688a222897922f619851668ff36a7666d",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 107807,
+        "fileSize": 108089,
         "status": 1,
         "language": "es",
         "authors": [
@@ -603,7 +603,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 26,
+        "version": 27,
         "internalName": "SerieskaoProvider",
         "description": "Adaptaci\u00f3n SeriesKao",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SerieskaoProvider.cs3",
@@ -629,10 +629,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-1090c0ff5228a80de7f5f42a83b496b90eb240aabc5e6ff748c2ed70e724d1ac",
+        "fileHash": "sha256-ccc4eea7d7cad53288889788701c07396289d79fb66a51b8b0172d93f2b369ef",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 122213,
+        "fileSize": 122494,
         "status": 1,
         "language": "es",
         "authors": [
@@ -646,7 +646,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 30,
+        "version": 31,
         "internalName": "SoloLatinoProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SoloLatinoProvider.cs3",
