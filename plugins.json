@@ -766,5 +766,25 @@
     "iconUrl": "https://seriesdonghua.com/favicon.ico?v2",
     "language": "mx",
     "fileSize": 52000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/OkruProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "OKRU",
+    "internalName": "OkruProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Extractor OK.ru",
+    "tvTypes": [
+      "Movie",
+      "Cartoon"
+    ],
+    "iconUrl": "https://ok.ru/favicon.ico",
+    "language": "ru",
+    "fileSize": 32000
   }
 ]
