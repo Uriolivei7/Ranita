@@ -792,10 +792,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%",
-        "fileHash": "sha256-21da03569d9d7a4ab551b782714a90d44bffe67d6b088a829c6e098a827eb955",
+        "fileHash": "sha256-0e6b5a5de9d770a05d4ba137c9cd3eb75be29559fbd18fe5799673ae7660528b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 60633,
+        "fileSize": 75203,
         "status": 1,
         "language": "es",
         "authors": [
@@ -804,7 +804,7 @@
         "tvTypes": [
             "Anime"
         ],
-        "version": 6,
+        "version": 8,
         "internalName": "VeranimeProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VeranimeProvider.cs3",
         "name": "VeranimeProvider"
