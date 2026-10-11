@@ -14,8 +14,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+
+internal val powMutex = Mutex()
 
 open class VoeExtractor : ExtractorApi() {
     override val name = "Voe"
@@ -253,9 +257,10 @@ open class VoeExtractor : ExtractorApi() {
         if (prefix.isEmpty() || cost <= 0) return null
 
         val t0 = System.currentTimeMillis()
-        val nThreads = 4
+        val nThreads = 2
         val winner = AtomicLong(-1)
         val winnerHex = AtomicReference<String?>(null)
+        powMutex.withLock {
         coroutineScope {
             (0 until nThreads).map { t ->
                 async(Dispatchers.Default) {
@@ -281,6 +286,7 @@ open class VoeExtractor : ExtractorApi() {
                     }
                 }
             }.awaitAll()
+        }
         }
         val w = winner.get()
         val wh = winnerHex.get()

@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import java.text.SimpleDateFormat
 import java.util.Locale
 import okhttp3.Interceptor
@@ -605,7 +606,9 @@ private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray?
     val md = java.security.MessageDigest.getInstance("SHA-256")
     var nonce = 0L
     val maxAttempts = 500000L
+    powMutex.withLock {
     while (nonce < maxAttempts) {
+        if (nonce % 4096 == 0L) yield()
         val input = "$challenge$nonce".toByteArray(Charsets.UTF_8)
         val hash = md.digest(input).toHexFast()
         if (hash.startsWith("000")) {
@@ -614,6 +617,7 @@ private suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray?
                 .digest("$challenge$nonce$salt".toByteArray(Charsets.UTF_8))
         }
         nonce++
+    }
     }
     Log.e("SoloLatino", "embed69 PoW - no solution found after $maxAttempts attempts")
     return null

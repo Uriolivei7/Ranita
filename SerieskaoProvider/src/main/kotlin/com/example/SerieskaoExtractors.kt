@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 private const val KAO_TAG = "SeriesKao"
 
+private val powMutex = Mutex()
+
 private val HEX_CHARS = "0123456789abcdef".toCharArray()
 
 private fun ByteArray.toHexFast(): String {
@@ -43,7 +45,9 @@ internal suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray
     val md = java.security.MessageDigest.getInstance("SHA-256")
     var nonce = 0L
     val maxAttempts = 500000L
+    powMutex.withLock {
     while (nonce < maxAttempts) {
+        if (nonce % 4096 == 0L) yield()
         val input = "$challenge$nonce".toByteArray(Charsets.UTF_8)
         val hash = md.digest(input).toHexFast()
         if (hash.startsWith("000")) {
@@ -52,6 +56,7 @@ internal suspend fun solveEmbed69PoW(challenge: String, salt: String): ByteArray
                 .digest("$challenge$nonce$salt".toByteArray(Charsets.UTF_8))
         }
         nonce++
+    }
     }
     Log.e(KAO_TAG, "PoW no solution after $maxAttempts attempts")
     return null
@@ -332,9 +337,10 @@ class KaoVoeExtractor {
         if (prefix.isEmpty() || cost <= 0) return null
 
         val t0 = System.currentTimeMillis()
-        val nThreads = 4
+        val nThreads = 2
         val winner = AtomicLong(-1)
         val winnerHex = AtomicReference<String?>(null)
+        powMutex.withLock {
         coroutineScope {
             (0 until nThreads).map { t ->
                 async(Dispatchers.Default) {
@@ -359,6 +365,7 @@ class KaoVoeExtractor {
                     }
                 }
             }.awaitAll()
+        }
         }
         val w = winner.get()
         val wh = winnerHex.get()

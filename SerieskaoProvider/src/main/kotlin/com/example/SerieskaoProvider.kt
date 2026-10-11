@@ -332,7 +332,7 @@ class SerieskaoProvider : MainAPI() {
                 playerUrl.contains("embed69.org") -> {
                     Log.d(TAG, "loadLinks embed69 externo -> extractKaoEmbed69")
                     extractKaoEmbed69(playerUrl, data, subtitleCallback) { link ->
-                        CoroutineScope(Dispatchers.IO).launch { callback(link) }
+                        callback(link)
                     }
                 }
 
@@ -448,7 +448,7 @@ class SerieskaoProvider : MainAPI() {
                 if (decrypted != null) {
                     Log.d(TAG, "loadLinks decrypted ${embed.servername}: $decrypted")
                     loadKaoSourceExtractor(langTag, fixHostsLinks(decrypted), playerUrl, subtitleCallback) { link ->
-                        CoroutineScope(Dispatchers.IO).launch { callback(link) }
+                        callback(link)
                     }
                 }
             }
