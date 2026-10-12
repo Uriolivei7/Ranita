@@ -772,19 +772,19 @@
     },
     {
         "iconUrl": "https://www.cablevisionhd.com/imge/cablevisionhd.png",
-        "fileHash": "sha256-ec2b3c2fc6527d8386c897b50644e90f6ab1649bf3daa66dd57cc94fa4fa34d3",
+        "fileHash": "sha256-98a9a2e26e502213de07eab56b3a964d3f99a1b782df2ee949753bc72bb3279a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 47153,
+        "fileSize": 47157,
         "status": 1,
         "language": "mx",
         "authors": [
-            "misajimenezmx"
+            "Ranita"
         ],
         "tvTypes": [
             "Live"
         ],
-        "version": 5,
+        "version": 7,
         "internalName": "TvenvivoProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TvenvivoProvider.cs3",
         "name": "TvenvivoProvider"
