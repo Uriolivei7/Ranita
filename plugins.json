@@ -180,10 +180,10 @@
     },
     {
         "iconUrl": "https://globoview.cam/favicon.svg",
-        "fileHash": "sha256-082ce644b608e3ef160889d329d4672dd713c23e6d78dde99580e136f2dff6e0",
+        "fileHash": "sha256-1f293af1e058a9b64990a76f75e5a5cd62a2504f0ba52b63a7f17948945ab9b5",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21303,
+        "fileSize": 26216,
         "status": 1,
         "language": "es",
         "authors": [
