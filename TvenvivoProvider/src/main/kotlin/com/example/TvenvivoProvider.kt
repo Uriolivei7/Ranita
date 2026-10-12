@@ -27,7 +27,7 @@ class TvenvivoProvider : MainAPI() {
     companion object {
         var pluginContext: android.content.Context? = null
     }
-    override var mainUrl = "https://www.tvenvivo.org/"
+    override var mainUrl = "http://www.tvenvivo.org/"
     override var name = "TVenVIVO"
 
     override val supportedTypes = setOf(
