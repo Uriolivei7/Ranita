@@ -39,6 +39,9 @@ class GloboViewProvider : MainAPI() {
         path.removePrefix("/directorio/").removeSuffix("/") to name
     }
 
+    private val BROWSER_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val home = mutableListOf<HomePageList>()
         for ((name, path) in sections) {
@@ -212,9 +215,40 @@ class GloboViewProvider : MainAPI() {
         try {
             val resp = app.get(data, timeout = 60L)
             val html = resp.text
+            val cleanHtml = html.replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+
+
+            val islandTag = Regex("""<astro-island[^>]*component-export="ChannelPlayer"[^>]*>""").find(html)?.value
+            val propsRaw = islandTag?.let { Regex("""props="([^"]*)"""").find(it)?.groupValues?.get(1) }
+            if (propsRaw != null) {
+                val props = propsRaw.replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+                val streams = parsePlayerStreams(props)
+                if (streams.isNotEmpty()) {
+                    streams.forEach { s ->
+                        val label = listOfNotNull(
+                            s.title?.takeIf { it.isNotBlank() },
+                            s.quality?.takeIf { it.isNotBlank() }
+                        ).joinToString(" ").ifBlank { "En Vivo" }
+                        Log.d("GloboView", "loadLinks: stream $label -> ${s.url.take(100)}")
+                        val referer = s.referrer?.takeIf { it.startsWith("http") } ?: data
+                        val headers = mutableMapOf(
+                            "User-Agent" to (s.userAgent?.takeIf { it.isNotBlank() } ?: BROWSER_UA),
+                            "Referer" to referer,
+                        )
+                        callback(newExtractorLink(name, label, s.url, ExtractorLinkType.M3U8) {
+                            this.referer = referer
+                            this.headers = headers
+                            this.quality = mapQuality(s.quality)
+                        })
+                    }
+                    return true
+                }
+                Log.w("GloboView", "loadLinks: el sitio no publica señales para este canal (streams vacío)")
+                return false
+            }
 
             val jsonLdPattern = Regex(""""contentUrl"\s*:\s*"([^"]+)"""")
-            val jsonLdMatch = jsonLdPattern.find(html)
+            val jsonLdMatch = jsonLdPattern.find(cleanHtml)
             if (jsonLdMatch != null) {
                 val rawUrl = jsonLdMatch.groupValues[1].replace("\\/", "/")
                 Log.d("GloboView", "loadLinks: JSON-LD -> $rawUrl")
@@ -224,19 +258,8 @@ class GloboViewProvider : MainAPI() {
                 return true
             }
 
-            val astroPattern = Regex(""""url"\s*:\s*\[0,\s*"([^"]+)"""")
-            val astroMatch = astroPattern.find(html)
-            if (astroMatch != null) {
-                val rawUrl = astroMatch.groupValues[1].replace("\\/", "/")
-                Log.d("GloboView", "loadLinks: astro-island -> $rawUrl")
-                callback(newExtractorLink(name, "En Vivo", rawUrl, ExtractorLinkType.M3U8) {
-                    this.referer = data
-                })
-                return true
-            }
-
             val m3u8Pattern = Regex("""https?://[^"'\s<>]+\.m3u8[^"'\s<>]*""")
-            val m3u8Match = m3u8Pattern.find(html)
+            val m3u8Match = m3u8Pattern.find(cleanHtml)
             if (m3u8Match != null) {
                 Log.d("GloboView", "loadLinks: m3u8 -> ${m3u8Match.value}")
                 callback(newExtractorLink(name, "En Vivo", m3u8Match.value, ExtractorLinkType.M3U8) {
@@ -251,6 +274,45 @@ class GloboViewProvider : MainAPI() {
             Log.e("GloboView", "loadLinks error: ${e.message}")
             return false
         }
+    }
+
+    private data class ChannelStream(
+        val url: String,
+        val title: String?,
+        val quality: String?,
+        val userAgent: String?,
+        val referrer: String?,
+    )
+
+    private fun parsePlayerStreams(props: String): List<ChannelStream> {
+        return Regex("""\[0,(\{[^{}]*\})\]""").findAll(props).mapNotNull { m ->
+            val obj = m.groupValues[1]
+            fun field(vararg names: String): String? {
+                for (n in names) {
+                    Regex(""""$n"\s*:\s*\[0,"((?:[^"\\]|\\.)*)"""").find(obj)?.let {
+                        return it.groupValues[1].replace("\\/", "/").replace("\\\"", "\"")
+                    }
+                }
+                return null
+            }
+            val url = field("url")?.takeIf { it.startsWith("http") } ?: return@mapNotNull null
+            ChannelStream(
+                url,
+                field("title", "feed", "channel"),
+                field("quality"),
+                field("user_agent"),
+                field("referrer", "http_referrer"),
+            )
+        }.toList()
+    }
+
+    private fun mapQuality(q: String?): Int = when {
+        q == null -> Qualities.Unknown.value
+        q.contains("1080") -> Qualities.P1080.value
+        q.contains("720") -> Qualities.P720.value
+        q.contains("480") -> Qualities.P480.value
+        q.contains("360") -> Qualities.P360.value
+        else -> Qualities.Unknown.value
     }
 
     private fun fixUrl(url: String): String {
