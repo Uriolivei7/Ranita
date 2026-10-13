@@ -120,6 +120,26 @@
         "name": "Atalayas21Provider"
     },
     {
+        "iconUrl": "https://danimados.cc/favicon.ico",
+        "fileHash": "sha256-fe7a823e0751594e10f1ce68615d130e754a2bd80b34ade753604f75f7fb9a15",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 117954,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "ruthriveiro"
+        ],
+        "tvTypes": [
+            "Cartoon"
+        ],
+        "version": 6,
+        "internalName": "DanimadosProvider",
+        "description": "Series animadas y caricaturas en Espa\u00f1ol Latino",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DanimadosProvider.cs3",
+        "name": "DanimadosProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
         "fileHash": "sha256-3a0526376f3485af62bc3a293bfec6045404c3cc4b8b3ba46df91f071adee5e1",
         "apiVersion": 1,
