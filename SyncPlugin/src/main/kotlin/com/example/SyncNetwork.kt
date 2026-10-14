@@ -283,11 +283,12 @@ object SyncNetwork {
     }
 
     suspend fun fetchProjectId(token: String, projectNum: Int): String? {
+        lastError = null
         val query = "query { viewer { projectV2(number: $projectNum) { id } } }"
         val resp = graphql(token, query)
         val id = resp?.data?.viewer?.projectV2?.id
         if (id != null) log("[sync] project #$projectNum ok")
-        else err("fetchProjectId: no accesible")
+        else if (lastError == null) err("fetchProjectId: no accesible")
         return id
     }
 
@@ -307,7 +308,7 @@ object SyncNetwork {
             """.trimIndent()
             val resp = graphql(token, query)
             if (resp == null) {
-                err("fetchDevices: falló la consulta del proyecto")
+                if (lastError == null) err("fetchDevices: falló la consulta del proyecto")
                 return null
             }
             val project = resp.data?.viewer?.projectV2
