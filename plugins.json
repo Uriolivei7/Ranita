@@ -264,6 +264,25 @@
         "name": "HenaojaraProvider"
     },
     {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=strymix.com&sz=128",
+        "fileHash": "sha256-f3802d96c6e4662adc1621fbb42b9bd96c19d73734286b821cb0d2438b9f4ada",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 16430,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 2,
+        "internalName": "InfinityProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/InfinityProvider.cs3",
+        "name": "InfinityProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
         "fileHash": "sha256-1d2368975d1c35d4476cb8b577d4322b40a26498a249931a60474f741b002a38",
         "apiVersion": 1,
