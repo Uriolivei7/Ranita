@@ -288,7 +288,10 @@ object SyncNetwork {
         val resp = graphql(token, query)
         val id = resp?.data?.viewer?.projectV2?.id
         if (id != null) log("[sync] project #$projectNum ok")
-        else if (lastError == null) err("fetchProjectId: no accesible")
+        else if (lastError == null) {
+            val gqlErrs = resp?.errors?.takeIf { it.isNotEmpty() }?.take(2)?.joinToString("; ") { it.message ?: "?" }
+            err("fetchProjectId: no accesible" + (gqlErrs?.let { " [$it]" } ?: ""))
+        }
         return id
     }
 
