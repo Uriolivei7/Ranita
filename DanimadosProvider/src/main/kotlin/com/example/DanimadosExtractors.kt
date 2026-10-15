@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import org.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -318,7 +319,7 @@ private suspend fun parseVoeHtml(
             m3u8,
             "$pageOrigin/",
             headers = mapOf("Origin" to "$pageOrigin/"),
-            name = "Voe",
+            name = "Danimados [Voe]",
         ).forEach(callback)
         emitted = true
     }
@@ -417,7 +418,7 @@ internal suspend fun tryVoeExtractDanimados(
             return tryMirrors()
         }
         Log.d(DANI_TAG, "[Voe] found ${if (m3u8 != null) "m3u8" else "mp4"}: ${videoUrl.take(120)}")
-        callback(newExtractorLink("Danimados", "Voe", videoUrl, ExtractorLinkType.M3U8) {
+        callback(newExtractorLink("Danimados", "Danimados [Voe]", videoUrl, ExtractorLinkType.M3U8) {
             this.referer = finalUrl
             this.headers = headers
         })
@@ -896,6 +897,65 @@ internal suspend fun tryStreamwishDanimados(
         Log.e(DANI_TAG, "[SW] error: ${e.message}")
         count > 0
     }
+}
+
+// ================================ Ok.ru (port Donghualife: data-options -> HLS) ================================
+
+internal suspend fun tryOkruDanimados(
+    url: String,
+    referer: String,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    val videoId = Regex("""ok\.ru/(?:videoembed|video)/(\d+)""").find(url)?.groupValues?.getOrNull(1)
+        ?: return false
+    val embedUrl = "https://ok.ru/videoembed/$videoId"
+    val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Referer" to "https://ok.ru/",
+    )
+    val metadata = try {
+        val doc = app.get(embedUrl, headers = headers, timeout = 30L).document
+        val raw = doc.selectFirst("[data-options]")?.attr("data-options")
+        if (raw.isNullOrBlank()) null
+        else JSONObject(raw).optJSONObject("flashvars")?.optJSONObject("metadata")
+    } catch (e: Exception) {
+        Log.w(DANI_TAG, "[Okru] $videoId falló: ${e.message}")
+        null
+    }
+    var emitted = false
+    val hls = metadata?.optString("hlsManifestUrl")?.takeIf { it.isNotBlank() }
+    if (hls != null) {
+        Log.d(DANI_TAG, "[Okru] $videoId -> HLS")
+        callback(newExtractorLink("Danimados", "Danimados [ok.ru]", hls, ExtractorLinkType.M3U8) {
+            this.referer = embedUrl
+            this.quality = Qualities.P1080.value
+        })
+        emitted = true
+    }
+    if (!emitted) {
+        val videos = metadata?.optJSONArray("videos")
+        if (videos != null) {
+            for (i in videos.length() - 1 downTo 0) {
+                val v = videos.optJSONObject(i) ?: continue
+                val u = v.optString("url").takeIf { it.isNotBlank() } ?: continue
+                val vn = v.optString("name")
+                callback(newExtractorLink("Danimados", "Danimados [ok.ru $vn]", u, ExtractorLinkType.VIDEO) {
+                    this.referer = embedUrl
+                    this.quality = when (vn.lowercase()) {
+                        "full" -> Qualities.P1080.value
+                        "hd" -> Qualities.P720.value
+                        "sd" -> Qualities.P480.value
+                        "low" -> Qualities.P360.value
+                        "lowest", "mobile" -> Qualities.P240.value
+                        else -> Qualities.Unknown.value
+                    }
+                })
+                emitted = true
+            }
+        }
+    }
+    if (!emitted) Log.w(DANI_TAG, "[Okru] $videoId: sin URLs (video borrado/privado?)")
+    return emitted
 }
 
 // ================================ Byse ================================

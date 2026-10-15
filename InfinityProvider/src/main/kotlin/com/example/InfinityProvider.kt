@@ -6,7 +6,11 @@ import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class InfinityProvider : MainAPI() {
     override var mainUrl = "https://strymix.com"
@@ -26,6 +30,43 @@ class InfinityProvider : MainAPI() {
         "Accept" to "application/json, */*",
     )
 
+    private val activationUrl = "https://fluxa.strymix.com/activar_25.php"
+    private val activationLock = Any()
+    @Volatile private var lastActivationMs = 0L
+    private companion object {
+        const val ACTIVATION_COOLDOWN_MS = 30L * 60L * 1000L
+    }
+
+    private fun tryActivate(reason: String): Boolean {
+        synchronized(activationLock) {
+            if (System.currentTimeMillis() - lastActivationMs < ACTIVATION_COOLDOWN_MS) {
+                Log.d(TAG, "[activar] cooldown ($reason), omito POST")
+                return false
+            }
+            lastActivationMs = System.currentTimeMillis()
+        }
+        return try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .build()
+            val req = Request.Builder()
+                .url(activationUrl)
+                .post("".toRequestBody(null))
+                .header("User-Agent", browserHeaders["User-Agent"] ?: "")
+                .header("Referer", activationUrl)
+                .header("Origin", "https://fluxa.strymix.com")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                Log.d(TAG, "[activar] POST -> ${resp.code} ($reason)")
+                resp.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "[activar] fallo: ${e.message}")
+            false
+        }
+    }
+
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
         return Interceptor { chain ->
             val request = chain.request()
@@ -34,33 +75,45 @@ class InfinityProvider : MainAPI() {
                 return@Interceptor chain.proceed(request)
             }
             val h = extractorLink.headers
-            val newRequest = request.newBuilder()
+            fun authed(): Request = request.newBuilder()
                 .header("User-Agent", h["User-Agent"] ?: "")
                 .header("Referer", h["Referer"] ?: "https://fluxa.strymix.com/")
                 .header("Origin", "https://fluxa.strymix.com")
                 .header("Accept", "*/*")
                 .build()
-            try {
-                val response = chain.proceed(newRequest)
-                Log.d(TAG, "[cdn] ${request.method} ${url.take(100)} -> ${response.code}")
-                response
+            var response = try {
+                chain.proceed(authed())
             } catch (e: Exception) {
                 Log.w(TAG, "[cdn] fallo ${url.take(100)}: ${e.message}")
                 throw e
             }
+            Log.d(TAG, "[cdn] ${request.method} ${url.take(100)} -> ${response.code}")
+
+            if (response.code == 403 && tryActivate("403 en ${request.url.host}")) {
+                Log.w(TAG, "[cdn] 403, reintentando tras activar")
+                response.close()
+                response = try {
+                    chain.proceed(authed())
+                } catch (e: Exception) {
+                    Log.w(TAG, "[cdn] retry falló: ${e.message}")
+                    throw e
+                }
+                Log.d(TAG, "[cdn] retry -> ${response.code} ${url.take(100)}")
+            }
+            response
         }
     }
 
     private val categories = listOf(
-        "133" to "Eventos Deportivos", "29" to "Costa Rica", "28" to "Panamá",
-        "27" to "Infantiles", "26" to "Películas", "25" to "Noticias",
-        "24" to "Guatemala", "23" to "México", "22" to "Religión",
-        "21" to "Puerto Rico", "20" to "Chile", "19" to "Perú",
-        "18" to "España", "17" to "Colombia", "16" to "Argentina",
-        "15" to "El Salvador", "14" to "Cine 24/7", "13" to "Ahorro Datos",
-        "12" to "USA", "11" to "HD", "10" to "Entretenimiento",
-        "9" to "Nicaragua", "8" to "Uruguay", "7" to "Cultura",
-        "6" to "Deportes", "5" to "24/7", "2" to "Música",
+        "5" to "24/7", "14" to "Cine 24/7", "11" to "HD",
+        "19" to "Perú", "27" to "Infantiles", "26" to "Películas",
+        "10" to "Entretenimiento", "12" to "USA", "13" to "Ahorro Datos",
+        "25" to "Noticias", "7" to "Cultura", "6" to "Deportes",
+        "2" to "Música", "29" to "Costa Rica", "28" to "Panamá",
+        "17" to "Colombia", "24" to "Guatemala", "23" to "México",
+        "22" to "Religión", "21" to "Puerto Rico", "20" to "Chile",
+        "18" to "España", "16" to "Argentina", "15" to "El Salvador",
+        "9" to "Nicaragua", "8" to "Uruguay",
     )
 
     override val mainPage = mainPageOf(
