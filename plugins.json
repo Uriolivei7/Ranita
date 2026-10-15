@@ -807,21 +807,21 @@
     "fileSize": 119000
   },
   {
-    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/InfinityProvider.cs3",
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/StrymixtvProvider.cs3",
     "status": 1,
-    "version": 2,
+    "version": 1,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-    "name": "Infinity",
-    "internalName": "InfinityProvider",
+    "name": "StrymixTV",
+    "internalName": "StrymixtvProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "TV en vivo (API INFINITY)",
+    "description": "TV en vivo (API Strymix)",
     "tvTypes": [
       "Live"
     ],
-    "iconUrl": "https://img.icons8.com/?size=96&id=48glRm3HgPl9&format=png",
+    "iconUrl": "https://img.icons8.com/?size=100&id=7846&format=png",
     "language": "mx",
     "fileSize": 18000
   }

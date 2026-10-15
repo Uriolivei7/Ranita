@@ -5,8 +5,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class InfinityPlugin: Plugin() {
+class StrymixtvPlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(InfinityProvider())
+        registerMainAPI(StrymixtvProvider())
     }
 }

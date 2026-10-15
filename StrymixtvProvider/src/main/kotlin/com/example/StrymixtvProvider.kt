@@ -12,9 +12,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class InfinityProvider : MainAPI() {
+class StrymixtvProvider : MainAPI() {
     override var mainUrl = "https://strymix.com"
-    override var name = "Infinity"
+    override var name = "StrymixTV"
     override val supportedTypes = setOf(TvType.Live)
     override var lang = "mx"
     override val hasMainPage = true
@@ -23,7 +23,7 @@ class InfinityProvider : MainAPI() {
 
     private val apiBase = "https://strymix.com/admin_panel/api/api.php"
     private val apiKey = "cda11ZC2PFbw7DxG1rMYhfn4R0v6TNUjesiocOSJBzH5utyaKg"
-    private val TAG = "Infinity"
+    private val TAG = "StrymixTV"
 
     private val browserHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
