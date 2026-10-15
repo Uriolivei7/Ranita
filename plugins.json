@@ -264,25 +264,6 @@
         "name": "HenaojaraProvider"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=strymix.com&sz=128",
-        "fileHash": "sha256-8c5feb4a3dcd6ce4a395fb8284736aee757c751c5ddcd1c18532f71cb948fe09",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 18027,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Ranita"
-        ],
-        "tvTypes": [
-            "Live"
-        ],
-        "version": 3,
-        "internalName": "InfinityProvider",
-        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/InfinityProvider.cs3",
-        "name": "InfinityProvider"
-    },
-    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=jkanime.net&sz=%size%",
         "fileHash": "sha256-1d2368975d1c35d4476cb8b577d4322b40a26498a249931a60474f741b002a38",
         "apiVersion": 1,
@@ -711,6 +692,25 @@
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SoloLatinoProvider.cs3",
         "name": "SoloLatinoProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=strymix.com&sz=128",
+        "fileHash": "sha256-30766eb5518f0153ea441ffd487a8d159c3bd4abad5ddea844d96d61112defd2",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18019,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "StrymixtvProvider",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/StrymixtvProvider.cs3",
+        "name": "StrymixtvProvider"
     },
     {
         "fileHash": "sha256-9709e414ac4c2734ad7ce5192a9757e9efdf71cb5b94d61ae92c539a55e4c020",
