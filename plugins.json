@@ -121,10 +121,10 @@
     },
     {
         "iconUrl": "https://danimados.cc/favicon.ico",
-        "fileHash": "sha256-fe7a823e0751594e10f1ce68615d130e754a2bd80b34ade753604f75f7fb9a15",
+        "fileHash": "sha256-3d40808e56f64fee3a59c09e2f131100d32ee80b2984dd15ccf15b3d4d9bbcdb",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 117954,
+        "fileSize": 121274,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -133,7 +133,7 @@
         "tvTypes": [
             "Cartoon"
         ],
-        "version": 6,
+        "version": 8,
         "internalName": "DanimadosProvider",
         "description": "Series animadas y caricaturas en Espa\u00f1ol Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DanimadosProvider.cs3",
@@ -265,10 +265,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=strymix.com&sz=128",
-        "fileHash": "sha256-f3802d96c6e4662adc1621fbb42b9bd96c19d73734286b821cb0d2438b9f4ada",
+        "fileHash": "sha256-8c5feb4a3dcd6ce4a395fb8284736aee757c751c5ddcd1c18532f71cb948fe09",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 16430,
+        "fileSize": 18027,
         "status": 1,
         "language": "es",
         "authors": [
@@ -277,7 +277,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 2,
+        "version": 3,
         "internalName": "InfinityProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/InfinityProvider.cs3",
         "name": "InfinityProvider"
