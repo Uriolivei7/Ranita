@@ -6,9 +6,9 @@
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 27419,
         "status": 1,
-        "language": "es",
+        "language": "mx",
         "authors": [
-            "Phisher98"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -17,7 +17,7 @@
         ],
         "version": 1,
         "internalName": "Animeav1Provider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
+        "description": "Anime Extension",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/Animeav1Provider.cs3",
         "name": "Animeav1Provider"
     },
@@ -87,9 +87,9 @@
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 31731,
         "status": 1,
-        "language": "es",
+        "language": "mx",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "AsianDrama"
@@ -108,7 +108,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "ruthriveiro"
+            "Ranita"
         ],
         "tvTypes": [
             "AsianDrama"
@@ -121,19 +121,19 @@
     },
     {
         "iconUrl": "https://danimados.cc/favicon.ico",
-        "fileHash": "sha256-3d40808e56f64fee3a59c09e2f131100d32ee80b2984dd15ccf15b3d4d9bbcdb",
+        "fileHash": "sha256-b054a8f8f61d53c3163d8848888ee874cf0fc2b106476bc162a5113768c5f307",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 121274,
+        "fileSize": 123369,
         "status": 1,
         "language": "mx",
         "authors": [
-            "ruthriveiro"
+            "Ranita"
         ],
         "tvTypes": [
             "Cartoon"
         ],
-        "version": 8,
+        "version": 12,
         "internalName": "DanimadosProvider",
         "description": "Series animadas y caricaturas en Espa\u00f1ol Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DanimadosProvider.cs3",
@@ -146,9 +146,9 @@
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 43256,
         "status": 1,
-        "language": "es",
+        "language": "mx",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "AsianDrama"
@@ -167,7 +167,7 @@
         "status": 1,
         "language": "mx",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "AsianDrama"
@@ -226,9 +226,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -251,7 +249,7 @@
         "status": 1,
         "language": "mx",
         "authors": [
-            "ByAyzen"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -272,7 +270,7 @@
         "status": 1,
         "language": "mx",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -291,9 +289,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -315,9 +311,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "TvSeries",
@@ -338,7 +332,7 @@
         "status": 1,
         "language": "mx",
         "authors": [
-            "redblacker8"
+            "Ranita"
         ],
         "tvTypes": [
             "TvSeries",
@@ -357,9 +351,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -378,9 +370,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -403,7 +393,7 @@
         "status": 0,
         "language": "mx",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -423,7 +413,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -487,7 +477,7 @@
         "status": 1,
         "language": "en",
         "authors": [
-            "Phisher98"
+            "Ranita"
         ],
         "tvTypes": [
             "AsianDrama",
@@ -509,9 +499,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -595,9 +583,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "TvSeries",
@@ -636,7 +622,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "SeriesKao"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -677,9 +663,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Ranita",
-            "Yeji",
-            "Mina"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -720,7 +704,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "beta"
+            "Ranita"
         ],
         "tvTypes": [
             "Others"
@@ -759,7 +743,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "Stormunblessed"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime",
@@ -778,7 +762,7 @@
         "status": 1,
         "language": "es",
         "authors": [
-            "opencode"
+            "Ranita"
         ],
         "tvTypes": [
             "Anime"
@@ -835,9 +819,9 @@
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 92789,
         "status": 1,
-        "language": "es",
+        "language": "en",
         "authors": [
-            "Phisher98"
+            "Ranita"
         ],
         "tvTypes": [
             "Movie",
@@ -846,7 +830,7 @@
         ],
         "version": 1,
         "internalName": "UniquestreamProvider",
-        "description": "Espa\u00f1ola (Spanish) Anime Extension",
+        "description": "Anime Extension",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/UniquestreamProvider.cs3",
         "name": "UniquestreamProvider"
     },
