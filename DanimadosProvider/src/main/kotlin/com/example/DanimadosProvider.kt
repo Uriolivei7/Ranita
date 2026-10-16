@@ -344,7 +344,7 @@ class DanimadosProvider : MainAPI() {
                 videoUrl.contains("cubeembed") -> "CubeEmbed"
                 videoUrl.contains("turbovid") -> "TurboVid"
                 videoUrl.contains("waaw") -> "WaaW"
-                videoUrl.contains("bysedikamoum.com") || videoUrl.contains("4meplayer.pro") -> "Byse"
+                videoUrl.contains("byse") || videoUrl.contains("4meplayer.pro") -> "Byse"
                 videoUrl.contains("hglink.to") || videoUrl.contains("hgglink") -> "HgLink"
                 videoUrl.contains("voe.sx") || videoUrl.contains("voe.") -> "VOE"
                 videoUrl.contains("ok.ru") -> "Okru"
@@ -354,7 +354,7 @@ class DanimadosProvider : MainAPI() {
 
             val customHandled = try {
                 when {
-                    videoUrl.contains("bysedikamoum.com") || videoUrl.contains("4meplayer.pro") -> {
+                    videoUrl.contains("byse") || videoUrl.contains("4meplayer.pro") -> {
                         Log.d("Danimados", "loadLinks Byse -> flujo HTTP")
                         tryByseHttpDanimados(videoUrl, data, subtitleCallback, callback)
                     }
