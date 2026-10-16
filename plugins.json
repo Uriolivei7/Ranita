@@ -121,10 +121,10 @@
     },
     {
         "iconUrl": "https://danimados.cc/favicon.ico",
-        "fileHash": "sha256-b054a8f8f61d53c3163d8848888ee874cf0fc2b106476bc162a5113768c5f307",
+        "fileHash": "sha256-7266c1d477644cb08f73ebd997f62fa2f1685779c6c15944bbafb6fee48eb1db",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 123369,
+        "fileSize": 123367,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -133,7 +133,7 @@
         "tvTypes": [
             "Cartoon"
         ],
-        "version": 12,
+        "version": 13,
         "internalName": "DanimadosProvider",
         "description": "Series animadas y caricaturas en Espa\u00f1ol Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DanimadosProvider.cs3",
