@@ -124,32 +124,69 @@ class DanimadosProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse>? {
         return try {
-            val doc = app.get("$BASE_URL/?s=$query", headers = browserHeaders).document
+            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val doc = app.get("$BASE_URL/?s=$encoded", headers = browserHeaders).document
             val results = mutableListOf<SearchResponse>()
+
+            val witems = doc.select("article.w_item_a").mapNotNull { art ->
+                val a = art.selectFirst("a[href*='/series/']") ?: return@mapNotNull null
+                val href = a.attr("abs:href")
+                if (href.isBlank() || !href.contains("/series/")) return@mapNotNull null
+                val title = art.selectFirst(".data h3")?.text()?.trim()?.takeIf { it.isNotBlank() }
+                    ?: a.selectFirst("img")?.attr("alt")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                val poster = art.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
+                newMovieSearchResponse(title, href, TvType.Cartoon) { this.posterUrl = poster }
+            }
+            results.addAll(witems)
             for (selector in listOf("article.item.tvshows", "article.item", ".result-item", ".search-item")) {
                 val found = doc.select(selector).mapNotNull { it.toSearchResponse() }
                 results.addAll(found)
                 if (results.isNotEmpty()) break
             }
 
-            if (results.isEmpty()) {
-                for (article in doc.select("article")) {
-                    val link = article.select(".data h3 a[href*='/series/']").first()
+            for (article in doc.select("article")) {
+
+                    val link = article.select(".details .title a[href*='/series/']").first()
+                        ?: article.select(".data h3 a[href*='/series/']").first()
                         ?: article.select("h3 a[href*='/series/']").first()
                         ?: article.select("a[href*='/series/']").first() ?: continue
                     val href = link.attr("abs:href")
-                    val title = link.text().trim()
-                    if (title.isBlank() || !href.contains("/series/")) continue
+                    if (!href.contains("/series/")) continue
+                    val title = link.text().trim().ifBlank {
+                        article.selectFirst(".details .title")?.text()?.trim()
+                            ?: article.selectFirst("img")?.attr("alt")?.trim()
+                            ?: ""
+                    }
+                    if (title.isBlank()) continue
                     val poster = article.select("img").first()?.attr("src")?.let { fixUrl(it) }
                     results.add(newMovieSearchResponse(title, href, TvType.Cartoon) { this.posterUrl = poster })
-                }
             }
 
-            if (results.isEmpty()) Log.w("Danimados", "search '$query': sin resultados")
-            results.ifEmpty { null }
+            val filtered = results.distinctBy {
+
+                it.url
+            }.filter { matchesQuery(it.name, query) }
+            if (filtered.isEmpty()) Log.w("Danimados", "search '$query': sin resultados relevantes (${results.size} descartados)")
+            else Log.d("Danimados", "search '$query': ${filtered.size} relevantes")
+            filtered
         } catch (e: Exception) {
             Log.e("Danimados", "search '$query' fallo: ${e.message}")
             null
+        }
+    }
+
+    private fun fold(s: String): String =
+        java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase()
+
+    private fun matchesQuery(title: String, query: String): Boolean {
+        val norm = fold(title)
+        val tokens = fold(query).split(Regex("\\s+")).filter { it.length >= 2 }
+        if (tokens.isEmpty()) return true
+        return tokens.all { tok ->
+            norm.contains(tok) || (tok.length > 3 && tok.endsWith("s") && norm.contains(tok.dropLast(1)))
         }
     }
 

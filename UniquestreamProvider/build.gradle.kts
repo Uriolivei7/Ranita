@@ -5,9 +5,9 @@ version = 1
 cloudstream {
     // All of these properties are optional, you can safely remove them
 
-    description = "Española (Spanish) Anime Extension"
-    language    = "es"
-    authors = listOf("Phisher98")
+    description = "Anime Extension"
+    language    = "en"
+    authors = listOf("Ranita")
 
     /**
     * Status int as the following:

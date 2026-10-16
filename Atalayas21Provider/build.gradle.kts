@@ -3,7 +3,7 @@ version = 1
 cloudstream {
     description = "Series bíblicas cristianas gratuitas"
     language = "es"
-    authors = listOf("ruthriveiro")
+    authors = listOf("Ranita")
 
     status = 1
 

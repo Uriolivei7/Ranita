@@ -8,7 +8,7 @@ dependencies {
 
 cloudstream {
     description = "Sincroniza favoritos, progreso, historial, repos y ajustes entre tus dispositivos (via GitHub, sin servidor)"
-    authors = listOf("beta")
+    authors = listOf("Ranita")
     status = 1
     tvTypes = listOf("Others")
     requiresResources = false

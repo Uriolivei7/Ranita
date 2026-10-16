@@ -2,7 +2,7 @@
 version = 2
 
 cloudstream {
-    authors     = listOf("ByAyzen")
+    authors     = listOf("Ranita")
     language    = "mx"
     description = "Ver anime online, subtitulado y/o doblado al español latino HD y completamente gratis. Aquí podrás ver y descargar todas tus series preferidas sin anuncios."
     status  = 1 // will be 3 if unspecified
