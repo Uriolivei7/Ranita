@@ -141,10 +141,10 @@
     },
     {
         "iconUrl": "https://images.icon-icons.com/935/PNG/512/television-outline_icon-icons.com_73141.png",
-        "fileHash": "sha256-4aef3f328ba3a48b33e45446bee29490302b7fa14ff4d54b21db5baaa83addb6",
+        "fileHash": "sha256-13217a47dc3715118fefeebc270ccb69dc361ad40197642c69d93ef93aaa8a4b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 20595,
+        "fileSize": 20982,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -153,7 +153,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 4,
+        "version": 5,
         "internalName": "DoggitvProvider",
         "description": "TV en vivo por pa\u00eds (playlists IPTV publicas de iptv-org). Inspirado en Serbero Play TV.",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DoggitvProvider.cs3",
