@@ -239,7 +239,21 @@ class DoggitvProvider : MainAPI() {
         val placeholder = "https://placehold.co/320x320/1e1e2e/e0e0e0/png?text=" + enc(clean)
         val l = logo?.trim()
         if (l.isNullOrBlank()) return placeholder
+        directPoster(l)?.let { return it }
         return "https://wsrv.nl/?url=${enc(l)}&w=320&h=320&fit=contain&default=${enc(placeholder)}"
+    }
+    
+    private val imgurRx = Regex(
+        """^https?://i[.]imgur[.]com/([A-Za-z0-9]+)[.](jpe?g|png|gif|webp)$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun directPoster(l: String): String? {
+        imgurRx.matchEntire(l)?.let { m ->
+            return "https://i.imgur.com/${m.groupValues[1]}m.${m.groupValues[2]}"
+        }
+        if (l.startsWith("https://i.postimg.cc/")) return l
+        return null
     }
 
     private fun enc(s: String): String =
