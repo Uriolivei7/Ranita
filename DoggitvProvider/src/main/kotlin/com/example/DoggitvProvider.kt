@@ -58,6 +58,7 @@ class DoggitvProvider : MainAPI() {
     )
 
     private val channelNames = ConcurrentHashMap<String, String>()
+    private val channelLogos = ConcurrentHashMap<String, String>()
 
     private fun channelItem(ch: ChannelInfo): SearchResponse =
         newLiveSearchResponse(ch.name, ch.url, TvType.Live) {
@@ -118,12 +119,18 @@ class DoggitvProvider : MainAPI() {
                 Log.d(TAG, "load pais '$title': ${episodes.size} canales")
                 newTvSeriesLoadResponse(title, u, TvType.Live, episodes) {
                     this.plot = "$title - ${channels.size} canales (iptv-org)"
+                    this.posterUrl = posterFor(title, null)
                 }
             } else {
                 val title = channelNames[u] ?: "En Vivo"
+                val logo = channelLogos[u]
                 Log.d(TAG, "load canal '$title' -> $u")
-                newTvSeriesLoadResponse(title, u, TvType.Live, listOf(newEpisode(u) { this.name = title })) {
+                newTvSeriesLoadResponse(title, u, TvType.Live, listOf(newEpisode(u) {
+                    this.name = title
+                    this.posterUrl = posterFor(title, logo)
+                })) {
                     this.plot = title
+                    this.posterUrl = posterFor(title, logo)
                 }
             }
         } catch (e: CancellationException) {
@@ -221,6 +228,7 @@ class DoggitvProvider : MainAPI() {
                 if (isAdult(channelName, g, i)) continue
                 out.add(ChannelInfo(channelName, line, l, g))
                 channelNames[line] = channelName
+                l?.takeIf { it.isNotBlank() }?.let { channelLogos[line] = it }
             }
         }
         return out
