@@ -140,6 +140,26 @@
         "name": "DanimadosProvider"
     },
     {
+        "iconUrl": "https://images.icon-icons.com/935/PNG/512/television-outline_icon-icons.com_73141.png",
+        "fileHash": "sha256-5586159d81eed1b39e56f664e8c172d971fa1c22897670e6f8727bfbcd55bddd",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 20144,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 3,
+        "internalName": "DoggitvProvider",
+        "description": "TV en vivo por pa\u00eds (playlists IPTV publicas de iptv-org). Inspirado en Serbero Play TV.",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DoggitvProvider.cs3",
+        "name": "DoggitvProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasflix.co&sz=%size%",
         "fileHash": "sha256-3a0526376f3485af62bc3a293bfec6045404c3cc4b8b3ba46df91f071adee5e1",
         "apiVersion": 1,
