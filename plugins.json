@@ -512,10 +512,10 @@
         "jarHash": "sha256-ddf71e3db547b6d48a51618ed3e707e003e58e2ab571b6d7815667ca022dbd73"
     },
     {
-        "fileHash": "sha256-090e7575740cedf1b2ebd8735bf3c42ef4f864484c26278f6843f316b807b820",
+        "fileHash": "sha256-c2fe6aa7d590c1335ea90795aae5be26df6b1ef529478f94a25528ab0119232e",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35424,
+        "fileSize": 62027,
         "status": 1,
         "language": "es",
         "authors": [
@@ -527,7 +527,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 21,
+        "version": 31,
         "internalName": "PlushdProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlushdProvider.cs3",
