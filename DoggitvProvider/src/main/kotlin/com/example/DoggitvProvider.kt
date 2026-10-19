@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Context
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -8,6 +9,9 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONArray
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class DoggitvProvider : MainAPI() {
@@ -60,6 +64,90 @@ class DoggitvProvider : MainAPI() {
     private val channelNames = ConcurrentHashMap<String, String>()
     private val channelLogos = ConcurrentHashMap<String, String>()
 
+    @Volatile
+    private var diskCacheLoaded = false
+
+    @Volatile
+    private var scanning = false
+
+    private fun cacheFile(): File? {
+        val ctx = pluginContext ?: return null
+        return File(ctx.filesDir, "doggitv_channels.tsv")
+    }
+
+    private fun dec(s: String): String? = try {
+        java.net.URLDecoder.decode(s, "UTF-8")
+    } catch (e: Exception) {
+        null
+    }
+
+    private suspend fun loadDiskCache() {
+        if (diskCacheLoaded) return
+        diskCacheLoaded = true
+        val f = cacheFile() ?: return
+        withContext(Dispatchers.IO) {
+            try {
+                if (!f.exists()) return@withContext
+                var n = 0
+                f.forEachLine { line ->
+                    val p = line.split("\t")
+                    if (p.size < 2) return@forEachLine
+                    val name = dec(p[1]) ?: return@forEachLine
+                    channelNames.putIfAbsent(p[0], name)
+                    val lg = p.getOrNull(2)?.takeIf { it.isNotBlank() } ?: return@forEachLine
+                    dec(lg)?.let { channelLogos.putIfAbsent(p[0], it) }
+                    n++
+                }
+                Log.d(TAG, "cache disco: $n canales (${channelNames.size} en memoria)")
+            } catch (e: Exception) {
+                Log.e(TAG, "cache disco fallo: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun persistChannels(channels: List<ChannelInfo>) {
+        if (channels.isEmpty()) return
+        val f = cacheFile() ?: return
+        withContext(Dispatchers.IO) {
+            try {
+                val map = LinkedHashMap<String, String>()
+                if (f.exists()) {
+                    f.forEachLine { line ->
+                        val p = line.split("\t")
+                        if (p.size >= 2) map[p[0]] = p[1] + "\t" + p.getOrElse(2) { "" }
+                    }
+                }
+                channels.forEach { ch ->
+                    map[ch.url] = enc(ch.name) + "\t" + (ch.logo?.let { enc(it) } ?: "")
+                }
+                f.writeText(map.entries.joinToString("\n") { it.key + "\t" + it.value })
+                Log.d(TAG, "cache disco: ${map.size} canales guardados")
+            } catch (e: Exception) {
+                Log.e(TAG, "persist fallo: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun scanAllLists() {
+        if (scanning) return
+        scanning = true
+        try {
+            Log.d(TAG, "scan de listas para resolver nombre de canal")
+            val lists = countries.amap { c -> fetchChannels(c.listUrl) }
+            persistChannels(lists.flatten())
+        } finally {
+            scanning = false
+        }
+    }
+
+    private suspend fun resolveChannel(url: String): Pair<String, String?> {
+        channelNames[url]?.let { return it to channelLogos[url] }
+        loadDiskCache()
+        channelNames[url]?.let { return it to channelLogos[url] }
+        scanAllLists()
+        return (channelNames[url] ?: "En Vivo") to channelLogos[url]
+    }
+
     private fun channelItem(ch: ChannelInfo): SearchResponse =
         newLiveSearchResponse(ch.name, ch.url, TvType.Live) {
             this.posterUrl = posterFor(ch.name, ch.logo)
@@ -74,6 +162,7 @@ class DoggitvProvider : MainAPI() {
             return null
         }
         val items = channels.map { ch -> channelItem(ch) }
+        persistChannels(channels)
         Log.d(TAG, "getMainPage '${request.name}': ${items.size} canales")
         return newHomePageResponse(HomePageList(request.name, items), false)
     }
@@ -84,13 +173,14 @@ class DoggitvProvider : MainAPI() {
         val qn = fold(q)
         return try {
             val lists = countries.amap { c -> fetchChannels(c.listUrl) }
-            val results = lists.flatten()
+            val matched = lists.flatten()
                 .asSequence()
                 .filter { fold(it.name).contains(qn) }
                 .distinctBy { it.url }
                 .take(80)
-                .map { ch -> channelItem(ch) }
                 .toList()
+            persistChannels(matched)
+            val results = matched.map { ch -> channelItem(ch) }
             Log.d(TAG, "search '$q' -> ${results.size}")
             results
         } catch (e: CancellationException) {
@@ -122,8 +212,7 @@ class DoggitvProvider : MainAPI() {
                     this.posterUrl = posterFor(title, null)
                 }
             } else {
-                val title = channelNames[u] ?: "En Vivo"
-                val logo = channelLogos[u]
+                val (title, logo) = resolveChannel(u)
                 Log.d(TAG, "load canal '$title' -> $u")
                 newTvSeriesLoadResponse(title, u, TvType.Live, listOf(newEpisode(u) {
                     this.name = title
@@ -242,7 +331,7 @@ class DoggitvProvider : MainAPI() {
         directPoster(l)?.let { return it }
         return "https://wsrv.nl/?url=${enc(l)}&w=320&h=320&fit=contain&default=${enc(placeholder)}"
     }
-    
+
     private val imgurRx = Regex(
         """^https?://i[.]imgur[.]com/([A-Za-z0-9]+)[.](jpe?g|png|gif|webp)$""",
         RegexOption.IGNORE_CASE
@@ -281,5 +370,8 @@ class DoggitvProvider : MainAPI() {
 
     companion object {
         const val TAG = "DoggiTV"
+
+        @JvmStatic
+        var pluginContext: Context? = null
     }
 }

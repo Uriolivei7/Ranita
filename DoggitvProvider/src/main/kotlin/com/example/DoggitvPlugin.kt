@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class DoggitvPlugin : Plugin() {
     override fun load(context: Context) {
-
+        DoggitvProvider.pluginContext = context.applicationContext ?: context
         registerMainAPI(DoggitvProvider())
     }
 }
