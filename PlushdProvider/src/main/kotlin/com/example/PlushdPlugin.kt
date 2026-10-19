@@ -7,6 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class PlushdPlugin: Plugin() {
     override fun load(context: Context) {
+        PlushdProvider.pluginContext = context.applicationContext
         registerMainAPI(PlushdProvider())
         registerExtractorAPI(PelisplusUpnsPro())
         registerExtractorAPI(PelisplusUpnsPro2())
