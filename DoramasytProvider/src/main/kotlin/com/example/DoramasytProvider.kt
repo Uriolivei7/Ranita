@@ -12,6 +12,8 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.*
+import okhttp3.Interceptor
+import okhttp3.Response
 
 class DoramasytProvider : MainAPI() {
     companion object {
@@ -28,6 +30,9 @@ class DoramasytProvider : MainAPI() {
 
         var latestCookie: Map<String, String> = emptyMap()
         var latestToken = ""
+
+        const val chrome127Ua =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
     }
 
     override var mainUrl = "https://www.doramasyt.com"
@@ -147,14 +152,31 @@ class DoramasytProvider : MainAPI() {
             cookies = latestCookie,
             data = mapOf("_token" to latestToken)).parsed<CapList>()
 
-        val epList = capJson.eps.map { ep ->
-            var epUrl = "${url.replace("-sub-espanol","").replace("/dorama/","/ver/")}-episodio-${ep.num}"
-
-            if (epUrl.contains("twinkling-watermelon")) {
-                epUrl = epUrl.replace("twinkling-watermelon", "winkling-watermelon")
+        val caps = capJson.paginateUrl?.let { pu ->
+            try {
+                app.post(pu,
+                    headers = mapOf("Referer" to url, "X-Requested-With" to "XMLHttpRequest"),
+                    cookies = latestCookie,
+                    data = mapOf("_token" to latestToken)).parsed<CapList>().caps
+            } catch (e: Exception) {
+                Log.e("Doramasyt", "Error en paginate_url: ${e.message}")
+                null
             }
+        } ?: capJson.caps
 
-            newEpisode(epUrl) { this.episode = ep.num }
+        val epList = if (!caps.isNullOrEmpty()) {
+            caps.map { cap ->
+                val epUrl = cap.url?.takeIf { it.isNotBlank() } ?: buildEpisodeUrl(url, cap.episodio)
+
+                newEpisode(epUrl) {
+                    this.episode = cap.episodio
+                    this.posterUrl = cleanPoster(cap.thumb)
+                }
+            }
+        } else {
+            capJson.eps?.map { ep ->
+                newEpisode(buildEpisodeUrl(url, ep.num)) { this.episode = ep.num }
+            } ?: emptyList()
         }
 
         return newAnimeLoadResponse(title, url, TvType.AsianDrama) {
@@ -193,13 +215,16 @@ class DoramasytProvider : MainAPI() {
             val buttons = response.document.select("button[data-player], li[data-player], .play-video")
             Log.d("Doramasyt", "Botones encontrados: ${buttons.size}")
 
+            val allCookies = cookies + response.cookies
+            var found = false
             buttons.forEach { button ->
                 val encoded = button.attr("data-player")
+                val serverName = button.text().trim().ifBlank { "server" }
                 if (encoded.isNotBlank()) {
                     val iframeUrl = "$mainUrl/reproductor?video=$encoded"
 
                     val iframeRes = app.get(iframeUrl,
-                        cookies = cookies,
+                        cookies = allCookies,
                         headers = mapOf(
                             "Referer" to data,
                             "User-Agent" to USER_AGENT,
@@ -209,15 +234,150 @@ class DoramasytProvider : MainAPI() {
 
                     val finalUrl = iframeRes.document.selectFirst("iframe")?.attr("src")
                     if (!finalUrl.isNullOrEmpty()) {
-                        Log.d("Doramasyt", "Link final: $finalUrl")
-                        customLoadExtractor(fixUrl(finalUrl), iframeUrl, subtitleCallback, callback)
+                        Log.d("Doramasyt", "Link final ($serverName): $finalUrl")
+                        if (tryByseExtraction(finalUrl, data, serverName, subtitleCallback, callback)) {
+                            found = true
+                        } else if (tryLuluExtraction(finalUrl, data, serverName, callback)) {
+                            found = true
+                        } else {
+                            customLoadExtractor(fixUrl(finalUrl), iframeUrl, subtitleCallback, callback)
+                            found = true
+                        }
+                    } else {
+                        Log.w("Doramasyt", "Server '$serverName' sin iframe")
                     }
                 }
             }
-            return true
+            return found
         } catch (e: Exception) {
             Log.e("Doramasyt", "Error en loadLinks: ${e.message}")
             return false
+        }
+    }
+
+    private suspend fun tryByseExtraction(
+        url: String,
+        referer: String,
+        serverName: String,
+        sub: (SubtitleFile) -> Unit,
+        cb: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (!url.contains("byse")) return false
+        return try {
+            val sources = ByseHttpExtractor().extract(url, referer, "https://${runCatching { java.net.URI(url).host }.getOrDefault("")}")
+            Log.d("Doramasyt", "byse sources=${sources.size}")
+            var found = false
+            for (s in sources) {
+                for (sb in s.subtitles) sub(sb)
+                val isHls = s.url.contains(".m3u8")
+                cb(newExtractorLink(name, "$serverName - Byse ${(s.label ?: "").trim()}".trim(), s.url,
+                    if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                    this.referer = referer
+                    this.headers = mapOf(
+                        "User-Agent" to chrome127Ua,
+                        "Referer" to referer,
+                    )
+                    this.quality = Qualities.Unknown.value
+                })
+                found = true
+            }
+            if (!found) Log.w("Doramasyt", "byse: 0 sources")
+            found
+        } catch (e: Exception) {
+            Log.e("Doramasyt", "byse fallo: ${e.message}")
+            false
+        }
+    }
+
+    private val luluPackedRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
+
+    private fun unpackLuluPacked(html: String): String? {
+        val m = luluPackedRegex.find(html) ?: return null
+        return try {
+            val dict = m.groupValues[4].split("|")
+            val base = m.groupValues[2].toIntOrNull() ?: 36
+            val count = m.groupValues[3].toIntOrNull() ?: 0
+            val sb = StringBuilder(m.groupValues[1])
+            for (idx in count - 1 downTo 0) {
+                val key = idx.toString(base)
+                val value = dict.getOrElse(idx) { "" }
+                if (key.isNotEmpty() && value.isNotEmpty()) {
+                    val replaced = Regex("\\b${Regex.escape(key)}\\b").replace(sb, Regex.escapeReplacement(value))
+                    sb.clear()
+                    sb.append(replaced)
+                }
+            }
+            sb.toString().replace("\\'", "'")
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private suspend fun tryLuluExtraction(
+        url: String,
+        referer: String,
+        serverName: String,
+        cb: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (!url.contains("lulu")) return false
+        return try {
+            val html = app.get(url, headers = mapOf(
+                "User-Agent" to chrome127Ua,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer" to url,
+            )).text
+            Log.d("Doramasyt", "lulu GET len=${html.length}")
+
+            val decoded = unpackLuluPacked(html)
+            if (decoded == null) {
+                Log.w("Doramasyt", "lulu: no packed JS (len=${html.length})")
+                return false
+            }
+
+            val linkRegex = Regex("""(?:file|src|source)\s*:\s*["']((?:https?:)?//[^"']+\.(?:m3u8|mp4|txt)[^"']*)["']""", RegexOption.IGNORE_CASE)
+            var emitted = 0
+            for (m in linkRegex.findAll(decoded)) {
+                var u = m.groupValues[1].replace("\\/", "/").trim()
+                if (u.startsWith("//")) u = "https:$u"
+                val type = if (u.contains(".mp4")) ExtractorLinkType.VIDEO else ExtractorLinkType.M3U8
+                Log.d("Doramasyt", "lulu emit ${u.take(110)}")
+                cb(newExtractorLink(name, "$serverName - LuluStream", u, type) {
+                    this.referer = "https://luluvdo.com/"
+                    this.headers = mapOf("User-Agent" to chrome127Ua)
+                })
+                emitted++
+            }
+
+            if (emitted == 0) {
+                val m3u8 = Regex("""(https?://[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*)""", RegexOption.IGNORE_CASE).find(decoded)?.value
+                if (m3u8 != null) {
+                    Log.d("Doramasyt", "lulu emit (scan) ${m3u8.take(110)}")
+                    cb(newExtractorLink(name, "$serverName - LuluStream", m3u8, ExtractorLinkType.M3U8) {
+                        this.referer = "https://luluvdo.com/"
+                        this.headers = mapOf("User-Agent" to chrome127Ua)
+                    })
+                    emitted++
+                }
+            }
+            emitted > 0
+        } catch (e: Exception) {
+            Log.e("Doramasyt", "lulu fallo: ${e.message}")
+            false
+        }
+    }
+
+    @Suppress("ObjectLiteralToLambda")
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
+        val url = extractorLink.url
+        if (!(url.contains("tnmr") || url.contains("lulu"))) return null
+        return object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", chrome127Ua)
+                    .removeHeader("Accept-Language")
+                    .build()
+                return chain.proceed(request)
+            }
         }
     }
 
@@ -240,6 +400,27 @@ class DoramasytProvider : MainAPI() {
         }
     }
 
-    data class CapList(@JsonProperty("eps") val eps: List<Ep>)
-    data class Ep(val num: Int?)
+    private fun buildEpisodeUrl(dramaUrl: String, ep: Int): String {
+        var epUrl = "${dramaUrl.replace("-sub-espanol","").replace("/dorama/","/ver/")}-episodio-$ep"
+        if (epUrl.contains("twinkling-watermelon")) {
+            epUrl = epUrl.replace("twinkling-watermelon", "winkling-watermelon")
+        }
+        return epUrl
+    }
+
+    data class CapList(
+        @JsonProperty("eps") val eps: List<EpisodeJson>? = null,
+        @JsonProperty("caps") val caps: List<CapDetail>? = null,
+        @JsonProperty("paginate_url") val paginateUrl: String? = null,
+    )
+
+    data class EpisodeJson(
+        @JsonProperty("num") val num: Int
+    )
+
+    data class CapDetail(
+        @JsonProperty("episodio") val episodio: Int,
+        @JsonProperty("thumb") val thumb: String?,
+        @JsonProperty("url") val url: String? = null,
+    )
 }
