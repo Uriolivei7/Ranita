@@ -180,10 +180,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=doramasyt.com&sz=%size%",
-        "fileHash": "sha256-58044a2abc91f01a715346119884c9cc3f661018ce343ae619f55fb5bd0ac0c9",
+        "fileHash": "sha256-d56759449252695b1a29c2309febf29dd3757d936837d73228c7908e020824a8",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 21967,
+        "fileSize": 53279,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -192,7 +192,7 @@
         "tvTypes": [
             "AsianDrama"
         ],
-        "version": 6,
+        "version": 3,
         "internalName": "DoramasytProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DoramasytProvider.cs3",
         "name": "DoramasytProvider"
