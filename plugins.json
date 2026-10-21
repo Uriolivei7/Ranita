@@ -302,10 +302,10 @@
         "name": "JkanimeProvider"
     },
     {
-        "fileHash": "sha256-31ec559623b8d7faf35c954975432c8f5535af5e71d4466e9f9e8edd3e817637",
+        "fileHash": "sha256-54dba8f9041baf65224d93b30c435c4fdcf65e8369e358675abf14bd74e0543f",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 35739,
+        "fileSize": 35067,
         "status": 1,
         "language": "es",
         "authors": [
@@ -317,7 +317,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 21,
+        "version": 2,
         "internalName": "KatanimeProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/KatanimeProvider.cs3",
