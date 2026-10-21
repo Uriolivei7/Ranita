@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import kotlinx.coroutines.*
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -120,21 +121,27 @@ class KatanimeProvider : MainAPI() {
         }
     }
 
+    private fun parseCards(doc: Document): List<SearchResponse> =
+        doc.select("div._135yj").mapNotNull { card ->
+            val imgElem = card.selectFirst("img")
+            val title = imgElem?.attr("alt")?.trim()?.takeIf { it.isNotEmpty() }
+                ?: card.selectFirst("a._2uHIS")?.text()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            val link = card.selectFirst("a._1A2Dc")?.attr("href")
+                ?: card.selectFirst("a[href*='/anime/']")?.attr("href")
+                ?: return@mapNotNull null
+            val poster = imgElem?.attr("data-src")?.ifBlank { imgElem.attr("src") } ?: ""
+            newAnimeSearchResponse(cleanTitle(title) ?: title, fixUrl(link)) {
+                this.posterUrl = fixUrl(poster)
+            }
+        }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val homePageLists = mutableListOf<HomePageList>()
 
         try {
             val resRecientes = app.get("$mainUrl/animes").document
-            val recientes = resRecientes.select("div._135yj").mapNotNull {
-                val title = it.selectFirst("a._2uHIS")?.text() ?: return@mapNotNull null
-                val animeLink = it.selectFirst("a._1A2Dc")?.attr("href") ?: ""
-                val imgElem = it.selectFirst("img")
-                val img = imgElem?.attr("data-src")?.ifBlank { imgElem.attr("src") } ?: ""
-
-                newAnimeSearchResponse(cleanTitle(title)!!, fixUrl(animeLink)) {
-                    this.posterUrl = fixUrl(img)
-                }
-            }
+            val recientes = parseCards(resRecientes)
             if (recientes.isNotEmpty()) homePageLists.add(HomePageList("Animes Recientes", recientes))
         } catch (e: Exception) {
             Log.e(TAG, "Error cargando recientes: ${e.message}")
@@ -142,16 +149,7 @@ class KatanimeProvider : MainAPI() {
 
         try {
             val resPopulares = app.get("$mainUrl/populares").document
-            val populares = resPopulares.select("div._135yj").mapNotNull {
-                val title = it.selectFirst("a._2uHIS")?.text() ?: return@mapNotNull null
-                val animeLink = it.selectFirst("a._1A2Dc")?.attr("href") ?: ""
-                val imgElem = it.selectFirst("img")
-                val img = imgElem?.attr("data-src")?.ifBlank { imgElem.attr("src") } ?: ""
-
-                newAnimeSearchResponse(cleanTitle(title)!!, fixUrl(animeLink)) {
-                    this.posterUrl = fixUrl(img)
-                }
-            }
+            val populares = parseCards(resPopulares)
             if (populares.isNotEmpty()) homePageLists.add(HomePageList("Animes Populares", populares))
         } catch (e: Exception) {
             Log.e(TAG, "Error cargando populares: ${e.message}")
@@ -162,38 +160,44 @@ class KatanimeProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val doc = app.get("$mainUrl/buscar?q=$query").document
-        return doc.select("div._135yj").mapNotNull {
-            val title = it.selectFirst("a._2uHIS")?.text() ?: return@mapNotNull null
-            val imgElem = it.selectFirst("img")
-            val img = imgElem?.attr("data-src")?.ifBlank { imgElem.attr("src") } ?: ""
-            newAnimeSearchResponse(cleanTitle(title)!!, fixUrl(it.selectFirst("a._1A2Dc")?.attr("href") ?: "")) {
-                this.posterUrl = fixUrl(img)
-            }
-        }
+        return parseCards(doc)
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val response = app.get(url)
         val doc = Jsoup.parse(response.text)
 
-        val title = cleanTitle(doc.selectFirst("h1.comics-title")?.text()) ?: ""
-        val imgElem = doc.selectFirst("div#animeinfo img")
+        val title = cleanTitle(
+            doc.selectFirst("h1.anime-title")?.text()
+                ?: doc.selectFirst("h1.comics-title")?.text()
+        ) ?: ""
+        val imgElem = doc.selectFirst("img[data-src*='/original/']")
+            ?: doc.selectFirst("div#animeinfo img")
+            ?: doc.selectFirst("img.lozad")
         val mainPoster = fixUrl(imgElem?.attr("data-src")?.ifBlank { imgElem.attr("src") } ?: "")
 
-        val statusText = doc.selectFirst("span#estado")?.text()?.lowercase() ?: ""
+        val statusText = (
+            doc.selectFirst("span.badge-status")?.text()
+                ?: doc.selectFirst("span#estado")?.text()
+                ?: ""
+            ).lowercase()
         val status = when {
             statusText.contains("en emision") || statusText.contains("emisión") -> ShowStatus.Ongoing
             statusText.contains("finalizado") -> ShowStatus.Completed
             else -> null
         }
 
-        val detailsBy = doc.selectFirst("div.details-by")?.text() ?: ""
-        val year = Regex("(\\d{4})").find(detailsBy)?.groupValues?.get(1)?.toIntOrNull()
+        val metaText = doc.selectFirst("div.anime-meta")?.text() ?: ""
+        val detailsText = doc.select("div.detail-item").joinToString(" ") { it.text() }
+        val year = Regex("(\\d{4})").find(metaText)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("(\\d{4})").find(detailsText)?.groupValues?.get(1)?.toIntOrNull()
 
-        val genres = doc.select("div.anime-genres a").map { it.text() }
+        val genres = doc.select("div.genres-anime a").map { it.text() }
+            .ifEmpty { doc.select("div.anime-genres a").map { it.text() } }
 
         val apiToken = doc.selectFirst("meta[name=csrf-token]")?.attr("content")
-        val apiUrl = doc.selectFirst("div._pagination")?.attr("data-url")
+        val apiUrl = doc.selectFirst("div.episodes-grid._pagination")?.attr("data-url")
+            ?: doc.selectFirst("div._pagination")?.attr("data-url")
         val episodesList = mutableListOf<Episode>()
 
         if (apiToken != null && apiUrl != null) {
@@ -226,7 +230,8 @@ class KatanimeProvider : MainAPI() {
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = mainPoster
-            this.plot = doc.selectFirst("#sinopsis p")?.text()
+            this.plot = doc.selectFirst("p.anime-synopsis")?.text()
+                ?: doc.selectFirst("#sinopsis p")?.text()
             this.showStatus = status
             this.year = year
             this.tags = genres
