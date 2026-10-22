@@ -737,10 +737,10 @@
     },
     {
         "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
-        "fileHash": "sha256-2e8e87612085f0feb636ca20a2d01bbf1b8c7cfab563cefdae43527cdeb153fb",
+        "fileHash": "sha256-c92a603c4fc1e3eac186316e19aad9047a2196ce312e70fe36ad66ed61c0d3dc",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 23503,
+        "fileSize": 48099,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -749,7 +749,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 1,
+        "version": 12,
         "internalName": "TeleonlineProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TeleonlineProvider.cs3",
         "name": "TeleonlineProvider"
