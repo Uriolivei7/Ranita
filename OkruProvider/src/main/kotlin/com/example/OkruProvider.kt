@@ -17,7 +17,6 @@ class OkruProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/video/showcase" to "Videos",
-        "${mainUrl}/video/kino/soviet" to "Soviet",
         "${mainUrl}/video/kino/drama" to "Drama",
         "${mainUrl}/video/kino/action" to "Action",
         "${mainUrl}/video/kino/family" to "Family",
@@ -26,6 +25,7 @@ class OkruProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        Log.d(name, "getMainPage '${request.name}' page=$page url=${request.data}")
         val tag = request.data.substringAfterLast("/")
         val isSerial = request.data.contains("serial")
         val isShowcase = request.data.contains("showcase")
@@ -89,6 +89,7 @@ class OkruProvider : MainAPI() {
         }
 
         val finalResults = resultsList.distinctBy { it.url }
+        Log.d(name, "getMainPage '${request.name}' page=$page -> ${finalResults.size} items")
 
         return newHomePageResponse(
             list = HomePageList(
@@ -101,16 +102,19 @@ class OkruProvider : MainAPI() {
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
+        Log.d(name, "search '$query' page=$page")
         var searchdata: SearchData? = null
 
         if (page == 1) {
             val response = app.post("$mainUrl/video/search?st.cmd=video&st.psft=showcase&st.m=SEARCH&st.ft=search&st.fuvh=on&st.furl=%2Fvideo%2Fshowcase&cmd=VideoContentBlock", data = mapOf("st.v.sq" to query, "gwt.requested" to "9579ea2eT1774883610506")).document
             val jsonstr = response.selectFirst("video-search-result")?.attr("data-props")
+            Log.d(name, "search p1 data-props len=${jsonstr?.length ?: 0}")
             if (!jsonstr.isNullOrEmpty()) searchdata = AppUtils.parseJson<SearchData>(jsonstr)
         } else {
             val offset = (page - 1) * 30
             val reqbodystring = """{"id": $page,"parameters": {"displayMode": "Movie","videosOffset": $offset,"channelsOffset": 0,"searchQuery": "$query","currentStateId": "video","durationType": "ANY","hd": false}}"""
             val jsonstr = app.post("$mainUrl/web-api/v2/video/fetchSearchResult", headers = mapOf("Accept" to "application/json, text/javascript, */*; q=0.01", "ok-screen" to "anonymVideo", "x-client-flags" to "ms:0;dcss:0;mpv2:1;dz:0"), requestBody = reqbodystring.toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())).text
+            Log.d(name, "search p$page api len=${jsonstr.length}")
             if (jsonstr.isNotEmpty()) searchdata = AppUtils.parseJson<ApiSearchResponse>(jsonstr).result
         }
 
@@ -128,6 +132,7 @@ class OkruProvider : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun load(url: String): LoadResponse? {
+        Log.d(name, "load $url")
         val idmatch = Regex("""video/(\d+)""").find(url)
         val curl = idmatch?.let { "$mainUrl/video/${it.groupValues[1]}" } ?: url.split("?").first()
         val doc = app.get(url).document
@@ -138,6 +143,7 @@ class OkruProvider : MainAPI() {
         } else {
             doc.selectFirst("meta[property=og:title]")?.attr("content")
         }) ?: doc.selectFirst("title")?.text() ?: return null
+        Log.d(name, "load album=$album title='$title'")
 
         val author = doc.selectFirst("meta[property=ya:ovs:login]")?.attr("content")
         val recs = doc.select("li.recommendations_block_reco-content_item").mapNotNull { it.toOkruRecommendation() }.distinctBy { it.url }
@@ -179,6 +185,7 @@ class OkruProvider : MainAPI() {
         }
 
         val feps = eps.distinctBy { it.data }.reversed()
+        Log.d(name, "SerieLoad aid=$aid eps=${feps.size} (crudos=${eps.size})")
         if (feps.isEmpty()) return null
 
         return if (feps.size == 1) {
@@ -203,6 +210,7 @@ class OkruProvider : MainAPI() {
             ?: doc.selectFirst("meta[property=og:video:url]")?.attr("content")
             ?: curl.replace("/video/", "/videoembed/")
         val duration = doc.selectFirst("meta[property=video:duration]")?.attr("content")?.toIntOrNull()?.div(60)
+        Log.d(name, "Filmvideo title='$title' eurl=$eurl duration=$duration")
 
         return newMovieLoadResponse(title, curl, TvType.Movie, eurl) {
             this.posterUrl = fixUrlNull(poster)
@@ -248,22 +256,26 @@ class OkruProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val cleanData = data.trim()
-        Log.d(this.name, cleanData)
+        Log.d(this.name, "loadLinks $cleanData")
 
         if (cleanData.contains("ok.ru") || cleanData.contains("odnoklassniki.ru")) {
+            Log.d(this.name, "loadLinks -> OkRuExtractor")
             var isFound = false
             OkRuExtractor().getUrl(cleanData, mainUrl, subtitleCallback) {
                 isFound = true
                 callback(it)
             }
+            Log.d(this.name, "loadLinks OkRuExtractor -> isFound=$isFound")
             return isFound
         }
 
+        Log.d(this.name, "loadLinks -> loadExtractor")
         var isFound = false
         loadExtractor(cleanData, mainUrl, subtitleCallback) {
             isFound = true
             callback(it)
         }
+        Log.d(this.name, "loadLinks loadExtractor -> isFound=$isFound")
         return isFound
     }
 
