@@ -468,10 +468,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=ok.ru&sz=%size%",
-        "fileHash": "sha256-acc4636e86ac20d0170ffaab172ec690f79fed025d201f452ab3c3cf04aaff5f",
+        "fileHash": "sha256-395060a28a2f4dce01fb03090bd2b05f16a541a07c3a5c8170f54476d57a4815",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 32528,
+        "fileSize": 40597,
         "status": 1,
         "language": "es",
         "authors": [
@@ -481,7 +481,7 @@
             "Movie",
             "TvSeries"
         ],
-        "version": 1,
+        "version": 5,
         "internalName": "OkruProvider",
         "description": "Proveedor + extractor OK.ru",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OkruProvider.cs3",
