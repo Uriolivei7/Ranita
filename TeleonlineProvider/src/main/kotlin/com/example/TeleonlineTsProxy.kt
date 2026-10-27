@@ -24,7 +24,7 @@ object TeleonlineTsProxy {
     private const val TAG = "TeleonlineProxy"
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
     private const val IDLE_MS = 180000L
-    private const val PROBE_LIMIT = 3 * 1024 * 1024
+    private const val PROBE_LIMIT = 768 * 1024
 
     private val AUDIO_TYPES = setOf(0x03, 0x04, 0x0F, 0x11, 0x81, 0x87)
 

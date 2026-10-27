@@ -256,18 +256,36 @@ class TeleonlineProvider : MainAPI() {
         Log.d("Teleonline", "opciones=${options.size} candidatas=${candidates.size}")
 
         val plans = HashMap<Int, ProxyPlan>()
-        var budget = 2
-        for (c in candidates) {
-            if (budget <= 0) break
-            budget--
-            try {
-                probeCandidate(c)?.let { plans[c.idx] = it }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e("Teleonline", "probe opción ${c.idx} falló: ${e.message}")
+        withTimeoutOrNull(30000L) {
+            candidates.amap { c ->
+                try {
+                    probeCandidate(c)?.let { plan ->
+                        synchronized(plans) { plans[c.idx] = plan }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("Teleonline", "probe opción ${c.idx} falló: ${e.message}")
+                }
             }
         }
+        if (plans.isEmpty()) {
+            Log.w("Teleonline", "sin planes en paralelo, reintento secuencial")
+            withTimeoutOrNull(15000L) {
+                for (c in candidates) {
+                    try {
+                        probeCandidate(c)?.let { plan ->
+                            synchronized(plans) { plans[c.idx] = plan }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e("Teleonline", "probe opción ${c.idx} falló (reintento): ${e.message}")
+                    }
+                }
+            }
+        }
+        Log.d("Teleonline", "planes=${plans.size}/${candidates.size}")
 
         var found = false
         for ((idx, url) in options) {

@@ -11,6 +11,7 @@ import org.json.JSONArray
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -247,37 +248,111 @@ class DoggitvProvider : MainAPI() {
             path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".webm") -> ExtractorLinkType.VIDEO
             else -> ExtractorLinkType.M3U8
         }
-        var target = u
-        if (type == ExtractorLinkType.M3U8) {
-            muxedVariant(u)?.let { mux ->
-                target = mux
-                Log.d(TAG, "master con grupo de audio -> variant muxado $mux")
-            }
+        if (type != ExtractorLinkType.M3U8) {
+            Log.d(TAG, "loadLinks -> $type $u")
+            emitLink(callback, u, type, null)
+            return true
         }
-        Log.d(TAG, "loadLinks -> $type $target")
-        callback(newExtractorLink(name, name, target, type) {
-            this.quality = Qualities.Unknown.value
-        })
-        return true
-    }
 
-    private suspend fun muxedVariant(master: String): String? {
-        return try {
-            val body = app.get(master, timeout = 15L).text
-            if (!body.contains("#EXT-X-MEDIA:TYPE=AUDIO")) return null
-            val lines = body.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-            val infos = lines.indices.filter { lines[it].startsWith("#EXT-X-STREAM-INF") }
-            if (infos.size != 1) return null
-            val idx = infos[0]
-            val variant = if (idx + 1 < lines.size) lines[idx + 1] else null
-            if (variant.isNullOrBlank() || variant.startsWith("#")) return null
-            java.net.URI(master).resolve(variant).toString()
+        val master = try {
+            app.get(u, timeout = 15L).text
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "muxedVariant '$master' fallo: ${e.message}")
+            Log.e(TAG, "master '$u' fallo: ${e.message}")
             null
         }
+
+        if (master != null) {
+            muxedVariantOf(u, master)?.let { mux ->
+                Log.d(TAG, "master con grupo de audio -> variant muxado $mux")
+                emitLink(callback, mux, ExtractorLinkType.M3U8, null)
+                return true
+            }
+            if (!master.contains("#EXT-X-MAP") && !master.contains("#EXT-X-KEY")) {
+                singleVariantOf(u, master)?.let { variant ->
+                    var tracks: List<DoggiTsTrackInfo>? = null
+                    for (attempt in 1..2) {
+                        tracks = withTimeoutOrNull(40000L) {
+                            DoggitvTsProxy.probeVariantTracks(variant, 10000L)
+                        }
+                        if (tracks != null && tracks.size >= 2) break
+                        Log.w(TAG, "probe intento $attempt sin 2+ audios, reintentando")
+                    }
+                    if (tracks != null && tracks.size >= 2) {
+                        Log.d(TAG, "multi-audio ${tracks.joinToString { "${it.pid}:${it.lang}" }}")
+                        var emitted = 0
+                        for (t in tracks.sortedBy { langRank(it.lang) }) {
+                            val proxy = DoggitvTsProxy.playlistUrl(u, t.pid)
+                            if (proxy == null) {
+                                Log.e(TAG, "proxy no disponible para pid ${t.pid}")
+                                continue
+                            }
+                            val label = langLabel(t.lang)
+                            Log.d(TAG, "emit proxy [$label] pid=${t.pid}")
+                            emitLink(callback, proxy, ExtractorLinkType.M3U8, label)
+                            emitted++
+                        }
+                        if (emitted > 0) return true
+                    }
+                }
+            }
+        }
+
+        Log.d(TAG, "loadLinks -> M3U8 $u")
+        emitLink(callback, u, ExtractorLinkType.M3U8, null)
+        return true
+    }
+
+    private suspend fun emitLink(
+        callback: (ExtractorLink) -> Unit,
+        url: String,
+        type: ExtractorLinkType,
+        label: String?,
+    ) {
+        val title = if (label.isNullOrBlank()) name else "$name [$label]"
+        callback(newExtractorLink(name, title, url, type) {
+            this.quality = Qualities.Unknown.value
+        })
+    }
+
+    private fun langRank(lang: String?): Int {
+        val l = lang?.lowercase().orEmpty()
+        return when {
+            l.startsWith("es") || l.startsWith("spa") -> 0
+            l.startsWith("en") || l.startsWith("eng") -> 1
+            else -> 2
+        }
+    }
+
+    private fun langLabel(lang: String?): String {
+        val l = lang?.trim().orEmpty()
+        if (l.isEmpty()) return "AUDIO"
+        return when {
+            l.startsWith("es", true) || l.startsWith("spa", true) -> "ESP"
+            l.startsWith("en", true) || l.startsWith("eng", true) -> "ENG"
+            else -> l.uppercase()
+        }
+    }
+
+    private fun singleVariantOf(master: String, body: String): String? {
+        val lines = body.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        val infos = lines.indices.filter { lines[it].startsWith("#EXT-X-STREAM-INF") }
+        if (infos.size != 1) return null
+        val idx = infos[0]
+        val variant = if (idx + 1 < lines.size) lines[idx + 1] else null
+        if (variant.isNullOrBlank() || variant.startsWith("#")) return null
+        return try {
+            java.net.URI(master).resolve(variant).toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "singleVariantOf '$master' fallo: ${e.message}")
+            null
+        }
+    }
+
+    private fun muxedVariantOf(master: String, body: String): String? {
+        if (!body.contains("#EXT-X-MEDIA:TYPE=AUDIO")) return null
+        return singleVariantOf(master, body)
     }
 
     private suspend fun fetchChannels(listUrl: String): List<ChannelInfo> {
