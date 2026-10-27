@@ -141,10 +141,10 @@
     },
     {
         "iconUrl": "https://images.icon-icons.com/935/PNG/512/television-outline_icon-icons.com_73141.png",
-        "fileHash": "sha256-436710f8d3746ade026e64fb9f2bfe838bd586d3abf2bc70f115d82ccf83d221",
+        "fileHash": "sha256-aec1b20ef66e0f9268de0cd2391beeb3f977159456b37d5b4446dc8b1c48d55b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 25947,
+        "fileSize": 46300,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -153,7 +153,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 6,
+        "version": 9,
         "internalName": "DoggitvProvider",
         "description": "TV en vivo por pa\u00eds (playlists IPTV publicas de iptv-org). Inspirado en Serbero Play TV.",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DoggitvProvider.cs3",
@@ -737,10 +737,10 @@
     },
     {
         "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
-        "fileHash": "sha256-c92a603c4fc1e3eac186316e19aad9047a2196ce312e70fe36ad66ed61c0d3dc",
+        "fileHash": "sha256-3e8c6261457e4a99ac2295068f44ad55ac3dffffe2a83b743d602ac27df12769",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 48099,
+        "fileSize": 49490,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -749,7 +749,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 12,
+        "version": 13,
         "internalName": "TeleonlineProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TeleonlineProvider.cs3",
         "name": "TeleonlineProvider"
