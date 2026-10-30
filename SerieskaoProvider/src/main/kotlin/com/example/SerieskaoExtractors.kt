@@ -655,7 +655,6 @@ private suspend fun tryExtractSubsFromM3u8(
 }
 
 private const val SW_READY_JS = "h.includes('.m3u8')||h.includes('jwplayer')"
-private const val VOE_READY_JS = "(!h.includes('altcha-widget'))&&(h.includes('.m3u8')||h.includes('application/json'))"
 private const val DUMP_JS = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
 
 private val webViewMutex = Mutex()
@@ -870,18 +869,6 @@ private suspend fun tryVidHideProExtraction(
     }
 }
 
-private fun webViewCookies(url: String): Map<String, String> {
-    return try {
-        val raw = android.webkit.CookieManager.getInstance().getCookie(url) ?: return emptyMap()
-        raw.split(";").mapNotNull { part ->
-            val kv = part.trim().split("=", limit = 2)
-            if (kv.size == 2 && kv[0].isNotBlank()) kv[0].trim() to kv[1] else null
-        }.toMap()
-    } catch (_: Exception) {
-        emptyMap()
-    }
-}
-
 private suspend fun tryVoeExtraction(    url: String,
     referer: String,
     subtitleCallback: (SubtitleFile) -> Unit,
@@ -951,14 +938,7 @@ private suspend fun tryVoeExtraction(    url: String,
             Log.w(KAO_TAG, "[Voe] challenge detectado en $finalUrl")
 
             if (KaoVoeExtractor().parseHtml(finalHtml, finalUrl, "SeriesKao", subtitleCallback, callback, finalCookies)) return true
-            if (tryMirrors()) return true
-            Log.d(KAO_TAG, "[Voe] probando WebView (Altcha se auto-resuelve): $finalUrl")
-            val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && KaoVoeExtractor().parseHtml(rendered, finalUrl, "SeriesKao", subtitleCallback, callback, webViewCookies(finalUrl))) {
-                Log.d(KAO_TAG, "[Voe] WebView fallback emitió links")
-                return true
-            }
-            return false
+            return tryMirrors()
         }
 
         val m3u8 = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""").find(finalHtml)?.groupValues?.get(1)
@@ -968,14 +948,7 @@ private suspend fun tryVoeExtraction(    url: String,
         if (videoUrl == null) {
             Log.w(KAO_TAG, "[Voe] no m3u8/mp4 found in $finalUrl")
             if (KaoVoeExtractor().parseHtml(finalHtml, finalUrl, "SeriesKao", subtitleCallback, callback, finalCookies)) return true
-            if (tryMirrors()) return true
-            Log.d(KAO_TAG, "[Voe] probando WebView: $finalUrl")
-            val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && KaoVoeExtractor().parseHtml(rendered, finalUrl, "SeriesKao", subtitleCallback, callback, webViewCookies(finalUrl))) {
-                Log.d(KAO_TAG, "[Voe] WebView fallback emitió links")
-                return true
-            }
-            return false
+            return tryMirrors()
         }
 
         val type = ExtractorLinkType.M3U8

@@ -13,6 +13,7 @@ import kotlin.collections.ArrayList
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -357,16 +358,17 @@ class SoloLatinoProvider : MainAPI() {
 
         try {
             app.get("$mainUrl/sanctum/csrf-cookie", headers = baseHeaders, timeout = 15L).also {
-                Log.d("SoloLatino", "loadLinks - Sanctum GET HTTP ${it.code}, cookies=${it.cookies}")
+                Log.d("SoloLatino", "loadLinks - Sanctum GET HTTP ${it.code}, cookieNames=${it.cookies.keys}")
                 if (it.cookies.isNotEmpty()) sessionCookies = sessionCookies + it.cookies
             }
         } catch (_: Exception) { }
 
         val pageResp = app.get(targetUrl, headers = baseHeaders, cookies = sessionCookies, timeout = 30L)
-        Log.d("SoloLatino", "loadLinks - Page GET HTTP ${pageResp.code}, cookies=${pageResp.cookies}")
+        Log.d("SoloLatino", "loadLinks - Page GET HTTP ${pageResp.code}, cookieNames=${pageResp.cookies.keys}")
         if (!pageResp.isSuccessful) return false
         if (pageResp.cookies.isNotEmpty()) sessionCookies = sessionCookies + pageResp.cookies
-        Log.d("SoloLatino", "loadLinks - sessionCookies final=${sessionCookies}")
+        Log.d("SoloLatino", "loadLinks - session cookieNames=${sessionCookies.keys}")
+
         val html = pageResp.text
         val doc = pageResp.document
 
@@ -380,8 +382,12 @@ class SoloLatinoProvider : MainAPI() {
             "X-XSRF-TOKEN" to xsrfToken,
             "X-Requested-With" to "XMLHttpRequest",
             "Referer" to targetUrl,
+            "Origin" to mainUrl,
+            "sec-fetch-dest" to "empty",
+            "sec-fetch-mode" to "cors",
+            "sec-fetch-site" to "same-origin",
         )
-        Log.d("SoloLatino", "loadLinks - X-XSRF-TOKEN header=${xsrfToken.take(80)}")
+        Log.d("SoloLatino", "loadLinks - X-XSRF-TOKEN presente=${xsrfToken.isNotBlank()} len=${xsrfToken.length}")
 
         val serverUrls = mutableListOf<String>()
         val tokens = mutableSetOf<String>()
@@ -427,22 +433,36 @@ class SoloLatinoProvider : MainAPI() {
             }
         }
 
+        var lazyToken: String? = null
         if (serverUrls.isEmpty()) {
-            doc.selectFirst("#player-frame[data-lazy-embed]")?.attr("data-lazy-embed")?.let { lazyToken ->
+            doc.selectFirst("#player-frame[data-lazy-embed]")?.attr("data-lazy-embed")?.ifBlank { null }?.let { tk ->
+                lazyToken = tk
                 try {
                     val apiResp = app.post(
                         "$mainUrl/api/player-embed",
-                        json = mapOf("t" to lazyToken),
+                        json = mapOf("t" to tk),
                         headers = apiHeaders,
                         cookies = sessionCookies,
                         timeout = 15L
                     )
+                    Log.d("SoloLatino", "loadLinks - POST /api/player-embed HTTP ${apiResp.code}, body=${apiResp.text.take(200)}")
                     tryParseJson<PlayerUrlResponse>(apiResp.text)?.let { data ->
                         if (!data.url.isNullOrBlank()) serverUrls.add(data.url)
                     }
                 } catch (e: Exception) {
                     Log.e("SoloLatino", "loadLinks - Error con lazy embed: ${e.message}")
                 }
+            }
+        }
+
+        if (serverUrls.isEmpty() && tokens.isNotEmpty()) {
+            Log.w("SoloLatino", "loadLinks - POST bloqueado por Cloudflare, resolviendo ${tokens.size} tokens en WebView")
+            val wvUrls = resolvePlayerUrlsViaWebView(targetUrl, tokens.toList(), lazyToken, mainUrl)
+            if (wvUrls.isNotEmpty()) {
+                Log.d("SoloLatino", "loadLinks - WebView devolvio ${wvUrls.size} servidores")
+                serverUrls.addAll(wvUrls)
+            } else {
+                Log.e("SoloLatino", "loadLinks - WebView no devolvio servidores")
             }
         }
 
@@ -702,7 +722,6 @@ private fun decryptAESLocal(encryptedBase64: String, aesKey: ByteArray): String?
 }
 
 private const val SW_READY_JS = "h.includes('.m3u8')||h.includes('jwplayer')"
-private const val VOE_READY_JS = "(!h.includes('altcha-widget'))&&(h.includes('.m3u8')||h.includes('application/json'))"
 private const val DUMP_JS = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
 
 private val webViewMutex = Mutex()
@@ -800,6 +819,243 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
             try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
             try { webView?.destroy() } catch (_: Exception) {}
         }
+    }
+}
+}
+
+private suspend fun resolvePlayerUrlsViaWebView(
+    pageUrl: String,
+    tokens: List<String>,
+    lazyToken: String?,
+    mainUrl: String,
+    timeoutMs: Long = 60000L,
+): List<String> {
+    if (tokens.isEmpty() && lazyToken.isNullOrBlank()) return emptyList()
+
+    val tokensJs = tokens.joinToString(",") { t ->
+        "'" + t.replace("\\", "\\\\").replace("'", "\\'") + "'"
+    }
+    val lazyJs = (lazyToken ?: "").replace("\\", "\\\\").replace("'", "\\'")
+    val kickJs = """
+        (function(){
+          try{
+            if (window.__slRun) return 'busy';
+            var ready = document.querySelector('[data-server-btn]') || document.getElementById('player-frame');
+            if (!ready) return 'wait';
+            window.__slRun = true;
+            window.__slTries = (window.__slTries || 0) + 1;
+            var toks = [$tokensJs];
+            var lazy = '$lazyJs';
+            (async function(){
+              var out = [];
+              var errs = [];
+              var tok = '';
+              try {
+                var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+                tok = m ? decodeURIComponent(m[1]) : '';
+              } catch(e) {}
+              var hdr = {'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'XMLHttpRequest'};
+              if (tok) hdr['X-XSRF-TOKEN'] = tok;
+              for (var i=0;i<toks.length;i++){
+                try {
+                  var r = await fetch('/api/player-url', {method:'POST', credentials:'same-origin', headers:hdr, body: JSON.stringify({t: toks[i]})});
+                  var txt = await r.text();
+                  var u = '';
+                  try { u = JSON.parse(txt).url || ''; } catch(e) {}
+                  if (u) { out.push(u); }
+                  else { errs.push('tok' + i + ' http=' + r.status + ' body=' + txt.slice(0,90)); }
+                } catch(e) { errs.push('tok' + i + ' ex=' + e); }
+              }
+              if (lazy) {
+                try {
+                  var r2 = await fetch('/api/player-embed', {method:'POST', credentials:'same-origin', headers:hdr, body: JSON.stringify({t: lazy})});
+                  var txt2 = await r2.text();
+                  var u2 = '';
+                  try { u2 = JSON.parse(txt2).url || ''; } catch(e) {}
+                  if (u2) { out.push(u2); }
+                  else { errs.push('lazy http=' + r2.status + ' body=' + txt2.slice(0,90)); }
+                } catch(e) { errs.push('lazy ex=' + e); }
+              }
+              if (out.length) {
+                try { SlBridge.onUrls(JSON.stringify(out)); } catch(e) {}
+              } else {
+                try { SlBridge.onErr(errs.join(' || ').slice(0,400)); } catch(e) {}
+                // A 403 challenge is not fixed by replaying the same POST. Let the
+                // native bridge decide whether to change UA / finish this attempt.
+                if (window.__slTries < 2) { window.__slRun = false; }
+                else { try { SlBridge.onUrls('[]'); } catch(e) {}
+                }
+              }
+            })();
+            return 'started';
+          } catch(e) { return 'err:' + e; }
+        })()
+    """.trimIndent()
+
+    return webViewMutex.withLock {
+        withContext(Dispatchers.Main) {
+            val appCtx = SoloLatinoProvider.pluginContext?.applicationContext
+            if (appCtx == null) {
+                Log.w("SoloLatino", "[WV] sin context")
+                return@withContext emptyList<String>()
+            }
+            var webView: WebView? = null
+            val mainHandler = Handler(Looper.getMainLooper())
+            val deferred = CompletableDeferred<List<String>>()
+
+            var phase = 0
+            var lastErr = ""
+            var clearanceTries = 0
+            try {
+                webView = WebView(appCtx)
+                webView.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    cacheMode = WebSettings.LOAD_NO_CACHE
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+                }
+                webView.addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun onUrls(json: String) {
+                        if (deferred.isCompleted) return
+                        val list = try {
+                            val arr = org.json.JSONArray(json)
+                            (0 until arr.length()).mapNotNull { idx ->
+                                arr.optString(idx, "").takeIf { u -> u.startsWith("http") }
+                            }
+                        } catch (t: Throwable) {
+                            Log.w("SoloLatino", "[WV] JSON de servidores invalido: ${t.message}")
+                            emptyList<String>()
+                        }
+                        if (list.isNotEmpty()) {
+                            Log.d("SoloLatino", "[WV] servidores resueltos: ${list.size} -> $list")
+                            deferred.complete(list)
+                            return
+                        }
+
+                        if (phase < 2 && !lastErr.contains("http=403")) {
+                            Log.w("SoloLatino", "[WV] 0 URLs en fase $phase (último error: ${lastErr.take(200)}) -> reintentando con UA Android")
+                            mainHandler.post {
+                                if (deferred.isCompleted) return@post
+                                phase = 2
+                                val wv = webView ?: return@post
+                                try {
+                                    wv.settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36"
+                                } catch (t: Throwable) { }
+                                mainHandler.postDelayed({
+                                    if (!deferred.isCompleted) {
+                                        Log.d("SoloLatino", "[WV] fase 2: recargando página con UA Android")
+                                        wv.loadUrl(pageUrl)
+                                    }
+                                }, 200L)
+                            }
+                        } else {
+                            Log.e("SoloLatino", "[WV] 0 URLs tras las 2 variantes (último error: ${lastErr.take(200)})")
+                            deferred.complete(emptyList())
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun onErr(msg: String) {
+                        lastErr = msg
+                        Log.w("SoloLatino", "[WV] player-url sin JSON (Cloudflare?): $msg")
+                        if (msg.contains("http=403") && phase == 1) {
+
+                            mainHandler.post {
+                                if (deferred.isCompleted || phase != 1) return@post
+                                phase = 2
+                                webView?.settings?.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36"
+                                webView?.loadUrl(pageUrl)
+                            }
+                        } else if (msg.contains("http=403") && phase == 2) {
+                            deferred.complete(emptyList())
+                        }
+                    }
+                }, "SlBridge")
+
+                fun kick() {
+                    if (deferred.isCompleted) return
+                    if (phase == 0) return
+                    val wv = webView ?: return
+                    try {
+                        wv.evaluateJavascript(kickJs) { result ->
+                            val r = (result ?: "").trim('"').replace("\\\"", "\"")
+                            Log.d("SoloLatino", "[WV] kick(fase $phase) -> $r")
+
+                            if (!deferred.isCompleted) mainHandler.postDelayed({ kick() }, 1500L)
+                        }
+                    } catch (t: Throwable) {
+                        Log.w("SoloLatino", "[WV] kick error: ${t.message}")
+                        if (!deferred.isCompleted) deferred.complete(emptyList())
+                    }
+                }
+
+                fun gotoEpisode() {
+                    if (phase != 0) return
+                    phase = 1
+                    mainHandler.postDelayed({
+                        if (!deferred.isCompleted) webView?.loadUrl(pageUrl)
+                    }, 200L)
+                }
+
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        Log.d("SoloLatino", "[WV] página cargada (fase $phase): $url")
+                        if (phase == 0) {
+
+                            mainHandler.postDelayed({
+                                val wv = webView ?: return@postDelayed
+                                if (deferred.isCompleted) return@postDelayed
+                                wv.evaluateJavascript("document.title") { t ->
+                                    val title = (t ?: "").trim('"')
+                                    val challenged = title.contains("Just a moment", true)
+                                    val clearance = try {
+                                        CookieManager.getInstance().getCookie(mainUrl)?.contains("cf_clearance") == true
+                                    } catch (t2: Throwable) { false }
+                                    Log.d("SoloLatino", "[WV] fase 0: challenge=$challenged cf_clearance=$clearance title=$title")
+                                    when {
+                                        !challenged -> gotoEpisode()
+                                        clearanceTries++ < 12 -> {
+
+                                            mainHandler.postDelayed({
+                                                if (!deferred.isCompleted && phase == 0) wv.loadUrl("$mainUrl/api/player-url")
+                                            }, 800L)
+                                        }
+                                        else -> {
+                                            Log.w("SoloLatino", "[WV] challenge no resuelto en fase 0, probando igual")
+                                            gotoEpisode()
+                                        }
+                                    }
+                                }
+                            }, 1000L)
+                        } else {
+                            mainHandler.postDelayed({ kick() }, 1500L)
+                        }
+                    }
+                }
+
+                mainHandler.postDelayed({
+                    if (phase == 0 && !deferred.isCompleted) {
+                        Log.w("SoloLatino", "[WV] timeout fase 0 -> página del episodio")
+                        gotoEpisode()
+                    }
+                }, 20000L)
+                Log.d("SoloLatino", "[WV] resolviendo ${tokens.size} tokens en WebView: ${pageUrl.take(100)}")
+                phase = 0
+
+
+                webView.loadUrl("$mainUrl/api/player-url")
+                withTimeoutOrNull(timeoutMs) { deferred.await() } ?: emptyList<String>()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Log.w("SoloLatino", "[WV] error grave: ${t::class.simpleName}: ${t.message}")
+                emptyList<String>()
+            } finally {
+                try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
+                try { webView?.destroy() } catch (_: Exception) {}
+            }
         }
     }
 }
@@ -1125,18 +1381,6 @@ private fun unpackPackedJS(html: String): String? {
     return unescaped
 }
 
-private fun webViewCookies(url: String): Map<String, String> {
-    return try {
-        val raw = android.webkit.CookieManager.getInstance().getCookie(url) ?: return emptyMap()
-        raw.split(";").mapNotNull { part ->
-            val kv = part.trim().split("=", limit = 2)
-            if (kv.size == 2 && kv[0].isNotBlank()) kv[0].trim() to kv[1] else null
-        }.toMap()
-    } catch (_: Exception) {
-        emptyMap()
-    }
-}
-
 private suspend fun tryVoeExtraction(
     url: String,
     referer: String,
@@ -1207,14 +1451,7 @@ private suspend fun tryVoeExtraction(
             Log.w("SoloLatino", "[Voe] challenge detectado en $finalUrl")
 
             if (VoeExtractor().parseHtml(finalHtml, finalUrl, "SoloLatino", subtitleCallback, callback, finalCookies)) return true
-            if (tryMirrors()) return true
-            Log.d("SoloLatino", "[Voe] probando WebView (Altcha se auto-resuelve): $finalUrl")
-            val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback, webViewCookies(finalUrl))) {
-                Log.d("SoloLatino", "[Voe] WebView fallback emitió links")
-                return true
-            }
-            return false
+            return tryMirrors()
         }
 
         val m3u8 = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""").find(finalHtml)?.groupValues?.get(1)
@@ -1225,14 +1462,7 @@ private suspend fun tryVoeExtraction(
             Log.w("SoloLatino", "[Voe] no m3u8/mp4 found in $finalUrl")
 
             if (VoeExtractor().parseHtml(finalHtml, finalUrl, "SoloLatino", subtitleCallback, callback, finalCookies)) return true
-            if (tryMirrors()) return true
-            Log.d("SoloLatino", "[Voe] probando WebView: $finalUrl")
-            val rendered = renderViaWebView(finalUrl, url, readyJs = VOE_READY_JS)
-            if (rendered != null && VoeExtractor().parseHtml(rendered, finalUrl, "SoloLatino", subtitleCallback, callback, webViewCookies(finalUrl))) {
-                Log.d("SoloLatino", "[Voe] WebView fallback emitió links")
-                return true
-            }
-            return false
+            return tryMirrors()
         }
 
         val type = ExtractorLinkType.M3U8

@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.*
 import okhttp3.Interceptor
+import org.jsoup.Jsoup
 import java.util.concurrent.TimeUnit
 
 class SerieskaoProvider : MainAPI() {
@@ -310,16 +311,41 @@ class SerieskaoProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
         Log.d(TAG, "loadLinks data='${data.take(120)}'")
+        val pageUrl = data.substringBefore('#')
         val doc = try {
-            app.get(data).document
+            app.get(pageUrl).document
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks error fetching page: ${e.message}")
             return@coroutineScope false
         }
 
-        val iframeSrc = doc.selectFirst("iframe#player-iframe")?.attr("src")
+        var iframeSrc = doc.selectFirst("iframe#player-iframe")?.attr("src")
         if (iframeSrc.isNullOrBlank()) {
-            Log.e(TAG, "loadLinks no se encontró iframe#player-iframe")
+            val episodeHash = Regex("""#s(\d+)-e(\d+)$""").find(data)
+            val pageRoute = Regex("""/(serie|anime)/([^/?#]+)""").find(pageUrl)
+            if (episodeHash != null && pageRoute != null) {
+                val type = pageRoute.groupValues[1]
+                val slug = pageRoute.groupValues[2]
+                val season = episodeHash.groupValues[1]
+                val episode = episodeHash.groupValues[2]
+                val apiUrl = "$mainUrl/api/episodio/$type/$slug/$season/$episode"
+                try {
+                    val apiResp = app.get(
+                        apiUrl,
+                        headers = mapOf("Accept" to "application/json"),
+                        referer = pageUrl,
+                    )
+                    val episodeData = tryParseJson<EpisodeRouterResponse>(apiResp.text)
+                    iframeSrc = episodeData?.html?.let { Jsoup.parse(it) }
+                        ?.selectFirst("iframe#player-iframe")?.attr("src")
+                    Log.d(TAG, "loadLinks episode API HTTP ${apiResp.code}, iframe=${!iframeSrc.isNullOrBlank()}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "loadLinks episode API error: ${e.message}")
+                }
+            }
+        }
+        if (iframeSrc.isNullOrBlank()) {
+            Log.e(TAG, "loadLinks no se encontró iframe#player-iframe ni en HTML inicial ni en API de episodio")
             return@coroutineScope false
         }
 
@@ -501,5 +527,10 @@ class SerieskaoProvider : MainAPI() {
         @JsonProperty("servername") val servername: String? = null,
         @JsonProperty("link") val link: String? = null,
         @JsonProperty("type") val type: String? = null,
+    )
+
+    data class EpisodeRouterResponse(
+        @JsonProperty("success") val success: Boolean = false,
+        @JsonProperty("html") val html: String? = null,
     )
 }
