@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.ConcurrentHashMap
 
 class OkruProvider : MainAPI() {
     override var mainUrl = "https://ok.ru"
@@ -14,6 +15,10 @@ class OkruProvider : MainAPI() {
     override val hasMainPage = true
     override var lang = "ru"
     override val supportedTypes = setOf(TvType.Movie, TvType.Cartoon)
+
+    companion object {
+        private val posterCache = ConcurrentHashMap<String, String>()
+    }
 
     override val mainPage = mainPageOf(
         "${mainUrl}/video/showcase" to "Videos",
@@ -122,6 +127,7 @@ class OkruProvider : MainAPI() {
             val title = item.movie?.title ?: item.name ?: return@mapNotNull null
             val id = item.movie?.id ?: return@mapNotNull null
             val poster = item.movie.thumbnail?.big ?: item.movie?.thumbnail?.small ?: item.imageUrl
+            poster?.takeIf { it.isNotBlank() }?.let { posterCache[id] = fixUrl(it) }
             newMovieSearchResponse(title, "$mainUrl/video/$id", TvType.Movie) {
                 this.posterUrl = fixUrlNull(poster) }
         } ?: emptyList()
@@ -205,12 +211,20 @@ class OkruProvider : MainAPI() {
     }
 
     private suspend fun Filmvideo(curl: String, title: String, author: String?, recs: List<SearchResponse>, doc: Document): LoadResponse {
-        val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
+        val videoId = Regex("""video/(\d+)""").find(curl)?.groupValues?.get(1)
+        val ogPoster = doc.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: doc.selectFirst("meta[property='og:image:url']")?.attr("content")
+        val isDefaultPoster = ogPoster?.contains("/res/i/anonym/def_1200x630-r.png") == true
+        val poster = if (ogPoster.isNullOrBlank() || isDefaultPoster) {
+            videoId?.let { posterCache[it] }
+        } else {
+            fixUrlNull(ogPoster)
+        }
         val eurl = doc.selectFirst("meta[property=og:video:secure_url]")?.attr("content")
             ?: doc.selectFirst("meta[property=og:video:url]")?.attr("content")
             ?: curl.replace("/video/", "/videoembed/")
         val duration = doc.selectFirst("meta[property=video:duration]")?.attr("content")?.toIntOrNull()?.div(60)
-        Log.d(name, "Filmvideo title='$title' eurl=$eurl duration=$duration")
+        Log.d(name, "Filmvideo title='$title' eurl=$eurl duration=$duration poster=${if (poster.isNullOrBlank()) "missing" else "available"} defaultOgImage=$isDefaultPoster")
 
         return newMovieLoadResponse(title, curl, TvType.Movie, eurl) {
             this.posterUrl = fixUrlNull(poster)
@@ -257,26 +271,39 @@ class OkruProvider : MainAPI() {
     ): Boolean {
         val cleanData = data.trim()
         Log.d(this.name, "loadLinks $cleanData")
+        val pendingLinks = mutableListOf<ExtractorLink>()
+        val collectLink: (ExtractorLink) -> Unit = { link -> pendingLinks.add(link) }
+
+        suspend fun emitProviderLinks(): Int {
+            var emitted = 0
+            for (link in pendingLinks) {
+                val providerLink = newExtractorLink(name, link.name, link.url, link.type) {
+                    this.quality = link.quality
+                    this.referer = link.referer
+                    this.headers = link.headers.toMutableMap()
+                    this.extractorData = link.extractorData
+                }
+                emitted++
+                Log.d(name, "loadLinks emit source=${providerLink.source} name=${providerLink.name} type=${providerLink.type} url=${providerLink.url.take(100)}")
+                callback(providerLink)
+            }
+            pendingLinks.clear()
+            return emitted
+        }
 
         if (cleanData.contains("ok.ru") || cleanData.contains("odnoklassniki.ru")) {
             Log.d(this.name, "loadLinks -> OkRuExtractor")
-            var isFound = false
-            OkRuExtractor().getUrl(cleanData, mainUrl, subtitleCallback) {
-                isFound = true
-                callback(it)
-            }
-            Log.d(this.name, "loadLinks OkRuExtractor -> isFound=$isFound")
-            return isFound
+            OkRuExtractor().getUrl(cleanData, mainUrl, subtitleCallback, collectLink)
+            val emitted = emitProviderLinks()
+            Log.d(this.name, "loadLinks OkRuExtractor -> emitted=$emitted")
+            return emitted > 0
         }
 
         Log.d(this.name, "loadLinks -> loadExtractor")
-        var isFound = false
-        loadExtractor(cleanData, mainUrl, subtitleCallback) {
-            isFound = true
-            callback(it)
-        }
-        Log.d(this.name, "loadLinks loadExtractor -> isFound=$isFound")
-        return isFound
+        loadExtractor(cleanData, mainUrl, subtitleCallback, collectLink)
+        val emitted = emitProviderLinks()
+        Log.d(this.name, "loadLinks loadExtractor -> emitted=$emitted")
+        return emitted > 0
     }
 
 data class SearchItem(val name: String? = null, val imageUrl: String? = null, val movie: SearchMovie? = null)
