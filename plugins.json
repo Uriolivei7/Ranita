@@ -121,10 +121,10 @@
     },
     {
         "iconUrl": "https://danimados.cc/favicon.ico",
-        "fileHash": "sha256-7266c1d477644cb08f73ebd997f62fa2f1685779c6c15944bbafb6fee48eb1db",
+        "fileHash": "sha256-f05e53a2340bbdfa3a72bac103460418ceb28321a4f73e3cda2173b15cec90f4",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 123367,
+        "fileSize": 126374,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -133,7 +133,7 @@
         "tvTypes": [
             "Cartoon"
         ],
-        "version": 13,
+        "version": 16,
         "internalName": "DanimadosProvider",
         "description": "Series animadas y caricaturas en Espa\u00f1ol Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/DanimadosProvider.cs3",
@@ -676,10 +676,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-8d17c05bbcd11b70bb524ea2f518b05242512d83288c268788f6ee7ad6299614",
+        "fileHash": "sha256-a8b2dfa449602f5baa014391c19f6adc6e8909676e0bb5fc1af9fc6bf6f4dd5b",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 133472,
+        "fileSize": 136423,
         "status": 1,
         "language": "es",
         "authors": [
@@ -691,7 +691,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 37,
+        "version": 40,
         "internalName": "SoloLatinoProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SoloLatinoProvider.cs3",
