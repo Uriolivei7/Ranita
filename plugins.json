@@ -2,7 +2,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SoloLatinoProvider.cs3",
     "status": 1,
-    "version": 21,
+    "version": 22,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SoloLatino",
@@ -19,7 +19,7 @@
     ],
     "iconUrl": "https://sololatino.net/images/logo.png",
     "language": "mx",
-    "fileSize": 131000
+    "fileSize": 134000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlushdProvider.cs3",
@@ -790,7 +790,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/DanimadosProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "Danimados",
@@ -804,7 +804,7 @@
     ],
     "iconUrl": "https://danimados.cc/wp-content/uploads/2026/03/180p-150x150.png",
     "language": "mx",
-    "fileSize": 121000
+    "fileSize": 124000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/StrymixtvProvider.cs3",

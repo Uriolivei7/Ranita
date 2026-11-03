@@ -1,4 +1,4 @@
-version = 13
+version = 16
 
 cloudstream {
     description = "Series animadas y caricaturas en Español Latino"

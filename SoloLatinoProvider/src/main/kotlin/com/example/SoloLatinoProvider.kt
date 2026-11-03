@@ -496,10 +496,29 @@ class SoloLatinoProvider : MainAPI() {
                         "Referer" to fixedSrc,
                     )
                     val embedResp = app.get(fixedSrc, headers = embed69Headers, timeout = 30L)
-                    Log.d("SoloLatino", "embed69 - HTTP ${embedResp.code}, length=${embedResp.text.length}")
-                    val embedDoc = embedResp.document
-                    val dataLinkScript = embedDoc.select("script")
+                    var embedHtml = embedResp.text
+                    var embedDoc = embedResp.document
+                    Log.d("SoloLatino", "embed69 - HTTP ${embedResp.code}, length=${embedHtml.length}")
+                    var dataLinkScript = embedDoc.select("script")
                         .firstOrNull { it.html().contains("dataLink =") }
+                    if (dataLinkScript == null && (embedResp.code == 502 || embedHtml.contains("Just a moment", true))) {
+                        Log.w("SoloLatino", "embed69 - respuesta bloqueada; intentando recuperar HTML con WebView")
+                        val browserHtml = renderViaWebView(
+                            pageUrl = fixedSrc,
+                            referer = targetUrl,
+                            waitMs = 12000L,
+                            readyJs = "h.includes('dataLink =')&&h.includes('POW_CHALLENGE')&&h.includes('POW_SALT')"
+                        )
+                        if (!browserHtml.isNullOrBlank()) {
+                            embedHtml = browserHtml
+                            embedDoc = Jsoup.parse(embedHtml, fixedSrc)
+                            dataLinkScript = embedDoc.select("script")
+                                .firstOrNull { it.html().contains("dataLink =") }
+                            Log.d("SoloLatino", "embed69 - WebView HTML length=${embedHtml.length}, dataLink=${dataLinkScript != null}")
+                        } else {
+                            Log.w("SoloLatino", "embed69 - WebView no devolvió HTML")
+                        }
+                    }
                     if (dataLinkScript == null) {
                         Log.e("SoloLatino", "embed69 - No se encontró script con 'dataLink ='")
                         embedDoc.select("script").forEach { s ->
@@ -518,7 +537,7 @@ class SoloLatinoProvider : MainAPI() {
                         val serversList = tryParseJson<List<ServersByLang>>(dataLinkJson)
                             ?: resolveDataLinkExpr(dataLinkJson)?.let { tryParseJson<List<ServersByLang>>(it) }
 
-                        val pageHtml = embedResp.text
+                        val pageHtml = embedHtml
                         val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
                         val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
                         if (embedChallenge == null || embedSalt == null) {
@@ -550,7 +569,12 @@ class SoloLatinoProvider : MainAPI() {
                                 val decryptedUrl = decryptAESLocal(encrypted, aesKey)
                                 if (decryptedUrl != null) {
                                     Log.d("SoloLatino", "embed69 - decrypted: ${decryptedUrl.take(100)}")
-                                    loadSourceNameExtractor(langTag, fixHostsLinks(decryptedUrl), fixedSrc, countingSub, countingCallback)
+                                    val normalizedUrl = fixHostsLinks(decryptedUrl)
+                                    val originalHost = try { java.net.URL(decryptedUrl).host.lowercase() } catch (_: Exception) { "" }
+                                    val vidHideAliases = setOf("morencius.com", "minochinos.com", "mivalyo.com", "dinisglows.com", "dhtpre.com")
+
+                                    val sourceUrl = if (originalHost in vidHideAliases) decryptedUrl else normalizedUrl
+                                    loadSourceNameExtractor(langTag, sourceUrl, fixedSrc, countingSub, countingCallback)
                                 } else {
                                     Log.w("SoloLatino", "embed69 - decrypt null para $encrypted")
                                 }
@@ -1087,12 +1111,22 @@ suspend fun loadSourceNameExtractor(
         }
     }
 
-    val knownHosts = listOf("vidhidepro.com", "voe.sx", "streamwish.to")
     val domain = try { java.net.URL(url).host } catch (_: Exception) { "" }
+    val vidHideHosts = setOf("vidhidepro.com", "morencius.com", "minochinos.com", "mivalyo.com", "dinisglows.com", "dhtpre.com")
     val customHandled = when {
-        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback) { link ->
-            count++
-            outerScope.launch { callback.invoke(link) }
+        domain in vidHideHosts -> {
+            val emitVidHide: (ExtractorLink) -> Unit = { link ->
+                count++
+                outerScope.launch { callback.invoke(link) }
+            }
+            val directOk = tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback, emitVidHide)
+            if (!directOk && domain != "vidhidepro.com") {
+                val canonical = fixHostsLinks(url)
+                Log.w("SoloLatino", "[VH-Pro] mirror falló; intentando host canónico: ${canonical.take(120)}")
+                tryVidHideProExtraction(canonical, referer ?: url, source, subtitleCallback, emitVidHide)
+            } else {
+                directOk
+            }
         }
         domain.contains("voe.sx") -> tryVoeExtraction(url, referer ?: url, subtitleCallback) { link ->
             count++
@@ -1247,17 +1281,34 @@ private suspend fun tryVidHideProExtraction(
             "Accept" to "*/*",
             "Referer" to referer,
         )
-        val res = app.get(url, headers = headers, timeout = 20L)
-        if (!res.isSuccessful) {
-            Log.w("SoloLatino", "[VH-Pro] HTTP ${res.code}")
-            return false
+        var html: String? = null
+        try {
+            val res = app.get(url, headers = headers, timeout = 20L)
+            if (res.isSuccessful) {
+                html = res.text
+                Log.d("SoloLatino", "[VH-Pro] HTTP 200 len=${html.length}")
+            } else {
+                Log.w("SoloLatino", "[VH-Pro] HTTP ${res.code}; probaré WebView")
+            }
+        } catch (e: Exception) {
+            Log.w("SoloLatino", "[VH-Pro] GET nativo falló (${e.message}); probaré WebView")
         }
-        val html = res.text
-        Log.d("SoloLatino", "[VH-Pro] HTTP 200 len=${html.length}")
 
-        val unpacked = unpackPackedJS(html)
+        var unpacked = html?.let { unpackPackedJS(it) }
         if (unpacked.isNullOrBlank()) {
-            Log.w("SoloLatino", "[VH-Pro] packer unpack failed")
+            Log.d("SoloLatino", "[VH-Pro] WebView fallback para cargar el player")
+            html = renderViaWebView(
+                pageUrl = url,
+                referer = referer,
+                waitMs = 12000L,
+                readyJs = "h.includes('hls2')||h.includes('hls3')||h.includes('hls4')||h.includes('.m3u8')"
+            )
+            unpacked = html?.let { unpackPackedJS(it) }
+            Log.d("SoloLatino", "[VH-Pro] WebView len=${html?.length ?: 0}, unpacked=${!unpacked.isNullOrBlank()}")
+        }
+        val pageHtml = html
+        if (pageHtml.isNullOrBlank() || unpacked.isNullOrBlank()) {
+            Log.w("SoloLatino", "[VH-Pro] player no disponible por HTTP ni WebView")
             return false
         }
         Log.d("SoloLatino", "[VH-Pro] unpacked len=${unpacked.length} snippet=${unpacked.take(200)}")
@@ -1291,7 +1342,8 @@ private suspend fun tryVidHideProExtraction(
         val vidHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Referer" to url,
-            "Origin" to url.substringBeforeLast("/"),
+            "Origin" to runCatching { java.net.URL(url).let { "${it.protocol}://${it.host}" } }
+                .getOrDefault("https://vidhidepro.com"),
         )
 
         data class Variant(val key: String, val url: String)
@@ -1302,7 +1354,9 @@ private suspend fun tryVidHideProExtraction(
         val resolved = orderedKeys.mapNotNull { key ->
             var u = linksMap[key] ?: return@mapNotNull null
             if (u.startsWith("/")) {
-                u = "https://vidhidepro.com$u"
+                val origin = runCatching { java.net.URL(url).let { "${it.protocol}://${it.host}" } }
+                    .getOrDefault("https://vidhidepro.com")
+                u = "$origin$u"
                 Log.d("SoloLatino", "[VH-Pro] relative URL, prepended base: ${u.take(120)}")
             }
             Variant(key, u)
@@ -1337,7 +1391,7 @@ private suspend fun tryVidHideProExtraction(
         Log.d("SoloLatino", "[VH-Pro] emitted ${toEmit.size} variants")
 
         val seenSubs = mutableSetOf<String>()
-        scanHtmlForSubs(html, url.substringBeforeLast("/"), subtitleCallback, seenSubs)
+        scanHtmlForSubs(pageHtml, url.substringBeforeLast("/"), subtitleCallback, seenSubs)
         scanHtmlForSubs(unpacked, url.substringBeforeLast("/"), subtitleCallback, seenSubs)
         firstM3u8?.let { tryExtractSubsFromM3u8(it, url, subtitleCallback) }
         true
