@@ -17,6 +17,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.jsoup.Jsoup
 import java.net.URLEncoder
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -115,6 +116,15 @@ fun fixHostsLinks(url: String): String {
         .replaceFirst("https://do7go.com", "https://dood.la")
         .replaceFirst("https://doodstream.com", "https://dood.la")
         .replaceFirst("https://streamtape.com", "https://streamtape.cc")
+}
+
+private val kaoVidHideMirrorHosts = setOf(
+    "morencius.com", "minochinos.com", "mivalyo.com", "dinisglows.com", "dhtpre.com"
+)
+
+fun fixHostsLinksPreservingVidHide(url: String): String {
+    val host = runCatching { java.net.URL(url).host.lowercase() }.getOrDefault("")
+    return if (host in kaoVidHideMirrorHosts) url else fixHostsLinks(url)
 }
 
 data class KaoServer(
@@ -659,7 +669,13 @@ private const val DUMP_JS = "(function(){try{NativeBridge.onHtml(document.docume
 
 private val webViewMutex = Mutex()
 
-private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: Long = 12000L, readyJs: String? = null): String? {
+internal suspend fun renderViaWebView(
+    pageUrl: String,
+    referer: String?,
+    waitMs: Long = 12000L,
+    readyJs: String? = null,
+    renderInIframe: Boolean = false,
+): String? {
     webViewMutex.withLock {
         return withContext(Dispatchers.Main) {
         val appCtx = SerieskaoProvider.pluginContext?.applicationContext ?: run {
@@ -681,10 +697,23 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
             val deferred = CompletableDeferred<String?>()
             val polls = java.util.concurrent.atomic.AtomicInteger(0)
             val maxPolls = (waitMs / 2000L).toInt().coerceAtLeast(1)
+            val frameId = "serieskao-render-target"
             fun dump() {
                 if (deferred.isCompleted) return
                 try {
-                    webView?.evaluateJavascript(DUMP_JS, null)
+                    val dumpScript = if (!renderInIframe) DUMP_JS else """(function(){try{
+                        var f=document.getElementById('$frameId'),d=f&&f.contentDocument;
+                        if(!d||!d.documentElement){NativeBridge.onHtml('FRAME_NOT_READY');return;}
+                        var out=[d.documentElement.outerHTML];
+                        var es=Array.prototype.slice.call(d.querySelectorAll('button,a,[onclick],[role="button"],[data-server]'));
+                        es=es.filter(function(e){return /dood|vidhide|streamwish/i.test((e.innerText||'')+' '+(e.outerHTML||''));});
+                        var i=0;function step(){
+                            if(i>=es.length){NativeBridge.onHtml(out.join('\\n<!--SERIESKAO_SERVER_SNAPSHOT-->\\n'));return;}
+                            var e=es[i++];try{e.click();}catch(x){}
+                            setTimeout(function(){try{out.push(d.documentElement.outerHTML);}catch(e){}step();},1200);
+                        }step();
+                    }catch(e){NativeBridge.onHtml('FRAME_ERROR:'+e);}})()"""
+                    webView?.evaluateJavascript(dumpScript, null)
                 } catch (_: Exception) {
                     if (!deferred.isCompleted) deferred.complete(null)
                 }
@@ -693,7 +722,11 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
                 if (deferred.isCompleted) return
                 try {
                     webView?.evaluateJavascript(
-                        "(function(){try{var h=document.documentElement.outerHTML;NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()",
+                        if (!renderInIframe) {
+                            "(function(){try{var h=document.documentElement.outerHTML;NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()"
+                        } else {
+                            "(function(){try{var f=document.getElementById('$frameId'),d=f&&f.contentDocument;var h=d&&d.documentElement?d.documentElement.outerHTML:'';NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()"
+                        },
                         null
                     )
                 } catch (_: Exception) {
@@ -734,12 +767,26 @@ private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: 
                 }
 
                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                    if (!deferred.isCompleted) deferred.complete(null)
+                    if (renderInIframe) {
+                        Log.d(KAO_TAG, "[WebView] recurso iframe error=$errorCode url=${failingUrl?.take(140)}")
+                        if (!deferred.isCompleted) mainHandler.postDelayed({ pollOnce() }, 1000L)
+                    } else if (!deferred.isCompleted) {
+                        deferred.complete(null)
+                    }
                 }
             }
-            if (!referer.isNullOrBlank()) webView.loadUrl(pageUrl, mapOf("Referer" to referer))
-            else webView.loadUrl(pageUrl)
-            Log.d(KAO_TAG, "[WebView] renderizando ${pageUrl.take(100)}")
+            if (renderInIframe) {
+                val origin = runCatching { java.net.URL(pageUrl).let { "${it.protocol}://${it.host}/" } }.getOrDefault("https://serieskao.top/")
+                val baseUrl = referer?.takeIf { it.startsWith(origin, ignoreCase = true) } ?: origin
+                val escapedUrl = pageUrl.replace("&", "&amp;").replace("\"", "&quot;")
+                val wrapper = "<html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body style=\"margin:0\"><iframe id=\"$frameId\" src=\"$escapedUrl\" style=\"width:100%;height:100vh;border:0\"></iframe></body></html>"
+                webView.loadDataWithBaseURL(baseUrl, wrapper, "text/html", "UTF-8", null)
+            } else if (!referer.isNullOrBlank()) {
+                webView.loadUrl(pageUrl, mapOf("Referer" to referer))
+            } else {
+                webView.loadUrl(pageUrl)
+            }
+            Log.d(KAO_TAG, "[WebView] renderizando ${pageUrl.take(100)} iframe=$renderInIframe")
             withTimeoutOrNull(waitMs + 15000L) { deferred.await() }
         } catch (e: CancellationException) {
             throw e
@@ -813,7 +860,8 @@ private suspend fun tryVidHideProExtraction(
         val vidHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Referer" to url,
-            "Origin" to url.substringBeforeLast("/"),
+            "Origin" to runCatching { java.net.URL(url).let { "${it.protocol}://${it.host}" } }
+                .getOrDefault("https://vidhidepro.com"),
         )
 
         data class Variant(val key: String, val url: String)
@@ -824,24 +872,52 @@ private suspend fun tryVidHideProExtraction(
         val resolved = orderedKeys.mapNotNull { key ->
             var u = linksMap[key] ?: return@mapNotNull null
             if (u.startsWith("/")) {
-                u = "https://vidhidepro.com$u"
+                val origin = runCatching { java.net.URL(url).let { "${it.protocol}://${it.host}" } }
+                    .getOrDefault("https://vidhidepro.com")
+                u = "$origin$u"
                 Log.d(KAO_TAG, "[VH-Pro] relative URL, prepended base: ${u.take(120)}")
             }
             Variant(key, u)
         }
         val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
+        val redirectFallback = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
         resolved.amap { v ->
             try {
 
-                val code = withTimeoutOrNull(20000L) {
-                    app.get(v.url, headers = probeHeaders, timeout = 20L).code
-                } ?: -1
+                val probe = withTimeoutOrNull(10000L) {
+                    val response = app.get(v.url, headers = probeHeaders, timeout = 8L, allowRedirects = false)
+                    response.code to response.headers["Location"]
+                } ?: (-1 to null)
+                val code = probe.first
                 Log.d(KAO_TAG, "[VH-Pro] probe ${v.key} -> $code")
-                if (code in 200..299) reachable.add(v)
+                if (code in 200..299) {
+                    reachable.add(v)
+                } else if (code in 300..399) {
+                    val target = probe.second?.let {
+                        runCatching { java.net.URL(java.net.URL(v.url), it).toString() }.getOrNull()
+                    }
+                    var targetOk = false
+                    if (!target.isNullOrBlank() && target != v.url) {
+                        val targetCode = withTimeoutOrNull(10000L) {
+                            app.get(target, headers = probeHeaders, timeout = 8L, allowRedirects = false).code
+                        } ?: -1
+                        Log.d(KAO_TAG, "[VH-Pro] probe ${v.key} redirect -> $targetCode ${target.take(100)}")
+                        if (targetCode in 200..299) {
+                            reachable.add(Variant(v.key, target))
+                            targetOk = true
+                        }
+                    }
+                    if (!targetOk) redirectFallback.add(v)
+                }
             } catch (_: Exception) {}
         }
-        val toEmit = if (reachable.isNotEmpty()) {
-            orderedKeys.mapNotNull { k -> reachable.firstOrNull { it.key == k } }
+        val reachableOrdered = orderedKeys.mapNotNull { k -> reachable.firstOrNull { it.key == k } }
+        val toEmit = if (reachableOrdered.isNotEmpty()) {
+            reachableOrdered + orderedKeys.mapNotNull { k ->
+                redirectFallback.firstOrNull { it.key == k && reachableOrdered.none { ready -> ready.key == k } }
+            }
+        } else if (redirectFallback.isNotEmpty()) {
+            orderedKeys.mapNotNull { k -> redirectFallback.firstOrNull { it.key == k } }
         } else {
             Log.w(KAO_TAG, "[VH-Pro] ningún master responde, emitiendo todos igual")
             resolved
@@ -992,11 +1068,22 @@ suspend fun loadKaoSourceExtractor(
         }
     }
 
-    val domain = try { java.net.URL(url).host } catch (_: Exception) { "" }
+    val domain = try { java.net.URL(url).host.lowercase() } catch (_: Exception) { "" }
+    val vidHideHosts = kaoVidHideMirrorHosts + "vidhidepro.com"
     val customHandled = when {
-        domain.contains("vidhidepro") -> tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback) { link ->
-            count++
-            outerScope.launch { callback.invoke(link) }
+        domain in vidHideHosts -> {
+            val emitVidHide: (ExtractorLink) -> Unit = { link ->
+                count++
+                outerScope.launch { callback.invoke(link) }
+            }
+            val directOk = tryVidHideProExtraction(url, referer ?: url, source, subtitleCallback, emitVidHide)
+            if (!directOk && domain != "vidhidepro.com") {
+                val canonical = fixHostsLinks(url)
+                Log.w(KAO_TAG, "[VH-Pro] mirror falló; intentando host canónico: ${canonical.take(120)}")
+                tryVidHideProExtraction(canonical, referer ?: url, source, subtitleCallback, emitVidHide)
+            } else {
+                directOk
+            }
         }
         domain.contains("voe.sx") -> tryVoeExtraction(url, referer ?: url, subtitleCallback) { link ->
             count++
@@ -1119,18 +1206,77 @@ suspend fun extractKaoEmbed69(
             .firstOrNull { it.html().contains("dataLink =") }
         if (dataLinkScript == null) {
             Log.d(KAO_TAG, "embed69 - sin dataLink, probando playServerVast")
-            val serverUrls = Regex("""playServerVast\(\s*'([^']+)'\s*\)""")
+            val serverUrls = Regex("""playServerVast\(\s*['"]([^'"]+)['"]\s*\)""")
                 .findAll(embedPageHtml)
                 .map { it.groupValues[1] }
                 .distinct()
-                .toList()
+                .toMutableList()
+
+            fun findServerUrls(html: String): List<String> {
+                val normalizedHtml = html.replace("\\/", "/").replace("&amp;", "&")
+                val candidates = linkedSetOf<String>()
+                val doc = Jsoup.parse(normalizedHtml, embedUrl)
+                doc.select("iframe[src], video[src], source[src], a[href], [data-src], [data-url], [onclick]")
+                    .forEach { element ->
+                        listOf("src", "href", "data-src", "data-url", "onclick").forEach { attr ->
+                            val value = element.attr(attr)
+                            Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+""").findAll(value).forEach { match ->
+                                candidates += match.value.trimEnd(')', ',', ';', '.')
+                            }
+                        }
+                    }
+                Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+""").findAll(normalizedHtml).forEach { match ->
+                    candidates += match.value.trimEnd(')', ',', ';', '.')
+                }
+                val knownHosts = listOf(
+                    "dood", "do7go", "vidhide", "morencius", "minochinos", "mivalyo", "dinisglows", "dhtpre",
+                    "streamwish", "hglink", "swdyu", "cybervynx", "dumbalag", "awish"
+                )
+                return candidates.mapNotNull { raw ->
+                    val url = if (raw.startsWith("//")) "https:$raw" else raw
+                    val host = runCatching { java.net.URL(url).host.lowercase() }.getOrDefault("")
+                    url.takeIf { knownHosts.any(host::contains) && host != "embed69.org" }
+                }.distinct()
+            }
+
             if (serverUrls.isEmpty()) {
-                Log.e(KAO_TAG, "embed69 - tampoco hay playServerVast: ${embedPageHtml.take(300)}")
+                val staticCandidates = findServerUrls(embedPageHtml)
+                Log.d(KAO_TAG, "embed69 - servidores en HTML inicial=${staticCandidates.size}: $staticCandidates")
+                serverUrls.addAll(staticCandidates)
+            }
+            if (serverUrls.isEmpty()) {
+                Log.d(KAO_TAG, "embed69 - probando WebView para player JavaScript")
+                val renderedHtml = renderViaWebView(
+                    pageUrl = embedUrl,
+                    referer = referer,
+                    waitMs = 12000L,
+                    readyJs = "h.includes('dood')||h.includes('vidhide')||h.includes('streamwish')||h.includes('playServerVast')"
+                )
+                if (!renderedHtml.isNullOrBlank()) {
+                    Log.d(KAO_TAG, "embed69 - WebView HTML len=${renderedHtml.length}")
+                    val renderedCandidates = findServerUrls(renderedHtml)
+                    Log.d(KAO_TAG, "embed69 - servidores tras WebView=${renderedCandidates.size}: $renderedCandidates")
+                    serverUrls.addAll(renderedCandidates)
+                    serverUrls.addAll(
+                        Regex("""playServerVast\(\s*['"]([^'"]+)['"]\s*\)""")
+                            .findAll(renderedHtml).map { it.groupValues[1] }
+                    )
+                } else {
+                    Log.w(KAO_TAG, "embed69 - WebView no devolvió HTML")
+                }
+            }
+            val uniqueServerUrls = serverUrls.distinct()
+            if (uniqueServerUrls.isEmpty()) {
+                val doc = embedResp.document
+                Log.e(
+                    KAO_TAG,
+                    "embed69 - player no expuso servidores; scripts=${doc.select("script[src]").map { it.attr("src") }.take(12)} iframes=${doc.select("iframe[src]").map { it.attr("src") }.take(12)}"
+                )
                 return
             }
-            Log.d(KAO_TAG, "embed69 - servers=${serverUrls.size}: $serverUrls")
-            serverUrls.amap { serverUrl ->
-                loadKaoSourceExtractor("embed69", fixHostsLinks(serverUrl), embedUrl, subtitleCallback, callback)
+            Log.d(KAO_TAG, "embed69 - servers=${uniqueServerUrls.size}: $uniqueServerUrls")
+            uniqueServerUrls.amap { serverUrl ->
+                loadKaoSourceExtractor("embed69", fixHostsLinksPreservingVidHide(serverUrl), embedUrl, subtitleCallback, callback)
             }
             return
         }
@@ -1173,7 +1319,7 @@ suspend fun extractKaoEmbed69(
                 val decryptedUrl = decryptAESLocal(encrypted, aesKey)
                 if (decryptedUrl != null) {
                     Log.d(KAO_TAG, "embed69 - decrypted: ${decryptedUrl.take(100)}")
-                    loadKaoSourceExtractor(langTag, fixHostsLinks(decryptedUrl), embedUrl, subtitleCallback, callback)
+                    loadKaoSourceExtractor(langTag, fixHostsLinksPreservingVidHide(decryptedUrl), embedUrl, subtitleCallback, callback)
                 } else {
                     Log.w(KAO_TAG, "embed69 - decrypt null para $encrypted")
                 }

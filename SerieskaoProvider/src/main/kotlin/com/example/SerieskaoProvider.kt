@@ -60,8 +60,8 @@ class SerieskaoProvider : MainAPI() {
     }
 
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        val cdnDomains = listOf("dramiyos", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou")
-        val cdnPaths = listOf("/hls2/", "/hls3/", ".urlset/")
+        val cdnDomains = listOf("dramiyos", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou", "cdnsync.cloud")
+        val cdnPaths = listOf("/hls2/", "/hls3/", ".urlset/", "/stream/")
         return Interceptor { chain ->
             val request = chain.request()
             val url = request.url.toString()
@@ -69,20 +69,39 @@ class SerieskaoProvider : MainAPI() {
                 cdnPaths.any { url.contains(it, ignoreCase = true) }
             if (!isCdn) return@Interceptor chain.proceed(request)
 
-            Log.d(TAG, "[intercept] CDN request: ${url.take(120)}")
+            val requestPath = request.url.encodedPath
+            Log.d(TAG, "[intercept] CDN request: ${request.url.host}$requestPath")
             val newRequest = request.newBuilder()
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
                 .header("Referer", extractorLink.referer)
-                .header("Origin", "https://vidhidepro.com")
+                .header("Origin", request.header("Origin") ?: "https://vidhidepro.com")
                 .header("Accept", "*/*")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()
-            val response = chain
-                .withConnectTimeout(30, TimeUnit.SECONDS)
-                .withReadTimeout(30, TimeUnit.SECONDS)
-                .proceed(newRequest)
-            Log.d(TAG, "[intercept] CDN response: ${response.code} ${response.header("content-type","?")} url=${url.take(100)}")
-            response
+            try {
+                val response = chain
+                    .withConnectTimeout(30, TimeUnit.SECONDS)
+                    .withReadTimeout(30, TimeUnit.SECONDS)
+                    .proceed(newRequest)
+                val contentType = response.header("content-type", "?")
+                Log.d(TAG, "[intercept] CDN response: ${response.code} $contentType url=${request.url.host}$requestPath")
+                if (requestPath.endsWith(".m3u8", ignoreCase = true)) {
+                    val body = runCatching { response.peekBody(64 * 1024L).string() }.getOrDefault("")
+                    val playlistLines = body.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(8).map { line ->
+                        if (line.startsWith("http://") || line.startsWith("https://") || line.startsWith("/")) {
+                            val uri = runCatching { java.net.URL(java.net.URL(url), line).toURI() }.getOrNull()
+                            "URI=${uri?.host ?: "?"}${uri?.rawPath ?: line.substringBefore('?')}"
+                        } else {
+                            line.take(100)
+                        }
+                    }.toList()
+                    Log.d(TAG, "[intercept] HLS playlist path=$requestPath bytes=${body.length} lines=$playlistLines")
+                }
+                response
+            } catch (t: Throwable) {
+                Log.e(TAG, "[intercept] CDN network failure ${t::class.simpleName} host=${request.url.host} path=$requestPath")
+                throw t
+            }
         }
     }
 
@@ -310,16 +329,31 @@ class SerieskaoProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        Log.d(TAG, "loadLinks data='${data.take(120)}'")
+        val emitted = java.util.concurrent.atomic.AtomicInteger(0)
+        val emitTracked: (ExtractorLink) -> Unit = { link ->
+            val number = emitted.incrementAndGet()
+            val host = runCatching { java.net.URL(link.url).host }.getOrDefault("?")
+            Log.d(TAG, "loadLinks EMIT #$number source=${link.source} name=${link.name} type=${link.type} q=${link.quality} host=$host")
+            callback(link)
+        }
+        coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { cause ->
+            Log.d(TAG, "loadLinks FIN emitidos=${emitted.get()} resultado=${if (cause == null) "ok" else "error:${cause.message}"}")
+        }
+
+        Log.d(TAG, "loadLinks START casting=$isCasting data='${data.take(180)}'")
         val pageUrl = data.substringBefore('#')
         val doc = try {
-            app.get(pageUrl).document
+            val response = app.get(pageUrl)
+            val pageHtml = response.text
+            Log.d(TAG, "loadLinks ficha HTTP ${response.code} len=${pageHtml.length} url=${response.url}")
+            Jsoup.parse(pageHtml, pageUrl)
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks error fetching page: ${e.message}")
             return@coroutineScope false
         }
 
         var iframeSrc = doc.selectFirst("iframe#player-iframe")?.attr("src")
+        Log.d(TAG, "loadLinks iframe inicial=${!iframeSrc.isNullOrBlank()} hash=${data.substringAfter('#', "").take(30)}")
         if (iframeSrc.isNullOrBlank()) {
             val episodeHash = Regex("""#s(\d+)-e(\d+)$""").find(data)
             val pageRoute = Regex("""/(serie|anime)/([^/?#]+)""").find(pageUrl)
@@ -329,19 +363,23 @@ class SerieskaoProvider : MainAPI() {
                 val season = episodeHash.groupValues[1]
                 val episode = episodeHash.groupValues[2]
                 val apiUrl = "$mainUrl/api/episodio/$type/$slug/$season/$episode"
+                Log.d(TAG, "loadLinks router request type=$type slug=$slug season=$season episode=$episode")
                 try {
                     val apiResp = app.get(
                         apiUrl,
                         headers = mapOf("Accept" to "application/json"),
                         referer = pageUrl,
                     )
-                    val episodeData = tryParseJson<EpisodeRouterResponse>(apiResp.text)
+                    val apiBody = apiResp.text
+                    val episodeData = tryParseJson<EpisodeRouterResponse>(apiBody)
                     iframeSrc = episodeData?.html?.let { Jsoup.parse(it) }
                         ?.selectFirst("iframe#player-iframe")?.attr("src")
-                    Log.d(TAG, "loadLinks episode API HTTP ${apiResp.code}, iframe=${!iframeSrc.isNullOrBlank()}")
+                    Log.d(TAG, "loadLinks episode API HTTP ${apiResp.code} len=${apiBody.length} json=${episodeData != null} success=${episodeData?.success} html=${episodeData?.html?.length ?: 0} iframe=${!iframeSrc.isNullOrBlank()}")
                 } catch (e: Exception) {
                     Log.e(TAG, "loadLinks episode API error: ${e.message}")
                 }
+            } else {
+                Log.w(TAG, "loadLinks no router params: episodeHash=${episodeHash?.value} pageRoute=${pageRoute?.value}; iframe absent")
             }
         }
         if (iframeSrc.isNullOrBlank()) {
@@ -358,7 +396,7 @@ class SerieskaoProvider : MainAPI() {
                 playerUrl.contains("embed69.org") -> {
                     Log.d(TAG, "loadLinks embed69 externo -> extractKaoEmbed69")
                     extractKaoEmbed69(playerUrl, data, subtitleCallback) { link ->
-                        callback(link)
+                        emitTracked(link)
                     }
                 }
 
@@ -374,16 +412,16 @@ class SerieskaoProvider : MainAPI() {
                                 }
                                 if (links.isEmpty()) {
                                     Log.w(TAG, "loadLinks sin go_to_playerVast en xupalace")
-                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
                                 } else {
                                     Log.d(TAG, "loadLinks xupalace links=${links.size}: $links")
                                     links.amap { link ->
-                                        loadExtractor(fixHostsTitle(link), playerUrl, subtitleCallback, callback)
+                                        loadExtractor(fixHostsTitle(link), playerUrl, subtitleCallback, emitTracked)
                                     }
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "loadLinks xupalace error: ${e.message}")
-                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
                             }
                         }
 
@@ -393,19 +431,19 @@ class SerieskaoProvider : MainAPI() {
                                 val xDoc = app.get(playerUrl, referer = data).document
                                 val iframeSrc = xDoc.selectFirst("iframe")?.attr("src")
                                 if (iframeSrc != null) {
-                                    loadExtractor(fixHostsTitle(fixUrl(iframeSrc)), playerUrl, subtitleCallback, callback)
+                                    loadExtractor(fixHostsTitle(fixUrl(iframeSrc)), playerUrl, subtitleCallback, emitTracked)
                                 } else {
-                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                    loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "loadLinks xupalace uqlink error: ${e.message}")
-                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                                loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
                             }
                         }
 
                         else -> {
                             Log.d(TAG, "loadLinks embed directo -> loadExtractor")
-                            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+                            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
                         }
                     }
                 }
@@ -413,19 +451,93 @@ class SerieskaoProvider : MainAPI() {
             return@coroutineScope true
         }
 
-        val playerHtml = try {
-            app.get(playerUrl, referer = data).text
+        var playerHtml = try {
+            val response = app.get(playerUrl, referer = data)
+            Log.d(TAG, "loadLinks player HTTP ${response.code} len=${response.text.length} host=${runCatching { java.net.URL(playerUrl).host }.getOrDefault("?")}")
+            response.text
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks error fetching playerUrl: ${e.message}")
             return@coroutineScope false
         }
 
-        val rawMatch = Regex("""dataLink\s*=\s*(\[.*?\])\s*;""").find(playerHtml)?.groupValues?.get(1)
-            ?: Regex("""dataLink\s*=\s*([^;]+);""", RegexOption.DOT_MATCHES_ALL)
-                .find(playerHtml)?.groupValues?.get(1)?.let { resolveDataLinkExpr(it) }
+        fun extractDataLink(html: String): String? =
+            Regex("""dataLink\s*=\s*(\[.*?\])\s*;""").find(html)?.groupValues?.get(1)
+                ?: Regex("""dataLink\s*=\s*([^;]+);""", RegexOption.DOT_MATCHES_ALL)
+                    .find(html)?.groupValues?.get(1)?.let { resolveDataLinkExpr(it) }
+
+        fun logPlayerShape(label: String, html: String) {
+            val doc = org.jsoup.Jsoup.parse(html, playerUrl)
+            val inlineScripts = doc.select("script:not([src])").map { it.data().ifBlank { it.html() } }
+                .filter { it.isNotBlank() }
+            Log.d(TAG, "loadLinks $label title='${doc.title().take(120)}' body='${doc.body()?.text()?.take(450)}'")
+            Log.d(TAG, "loadLinks $label scripts=${doc.select("script").size} inline=${inlineScripts.size} iframes=${doc.select("iframe").size} dataLink=${html.contains("dataLink")} pow=${html.contains("POW_CHALLENGE")}/${html.contains("POW_SALT")} serverWords=${listOf("dood", "vidhide", "streamwish").filter { html.contains(it, true) }}")
+            inlineScripts.take(6).forEachIndexed { index, script ->
+                Log.d(TAG, "loadLinks $label inlineScript#$index len=${script.length} start='${script.take(220)}'")
+            }
+        }
+
+        fun findPlayerServerUrls(html: String): List<String> {
+            val normalized = html.replace("\\/", "/").replace("&amp;", "&")
+            val knownHosts = listOf(
+                "dood", "do7go", "vidhide", "morencius", "minochinos", "mivalyo", "dinisglows", "dhtpre",
+                "streamwish", "hglink", "swdyu", "cybervynx", "dumbalag", "awish"
+            )
+            return Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+""").findAll(normalized)
+                .mapNotNull { match ->
+                    val candidate = match.value.trimEnd(')', ',', ';', '.')
+                    val url = if (candidate.startsWith("//")) "https:$candidate" else candidate
+                    val host = runCatching { java.net.URL(url).host.lowercase() }.getOrDefault("")
+                    url.takeIf { host != "serieskao.top" && host != "embed69.org" && knownHosts.any(host::contains) }
+                }
+                .distinct()
+                .toList()
+        }
+
+        var rawMatch = extractDataLink(playerHtml)
+        if (rawMatch == null || !playerHtml.contains("POW_CHALLENGE") || !playerHtml.contains("POW_SALT")) {
+            Log.d(TAG, "loadLinks player sin dataLink/PoW; intentando WebView: $playerUrl")
+            val renderedHtml = renderViaWebView(
+                pageUrl = playerUrl,
+                referer = data,
+                waitMs = 12000L,
+                readyJs = if (playerHtml.contains("EMBED69", true)) {
+                    "h.includes('dood')&&h.includes('vidhide')&&h.includes('streamwish')"
+                } else {
+                    "h.includes('dataLink')&&h.includes('POW_CHALLENGE')&&h.includes('POW_SALT')"
+                },
+                renderInIframe = playerHtml.contains("EMBED69", true)
+            )
+            if (!renderedHtml.isNullOrBlank()) {
+                val renderedMatch = extractDataLink(renderedHtml)
+                Log.d(TAG, "loadLinks player WebView len=${renderedHtml.length} dataLink=${renderedMatch != null} pow=${renderedHtml.contains("POW_CHALLENGE") && renderedHtml.contains("POW_SALT")}")
+                logPlayerShape("player WebView", renderedHtml)
+                if (renderedMatch != null) {
+                    playerHtml = renderedHtml
+                    rawMatch = renderedMatch
+                } else if (playerHtml.contains("EMBED69", true)) {
+                    val serverUrls = findPlayerServerUrls(renderedHtml)
+                    Log.d(TAG, "loadLinks Embed69 servidores WebView=${serverUrls.size}: $serverUrls")
+                    if (serverUrls.isNotEmpty()) {
+                        serverUrls.amap { serverUrl ->
+                            loadKaoSourceExtractor(
+                                "Embed69",
+                                fixHostsLinksPreservingVidHide(serverUrl),
+                                playerUrl,
+                                subtitleCallback,
+                                emitTracked,
+                            )
+                        }
+                        return@coroutineScope true
+                    }
+                }
+            } else {
+                Log.w(TAG, "loadLinks player WebView sin HTML")
+            }
+        }
         if (rawMatch == null) {
-            Log.e(TAG, "loadLinks sin dataLink en playerUrl -> loadExtractor directo")
-            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+            logPlayerShape("player estático", playerHtml)
+            Log.e(TAG, "loadLinks sin dataLink tras HTTP/WebView (htmlLen=${playerHtml.length}) -> loadExtractor directo")
+            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
 
@@ -434,19 +546,19 @@ class SerieskaoProvider : MainAPI() {
         val items = tryParseJson<List<DataLinkEntry>>(jsonStr)
         if (items == null) {
             Log.e(TAG, "loadLinks error parseando dataLink JSON: ${jsonStr.take(200)}")
-            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
-        Log.d(TAG, "loadLinks items=${items.size}")
+        Log.d(TAG, "loadLinks items=${items.size} resumen=${items.map { it.videoLanguage to (it.sortedEmbeds?.size ?: 0) }}")
 
         val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
         val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
         if (embedChallenge == null || embedSalt == null) {
             Log.e(TAG, "loadLinks sin POW_CHALLENGE/SALT -> loadExtractor directo")
-            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
-        Log.d(TAG, "loadLinks challenge=$embedChallenge salt=$embedSalt")
+        Log.d(TAG, "loadLinks PoW challenge presente=${!embedChallenge.isNullOrBlank()} len=${embedChallenge.length} salt presente=${!embedSalt.isNullOrBlank()} len=${embedSalt.length}")
 
         val langMap = mapOf("LAT" to "LATINO", "ESP" to "CASTELLANO", "SUB" to "SUBTITULADO")
         Log.d(TAG, "loadLinks resolviendo PoW...")
@@ -461,24 +573,30 @@ class SerieskaoProvider : MainAPI() {
         }
         if (aesKey == null) {
             Log.e(TAG, "loadLinks PoW failed -> loadExtractor directo")
-            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, callback)
+            loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
         Log.d(TAG, "loadLinks PoW solved, items=${items.size}")
 
+        var decryptedCount = 0
         items.forEach { item ->
             val langTag = langMap[item.videoLanguage] ?: item.videoLanguage ?: "??"
+            Log.d(TAG, "loadLinks item idioma=${item.videoLanguage} mapped=$langTag embeds=${item.sortedEmbeds?.size ?: 0}")
             item.sortedEmbeds?.forEach { embed ->
                 val encrypted = embed.link ?: return@forEach
                 val decrypted = decryptAESLocal(encrypted, aesKey)
                 if (decrypted != null) {
+                    decryptedCount++
                     Log.d(TAG, "loadLinks decrypted ${embed.servername}: $decrypted")
-                    loadKaoSourceExtractor(langTag, fixHostsLinks(decrypted), playerUrl, subtitleCallback) { link ->
-                        callback(link)
+                    loadKaoSourceExtractor(langTag, fixHostsLinksPreservingVidHide(decrypted), playerUrl, subtitleCallback) { link ->
+                        emitTracked(link)
                     }
+                } else {
+                    Log.w(TAG, "loadLinks decrypt failed server=${embed.servername} lang=${item.videoLanguage}")
                 }
             }
         }
+        Log.d(TAG, "loadLinks decrypted total=$decryptedCount")
         return@coroutineScope true
     }
 
