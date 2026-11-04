@@ -635,10 +635,10 @@
         "name": "SeriesdonghuaProvider"
     },
     {
-        "fileHash": "sha256-d5b428ba63b32377e99a5b52b090aa2939e476404609c251634ee90f64f58dab",
+        "fileHash": "sha256-d2600e22875e5ae15f3cb0cdc5afb4105c489407cc49820a4f51c8e1b5e20492",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 110107,
+        "fileSize": 128201,
         "status": 1,
         "language": "es",
         "authors": [
@@ -650,7 +650,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 30,
+        "version": 43,
         "internalName": "SerieskaoProvider",
         "description": "Adaptaci\u00f3n SeriesKao",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SerieskaoProvider.cs3",
