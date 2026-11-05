@@ -75,7 +75,7 @@ class LacartoonsProvider : MainAPI() {
         val regexep = Regex("Capitulo\\s*(\\d+)")
 
         val titleElement = doc.selectFirst("h2.text-center") ?: return null.also { Log.e("LACartoonsProvider", "Could not find h2.text-center in $url") }
-        val title = titleElement.ownText().trim()
+        val title = titleElement.ownText().trim() // Título de la serie (sin el <span>)
 
         val tags = titleElement.selectFirst("span")?.text()?.let { listOf(it) } ?: emptyList()
 
@@ -122,8 +122,15 @@ class LacartoonsProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d("LACartoonsProvider", "loadLinks called for: $data")
-        var linksFound = false
-        val res = app.get(data).document
+        var emittedLinks = 0
+        val pageResponse = try {
+            app.get(data)
+        } catch (e: Exception) {
+            Log.e("LACartoonsProvider", "loadLinks page request failed type=${e::class.simpleName} message=${e.message}")
+            return false
+        }
+        Log.d("LACartoonsProvider", "loadLinks page HTTP ${pageResponse.code} length=${pageResponse.text.length}")
+        val res = pageResponse.document
         val iframes = res.select(".serie-video-informacion iframe")
         Log.d("LACartoonsProvider", "Found ${iframes.size} iframe(s) on the page")
         if (iframes.isEmpty()) {
@@ -137,33 +144,50 @@ class LacartoonsProvider : MainAPI() {
                 return@forEachIndexed
             }
 
-            Log.d("LACartoonsProvider", "[#$index] Raw iframe src: $rawLink")
+            val safeRaw = safeLinkSummary(rawLink)
+            Log.d("LACartoonsProvider", "[#$index] iframe src=$safeRaw")
 
             val link = rawLink.replaceFirst("https://short.ink/", "https://abysscdn.com/?v=")
             if (link != rawLink) {
-                Log.d("LACartoonsProvider", "[#$index] short.ink replaced → $link")
+                Log.d("LACartoonsProvider", "[#$index] short.ink normalized to ${safeLinkSummary(link)}")
             }
 
             val finalLink = fixHostsLinks(link)
             if (finalLink != link) {
-                Log.d("LACartoonsProvider", "[#$index] fixHostsLinks applied → $finalLink")
+                Log.d("LACartoonsProvider", "[#$index] host alias normalized to ${safeLinkSummary(finalLink)}")
             }
 
-            val success = try {
-                loadExtractor(finalLink, data, subtitleCallback, callback)
+            val emittedBefore = emittedLinks
+            val startedAt = System.currentTimeMillis()
+            val host = safeLinkSummary(finalLink).substringBefore("/")
+            val extractorMatched = try {
+                loadExtractor(finalLink, data, subtitleCallback) { link ->
+                    emittedLinks++
+                    Log.d("LACartoonsProvider", "[#$index] callback link name='${link.name}' type=${link.type} quality=${link.quality}")
+                    callback(link)
+                }
             } catch (e: Exception) {
-                Log.e("LACartoonsProvider", "[#$index] loadExtractor threw exception for $finalLink: ${e::class.simpleName}: ${e.message}")
+                Log.e("LACartoonsProvider", "[#$index] extractor exception host=$host type=${e::class.simpleName} message=${e.message}")
                 false
             }
-            Log.d("LACartoonsProvider", "[#$index] loadExtractor($finalLink) returned: $success")
-            if (success) {
-                linksFound = true
-            }
+            val iframeEmitted = emittedLinks - emittedBefore
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            Log.d("LACartoonsProvider", "[#$index] extractor result host=$host matched=$extractorMatched emitted=$iframeEmitted elapsedMs=$elapsedMs")
+            if (!extractorMatched) Log.w("LACartoonsProvider", "[#$index] no extractor matched host=$host")
+            if (extractorMatched && iframeEmitted == 0) Log.w("LACartoonsProvider", "[#$index] extractor matched but emitted no links host=$host")
         }
 
-        Log.d("LACartoonsProvider", "loadLinks returning: $linksFound (${if (linksFound) "links found" else "NO links found"})")
+        val linksFound = emittedLinks > 0
+        Log.d("LACartoonsProvider", "loadLinks returning: $linksFound (emitted=$emittedLinks)")
         return linksFound
     }
+}
+
+private fun safeLinkSummary(link: String): String = try {
+    val parsed = java.net.URL(link)
+    parsed.host + parsed.path
+} catch (_: Exception) {
+    "invalid-url"
 }
 
 fun fixHostsLinks(url: String): String {

@@ -85,7 +85,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/LacartoonsProvider.cs3",
     "status": 1,
-    "version": 6,
+    "version": 7,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "LACartoons",
@@ -100,7 +100,7 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=200&id=tlzsVoeHOw9V&format=png",
     "language": "mx",
-    "fileSize": 23000
+    "fileSize": 32000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TioanimeProvider.cs3",

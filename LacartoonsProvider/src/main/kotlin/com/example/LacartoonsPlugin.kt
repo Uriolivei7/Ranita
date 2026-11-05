@@ -7,8 +7,11 @@ import android.content.Context
 @CloudstreamPlugin
 class LacartoonsPlugin: Plugin() {
     override fun load(context: Context) {
+
         registerMainAPI(LacartoonsProvider())
+        Cubeembed.pluginContext = context.applicationContext
         registerExtractorAPI(Cubeembed())
+        registerExtractorAPI(Turboembed())
         registerExtractorAPI(Sendvid())
     }
 }
