@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
 class HenaojaraProvider : MainAPI() {
-    override var mainUrl = "https://ww1.henaojara.net"
+    override var mainUrl = "https://henaojara.com"
     override var name = "HenaoJara"
     override val hasMainPage = true
     override var lang = "mx"
