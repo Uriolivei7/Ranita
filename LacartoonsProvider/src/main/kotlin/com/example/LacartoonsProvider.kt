@@ -4,9 +4,13 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import android.util.Log
+import org.json.JSONObject
 
 class LacartoonsProvider : MainAPI() {
     override var mainUrl = "https://www.lacartoons.com"
@@ -160,6 +164,16 @@ class LacartoonsProvider : MainAPI() {
             val emittedBefore = emittedLinks
             val startedAt = System.currentTimeMillis()
             val host = safeLinkSummary(finalLink).substringBefore("/")
+            if (host.equals("ok.ru", ignoreCase = true) || host.endsWith(".ok.ru", ignoreCase = true)) {
+                val okruEmitted = extractOkru(finalLink, data) { extractedLink ->
+                    emittedLinks++
+                    callback(extractedLink)
+                }
+                val elapsedMs = System.currentTimeMillis() - startedAt
+                Log.d("LACartoonsProvider", "[#$index] OK.ru custom result emitted=${emittedLinks - emittedBefore} elapsedMs=$elapsedMs")
+                if (!okruEmitted) Log.w("LACartoonsProvider", "[#$index] OK.ru no entregó HLS ni videos progresivos")
+                return@forEachIndexed
+            }
             val extractorMatched = try {
                 loadExtractor(finalLink, data, subtitleCallback) { link ->
                     emittedLinks++
@@ -180,6 +194,65 @@ class LacartoonsProvider : MainAPI() {
         val linksFound = emittedLinks > 0
         Log.d("LACartoonsProvider", "loadLinks returning: $linksFound (emitted=$emittedLinks)")
         return linksFound
+    }
+
+    private suspend fun extractOkru(
+        url: String,
+        pageReferer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val videoId = Regex("""(?:videoembed|video)/(\d+)""").find(url)?.groupValues?.getOrNull(1)
+            ?: return false
+        val embedUrl = "https://ok.ru/videoembed/$videoId"
+        return try {
+            val response = app.get(
+                embedUrl,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+                    "Referer" to pageReferer
+                ),
+                timeout = 30L
+            )
+            val rawOptions = response.document.selectFirst("[data-options]")?.attr("data-options")
+            Log.d("LACartoonsProvider", "[OK.ru] id=$videoId HTTP ${response.code} htmlLen=${response.text.length} dataOptions=${!rawOptions.isNullOrBlank()}")
+            if (rawOptions.isNullOrBlank()) return false
+            val metadata = JSONObject(rawOptions).optJSONObject("flashvars")?.optJSONObject("metadata")
+            val hls = metadata?.optString("hlsManifestUrl")?.takeIf { it.isNotBlank() && it != "null" }
+            if (hls != null) {
+                callback(newExtractorLink(name, "$name [OK.ru]", hls, ExtractorLinkType.M3U8) {
+                    this.referer = embedUrl
+                    this.quality = Qualities.P1080.value
+                })
+                Log.d("LACartoonsProvider", "[OK.ru] id=$videoId HLS emitido host=${safeLinkSummary(hls).substringBefore("/")}")
+                return true
+            }
+
+            val videos = metadata?.optJSONArray("videos") ?: return false
+            var emitted = 0
+            for (i in videos.length() - 1 downTo 0) {
+                val video = videos.optJSONObject(i) ?: continue
+                val videoUrl = video.optString("url").takeIf { it.isNotBlank() && it != "null" } ?: continue
+                val qualityName = video.optString("name")
+                val quality = when (qualityName.lowercase()) {
+                    "full" -> Qualities.P1080.value
+                    "hd" -> Qualities.P720.value
+                    "sd" -> Qualities.P480.value
+                    "low" -> Qualities.P360.value
+                    "lowest", "mobile" -> Qualities.P240.value
+                    else -> Qualities.Unknown.value
+                }
+                callback(newExtractorLink(name, "$name [OK.ru $qualityName]", videoUrl, ExtractorLinkType.VIDEO) {
+                    this.referer = embedUrl
+                    this.quality = quality
+                })
+                emitted++
+            }
+            Log.d("LACartoonsProvider", "[OK.ru] id=$videoId progresivos emitidos=$emitted")
+            emitted > 0
+        } catch (e: Exception) {
+            Log.e("LACartoonsProvider", "[OK.ru] id=$videoId error ${e::class.simpleName}: ${e.message}")
+            false
+        }
     }
 }
 
