@@ -635,10 +635,10 @@
         "name": "SeriesdonghuaProvider"
     },
     {
-        "fileHash": "sha256-d2600e22875e5ae15f3cb0cdc5afb4105c489407cc49820a4f51c8e1b5e20492",
+        "fileHash": "sha256-78bf9e0a3f70f4b91325c2b6feb4871a7dd29aabf7ff0e3f35bcabe86632706a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 128201,
+        "fileSize": 133937,
         "status": 1,
         "language": "es",
         "authors": [
