@@ -270,7 +270,6 @@ class GnulaProvider : MainAPI() {
         val mainPoster = fixImageUrl(post.images.poster, "w500")
 
         val averageScore = post.rate?.average?.toFloat()
-
         val duration = post.runtime
 
         val recommendations = mutableListOf<SearchResponse>()
@@ -310,7 +309,9 @@ class GnulaProvider : MainAPI() {
                         this.posterUrl = ep.image ?: fixImageUrl(ep.images.poster) ?: mainPoster
                     }
                 }
-            }
+            }.toList()
+
+            Log.d(TAG, "load: Se mapearon ${episodes.size} episodios correctamente.")
 
             newTvSeriesLoadResponse(title, actualUrl, TvType.TvSeries, episodes.reversed()) {
                 this.posterUrl = mainPoster
