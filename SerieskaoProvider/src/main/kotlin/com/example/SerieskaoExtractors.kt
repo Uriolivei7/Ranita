@@ -229,7 +229,6 @@ class KaoVoeExtractor {
         return emitted
     }
 
-
     private suspend fun solveAltcha(
         html: String,
         pageUrl: String,
@@ -945,7 +944,8 @@ private suspend fun tryVidHideProExtraction(
     }
 }
 
-private suspend fun tryVoeExtraction(    url: String,
+private suspend fun tryVoeExtraction(
+    url: String,
     referer: String,
     subtitleCallback: (SubtitleFile) -> Unit,
     callback: (ExtractorLink) -> Unit
@@ -955,8 +955,15 @@ private suspend fun tryVoeExtraction(    url: String,
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "es-ES,es;q=0.9",
             "Referer" to referer,
+            "Origin" to "https://voe.sx",
+            "Sec-Fetch-Dest" to "document",
+            "Sec-Fetch-Mode" to "navigate",
+            "Sec-Fetch-Site" to "cross-site",
+            "Upgrade-Insecure-Requests" to "1",
         )
+
         suspend fun tryMirrors(): Boolean {
             val hashPath = try { java.net.URL(url).path } catch (_: Exception) { "" }
             if (!hashPath.startsWith("/e/")) return false
@@ -980,6 +987,7 @@ private suspend fun tryVoeExtraction(    url: String,
             }
             return mirrorOk.get()
         }
+
         val res = app.get(url, headers = headers, timeout = 15L, allowRedirects = false)
         val redirectUrl = res.headers["Location"] ?: res.url
         Log.d(KAO_TAG, "[Voe] status=${res.code} redirect=$redirectUrl")
@@ -992,9 +1000,32 @@ private suspend fun tryVoeExtraction(    url: String,
             redirectUrl
         }
 
-        val finalResp = app.get(finalUrl, headers = headers, timeout = 15L)
+        var finalResp = app.get(finalUrl, headers = headers, timeout = 15L)
         var finalHtml = finalResp.text
         var finalCookies = finalResp.cookies
+
+        if (finalHtml.contains("test-videos.co.uk") || finalHtml.contains("bigbuckbunny") || finalHtml.length < 5000) {
+            Log.w(KAO_TAG, "[Voe] posible video de prueba en $finalUrl, intentando con headers completos")
+            val fullHeaders = headers + mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Encoding" to "gzip, deflate, br",
+                "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
+                "Cache-Control" to "max-age=0",
+                "Sec-Fetch-Dest" to "document",
+                "Sec-Fetch-Mode" to "navigate",
+                "Sec-Fetch-Site" to "none",
+                "Sec-Fetch-User" to "?1",
+                "Upgrade-Insecure-Requests" to "1"
+            )
+
+            val resp2 = app.get(finalUrl, headers = fullHeaders, timeout = 15L)
+            if (resp2.isSuccessful && resp2.text.length > finalHtml.length) {
+                Log.d(KAO_TAG, "[Voe] reintento con headers completos obtuvo más contenido: ${resp2.text.length}")
+                finalResp = resp2
+                finalHtml = resp2.text
+                finalCookies = finalResp.cookies
+            }
+        }
 
         val jsRedirectRegex = Regex("""window\.location\.href\s*=\s*['\"](https?://[^'\"]+)['\"]""")
         var voeHops = 0
@@ -1010,9 +1041,8 @@ private suspend fun tryVoeExtraction(    url: String,
         }
         Log.d(KAO_TAG, "[Voe] finalUrl=$finalUrl")
 
-        if (finalHtml.contains("captcha") || finalHtml.contains("CAPTCHA") || finalHtml.contains("cf-challenge") || finalHtml.contains("altcha-widget")) {
+        if (finalHtml.contains("captcha", ignoreCase = true) || finalHtml.contains("cf-challenge") || finalHtml.contains("altcha-widget")) {
             Log.w(KAO_TAG, "[Voe] challenge detectado en $finalUrl")
-
             if (KaoVoeExtractor().parseHtml(finalHtml, finalUrl, "SeriesKao", subtitleCallback, callback, finalCookies)) return true
             return tryMirrors()
         }
@@ -1021,13 +1051,39 @@ private suspend fun tryVoeExtraction(    url: String,
         val mp4 = Regex("""(https?://[^"'\s]+\.mp4[^"'\s]*)""").find(finalHtml)?.groupValues?.get(1)
 
         val videoUrl = m3u8 ?: mp4
-        if (videoUrl == null) {
-            Log.w(KAO_TAG, "[Voe] no m3u8/mp4 found in $finalUrl")
+        if (videoUrl == null || videoUrl.contains("test-videos.co.uk") || videoUrl.contains("bigbuckbunny")) {
+            Log.w(KAO_TAG, "[Voe] video de prueba o sin enlace en $finalUrl, intentando WebView...")
+            val webViewHtml = renderViaWebView(
+                pageUrl = finalUrl,
+                referer = referer,
+                waitMs = 15000L,
+                readyJs = "h.includes('.m3u8')||h.includes('mp4')||h.includes('hls')",
+                renderInIframe = false
+            )
+            if (!webViewHtml.isNullOrEmpty()) {
+                Log.d(KAO_TAG, "[Voe] WebView HTML len=${webViewHtml.length}")
+                val webViewM3u8 = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""").find(webViewHtml)?.groupValues?.get(1)
+                val webViewMp4 = Regex("""(https?://[^"'\s]+\.mp4[^"'\s]*)""").find(webViewHtml)?.groupValues?.get(1)
+                val webViewUrl = webViewM3u8 ?: webViewMp4
+
+                if (webViewUrl != null && !webViewUrl.contains("test-videos.co.uk") && !webViewUrl.contains("bigbuckbunny")) {
+                    Log.d(KAO_TAG, "[Voe] encontrado via WebView: ${webViewUrl.take(120)}")
+                    callback(newExtractorLink("SeriesKao", "Voe", webViewUrl, if (webViewM3u8 != null) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                        this.referer = finalUrl
+                        this.headers = headers
+                    })
+                    return true
+                } else {
+                    Log.w(KAO_TAG, "[Voe] WebView tampoco encontró video válido")
+                }
+            } else {
+                Log.w(KAO_TAG, "[Voe] WebView devolvió HTML vacío")
+            }
             if (KaoVoeExtractor().parseHtml(finalHtml, finalUrl, "SeriesKao", subtitleCallback, callback, finalCookies)) return true
             return tryMirrors()
         }
 
-        val type = ExtractorLinkType.M3U8
+        val type = if (m3u8 != null) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
         Log.d(KAO_TAG, "[Voe] found ${if (m3u8 != null) "m3u8" else "mp4"}: ${videoUrl.take(120)}")
 
         callback(newExtractorLink("SeriesKao", "Voe", videoUrl, type) {
@@ -1037,6 +1093,32 @@ private suspend fun tryVoeExtraction(    url: String,
         true
     } catch (e: Exception) {
         Log.e(KAO_TAG, "[Voe] error: ${e.message}")
+        try {
+            Log.d(KAO_TAG, "[Voe] intentando WebView tras excepción")
+            val webViewHtml = renderViaWebView(
+                pageUrl = url,
+                referer = referer,
+                waitMs = 15000L,
+                readyJs = "h.includes('.m3u8')||h.includes('mp4')||h.includes('hls')",
+                renderInIframe = false
+            )
+            if (!webViewHtml.isNullOrEmpty()) {
+                val webViewM3u8 = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""").find(webViewHtml)?.groupValues?.get(1)
+                val webViewMp4 = Regex("""(https?://[^"'\s]+\.mp4[^"'\s]*)""").find(webViewHtml)?.groupValues?.get(1)
+                val webViewUrl = webViewM3u8 ?: webViewMp4
+
+                if (webViewUrl != null && !webViewUrl.contains("test-videos.co.uk") && !webViewUrl.contains("bigbuckbunny")) {
+                    Log.d(KAO_TAG, "[Voe] encontrado via WebView tras excepción: ${webViewUrl.take(120)}")
+                    callback(newExtractorLink("SeriesKao", "Voe", webViewUrl, if (webViewM3u8 != null) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                        this.referer = url
+                        this.headers = headers
+                    })
+                    return true
+                }
+            }
+        } catch (e2: Exception) {
+            Log.e(KAO_TAG, "[Voe] WebView también falló: ${e2.message}")
+        }
         false
     }
 }

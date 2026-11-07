@@ -60,7 +60,7 @@ class SerieskaoProvider : MainAPI() {
     }
 
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        val cdnDomains = listOf("dramiyos", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou", "cdnsync.cloud")
+        val cdnDomains = listOf("dramiyos", "acek-cdn", "vidhidepro", "vidhide", "premilkyway", "cyou", "cdnsync.cloud", "shannoncoldalready.com", "voe.sx")
         val cdnPaths = listOf("/hls2/", "/hls3/", ".urlset/", "/stream/")
         return Interceptor { chain ->
             val request = chain.request()
@@ -480,9 +480,11 @@ class SerieskaoProvider : MainAPI() {
             val normalized = html.replace("\\/", "/").replace("&amp;", "&")
             val knownHosts = listOf(
                 "dood", "do7go", "vidhide", "morencius", "minochinos", "mivalyo", "dinisglows", "dhtpre",
-                "streamwish", "hglink", "swdyu", "cybervynx", "dumbalag", "awish"
+                "streamwish", "hglink", "swdyu", "cybervynx", "dumbalag", "awish",
+                "voe.sx", "voe", "voe2", "shannoncoldalready.com", "shannoncoldalready"
             )
-            return Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+""").findAll(normalized)
+
+            val absoluteUrls = Regex("""(?i)(?:https?:)?//[^\s'"<>\\]+""").findAll(normalized)
                 .mapNotNull { match ->
                     val candidate = match.value.trimEnd(')', ',', ';', '.')
                     val url = if (candidate.startsWith("//")) "https:$candidate" else candidate
@@ -491,6 +493,14 @@ class SerieskaoProvider : MainAPI() {
                 }
                 .distinct()
                 .toList()
+
+            val relativeUrls = Regex("""(?i)/e/[A-Za-z0-9_-]+""").findAll(normalized)
+                .mapNotNull { match ->
+                    val candidate = match.value.trimEnd(')', ',', ';', '.')
+                    if (candidate.contains("voe", ignoreCase = true)) "https://voe.sx$candidate" else null
+                }
+                .distinct()
+            return (absoluteUrls + relativeUrls).distinct()
         }
 
         var rawMatch = extractDataLink(playerHtml)
@@ -501,7 +511,7 @@ class SerieskaoProvider : MainAPI() {
                 referer = data,
                 waitMs = 12000L,
                 readyJs = if (playerHtml.contains("EMBED69", true)) {
-                    "h.includes('dood')&&h.includes('vidhide')&&h.includes('streamwish')"
+                    "h.includes('dood')&&h.includes('vidhide')&&h.includes('streamwish')&&h.includes('voe')"
                 } else {
                     "h.includes('dataLink')&&h.includes('POW_CHALLENGE')&&h.includes('POW_SALT')"
                 },
