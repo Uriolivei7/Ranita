@@ -239,10 +239,10 @@
         "name": "GloboViewProvider"
     },
     {
-        "fileHash": "sha256-8b9eeef08e95d6effb911c3ab1e0a03664b5aeedb0c8a61f9b63996187b91b62",
+        "fileHash": "sha256-716e82439b053796f91e900af8834e9ce9abbe63d4e4ad7ab6e2ea870ac0f790",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 64544,
+        "fileSize": 64621,
         "status": 1,
         "language": "es",
         "authors": [
@@ -876,10 +876,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%",
-        "fileHash": "sha256-0e6b5a5de9d770a05d4ba137c9cd3eb75be29559fbd18fe5799673ae7660528b",
+        "fileHash": "sha256-902cc785bed72840a0aa0af80ce5ad15bcb96b49f1b6b9991818109b92e12123",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 75203,
+        "fileSize": 76435,
         "status": 1,
         "language": "es",
         "authors": [
@@ -888,7 +888,7 @@
         "tvTypes": [
             "Anime"
         ],
-        "version": 8,
+        "version": 11,
         "internalName": "VeranimeProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VeranimeProvider.cs3",
         "name": "VeranimeProvider"
