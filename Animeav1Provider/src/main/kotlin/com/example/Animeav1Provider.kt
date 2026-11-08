@@ -118,11 +118,15 @@ class Animeav1 : MainAPI() {
 
 
     private fun getTvType(text: String): TvType {
-        return when {
-            text.contains("TV Anime", ignoreCase = true) -> TvType.Anime
-            text.contains("Película", ignoreCase = true) -> TvType.Movie
-            text.contains("OVA", ignoreCase = true) -> TvType.Anime
-            else -> TvType.Movie
+        val t = text.trim()
+        return if (
+            t.contains("Película", ignoreCase = true) ||
+            t.contains("Pelicula", ignoreCase = true) ||
+            t.contains("Movie", ignoreCase = true)
+        ) {
+            TvType.Movie
+        } else {
+            TvType.Anime
         }
     }
 
@@ -167,6 +171,7 @@ class Animeav1 : MainAPI() {
 
         val rawtype = infoContainer?.select("span:nth-child(1)")?.text() ?: ""
         val type = getTvType(rawtype)
+        Log.d("Animeav1", "LOAD METADATA: rawtype='$rawtype' -> type=$type")
 
         val recommendations = document.select("section div.gradient-cut > div > div").mapNotNull {
             val recTitle = it.select("h3").text()
