@@ -437,8 +437,13 @@ class SyncPlugin : Plugin() {
                 var restoredBookmarks = false
                 var restoredResume = false
                 val restoredSources = mutableMapOf<SyncCategory, SyncDevice>()
+                val dirtySnapshot = synchronized(dirtyCategories) { dirtyCategories.toSet() }
                 try {
                     for (cat in enabledRestore) {
+                        if (cat == SyncCategory.SETTINGS && cat in dirtySnapshot) {
+                            log("[restore] $cat omitido: hay cambios locales sin subir")
+                            continue
+                        }
                         val list = candidates[cat] ?: continue
                         val best = list.maxWithOrNull(
                             compareBy<Pair<SyncDevice, BackupFile>> { it.first.updatedAt }
@@ -485,9 +490,10 @@ class SyncPlugin : Plugin() {
                     val src = restoredSources.values.joinToString { it.name }
                     lastStatus = "Restaurado desde $src"
                     log("[restore] OK: $cats desde $src")
-                    toastSync("Sincronizado: datos actualizados desde otro dispositivo")
+                    val visibleChange = restoredSources.keys.any { it != SyncCategory.SETTINGS }
+                    if (visibleChange) toastSync("Sincronizado: datos actualizados desde otro dispositivo")
                     justRestored = true
-                    val freshBackup = SyncBackup.buildBackup(appCtx, enabledBackup)
+                    val freshBackup = SyncBackup.buildBackup(appCtx, enabledBackup, sanitizeProfiles = true)
                     val freshData = SyncNetwork.json.encodeToString(BackupFile.serializer(), freshBackup)
                     SyncStorage.lastPushedHash = SyncBackup.computeHash(freshData)
                     Handler(Looper.getMainLooper()).post {
@@ -531,7 +537,7 @@ class SyncPlugin : Plugin() {
             return
         }
         if (backupEnabled) {
-            val toPush = SyncBackup.buildBackup(appCtx, enabledBackup)
+            val toPush = SyncBackup.buildBackup(appCtx, enabledBackup, sanitizeProfiles = true)
             if (SyncBackup.isEmpty(toPush)) {
                 lastStatus = "Backup vacío"
                 return

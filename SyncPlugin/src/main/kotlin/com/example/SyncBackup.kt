@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.lagradost.cloudstream3.utils.DataStoreHelper
 import java.security.MessageDigest
 import kotlin.math.abs
@@ -46,6 +47,7 @@ object SyncBackup {
         "results_sorting_mode", "viewpager_item_key",
         "app_layout_key",
         "auto_download_plugins_key2",
+        "desktop_start_profile",
     )
 
     private fun String.isTransferable(): Boolean {
@@ -153,6 +155,7 @@ object SyncBackup {
     fun buildBackup(
         context: Context,
         enabled: Set<SyncCategory>,
+        sanitizeProfiles: Boolean = false,
     ): BackupFile {
         val resumeIndex = buildResumeIndex(context.getSharedPrefs().all)
         val allData = context.getSharedPrefs().all.filter { entry ->
@@ -163,11 +166,14 @@ object SyncBackup {
             entry.key.isTransferable() && classifyKey(entry.key) in enabled &&
                 isResumeRelevant(entry.key, entry.value, resumeIndex)
         }
+        val settingsData = if (sanitizeProfiles) allSettings.mapValues { (k, v) ->
+            if (k == ACCOUNTS_KEY && v is String) sanitizeProfileAccounts(v) else v
+        } else allSettings
         val deletions = pruneTombstones(SyncStorage.tombstones())
             .filterKeys { key -> key.isTransferable() && classifyKey(key) in enabled }
         return BackupFile(
             datastore = buildVars(allData),
-            settings = buildVars(allSettings),
+            settings = buildVars(settingsData),
             deletions = deletions,
         )
     }
@@ -390,7 +396,8 @@ object SyncBackup {
                 }
 
                 if (willWrite) {
-                    editor.putString(mk, v)
+                    val toWrite = if (mk == ACCOUNTS_KEY) graftProfileImages(v, localVal) else v
+                    editor.putString(mk, toWrite)
                     if (mk.contains("video_pos_dur")) {
                         val pos = resumePosition(v)
                         val dur = resumeDuration(v)
@@ -567,7 +574,9 @@ object SyncBackup {
                 }
             } else {
                 if (key == ACCOUNTS_KEY) {
-                    merged[key] = if (accountCount(cloudVal) >= accountCount(localVal)) cloudVal else localVal
+                    val cloudWins = accountCount(cloudVal) > accountCount(localVal) ||
+                        (accountCount(cloudVal) == accountCount(localVal) && cloudPayloadTs > localCategoryTs)
+                    merged[key] = if (cloudWins) cloudVal else localVal
                     continue
                 }
                 merged[key] = when (resolveWinner(
@@ -756,6 +765,57 @@ object SyncBackup {
             resumeMapper.readTree(json).size()
         } catch (_: Exception) {
             0
+        }
+    }
+
+    private fun sanitizeProfileAccounts(json: String): String {
+        return try {
+            val node = resumeMapper.readTree(json)
+            if (!node.isArray) return json
+            node.forEach { profile ->
+                if (profile is ObjectNode) {
+                    val img = profile.get("customImage")?.takeIf { !it.isNull }?.asText()
+                    if (!isPortableImage(img)) profile.putNull("customImage")
+                }
+            }
+            resumeMapper.writeValueAsString(node)
+        } catch (_: Exception) {
+            json
+        }
+    }
+
+    private fun isPortableImage(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        val lower = value.trim().lowercase()
+        return lower.startsWith("http://") || lower.startsWith("https://")
+    }
+
+    private fun graftProfileImages(cloudJson: String, localJson: String?): String {
+        if (localJson.isNullOrBlank()) return cloudJson
+        return try {
+            val cloud = resumeMapper.readTree(cloudJson)
+            val local = resumeMapper.readTree(localJson)
+            if (!cloud.isArray || !local.isArray) return cloudJson
+            val images = HashMap<Int, String>()
+            local.forEach { profile ->
+                if (profile is ObjectNode) {
+                    val idx = profile.get("keyIndex")?.asInt() ?: return@forEach
+                    val img = profile.get("customImage")?.takeIf { !it.isNull }?.asText()
+                    if (!img.isNullOrEmpty()) images[idx] = img
+                }
+            }
+            if (images.isEmpty()) return cloudJson
+            cloud.forEach { profile ->
+                if (profile !is ObjectNode) return@forEach
+                val idx = profile.get("keyIndex")?.asInt() ?: return@forEach
+                val cloudImg = profile.get("customImage")?.takeIf { !it.isNull }?.asText()
+                if (!isPortableImage(cloudImg)) {
+                    images[idx]?.let { profile.put("customImage", it) }
+                }
+            }
+            resumeMapper.writeValueAsString(cloud)
+        } catch (_: Exception) {
+            cloudJson
         }
     }
 

@@ -652,7 +652,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SyncPlugin.cs3",
     "status": 1,
-    "version": 14,
+    "version": 15,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "SyncPlugin",
@@ -666,7 +666,7 @@
     ],
     "iconUrl": "https://img.icons8.com/?size=96&id=3FDJsdSpK6cv&format=png",
     "language": "mx",
-    "fileSize": 122000
+    "fileSize": 123000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/TorrentioProvider.cs3",
