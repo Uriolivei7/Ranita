@@ -346,10 +346,10 @@
         "name": "KatanimeProvider"
     },
     {
-        "fileHash": "sha256-7fbee6cafa3f09cf85de8f34e6fbfcdfc70e459267b213a99ac3ad38ba80bd09",
+        "fileHash": "sha256-7f396e0f75d57950c6ebea5bd85643f691650ca8522461f40263dfd10a515e4e",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 38114,
+        "fileSize": 32258,
         "status": 1,
         "language": "es",
         "authors": [
@@ -359,7 +359,7 @@
             "TvSeries",
             "Cartoon"
         ],
-        "version": 26,
+        "version": 29,
         "internalName": "LacartoonsProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/LacartoonsProvider.cs3",
