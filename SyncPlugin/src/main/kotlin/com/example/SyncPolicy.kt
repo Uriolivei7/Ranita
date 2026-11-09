@@ -61,6 +61,8 @@ object SyncKeyPath {
         if (json == null) return 0L
         return try {
             "\"updateTime\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toLong()
+                ?: "\"favoritesTime\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toLong()
+                ?: "\"bookmarkedTime\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toLong()
                 ?: "\"latestUpdatedTime\":\\s*(\\d+)".toRegex()
                     .find(json)?.groupValues?.get(1)?.toLong()
                 ?: "\"searchedAt\":\\s*(\\d+)".toRegex().find(json)?.groupValues?.get(1)?.toLong()

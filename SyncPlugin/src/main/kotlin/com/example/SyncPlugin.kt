@@ -277,7 +277,7 @@ class SyncPlugin : Plugin() {
                     pendingPushToast = true
                     scope.launch {
                         withContext(NonCancellable) {
-                            try { runSync(forceRestore = true, forcePush = true) } catch (_: Exception) {}
+                            try { runSync(forcePush = true) } catch (_: Exception) {}
                             maybePushToast()
                         }
                     }
@@ -495,7 +495,11 @@ class SyncPlugin : Plugin() {
                     justRestored = true
                     val freshBackup = SyncBackup.buildBackup(appCtx, enabledBackup, sanitizeProfiles = true)
                     val freshData = SyncNetwork.json.encodeToString(BackupFile.serializer(), freshBackup)
-                    SyncStorage.lastPushedHash = SyncBackup.computeHash(freshData)
+                    val stillDirty = synchronized(dirtyCategories) {
+                        for (cat in restoredSources.keys) dirtyCategories.remove(cat)
+                        dirtyCategories.isNotEmpty()
+                    }
+                    if (!stillDirty) SyncStorage.lastPushedHash = SyncBackup.computeHash(freshData)
                     Handler(Looper.getMainLooper()).post {
                         try {
                             if (restoredSettings) {
@@ -517,11 +521,6 @@ class SyncPlugin : Plugin() {
                             }
                         } finally {
                             isRestoring = false
-                            synchronized(dirtyCategories) {
-                                for (cat in restoredSources.keys) {
-                                    dirtyCategories.remove(cat)
-                                }
-                            }
                         }
                     }
                 } else {
