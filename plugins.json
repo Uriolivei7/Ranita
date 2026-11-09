@@ -739,10 +739,10 @@
         "name": "StrymixtvProvider"
     },
     {
-        "fileHash": "sha256-9709e414ac4c2734ad7ce5192a9757e9efdf71cb5b94d61ae92c539a55e4c020",
+        "fileHash": "sha256-bc5a8ae0833a80f9b44633b5f5f27c6a7682f61c05e96fe28e44ace494efd119",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 124091,
+        "fileSize": 125719,
         "status": 1,
         "language": "es",
         "authors": [
