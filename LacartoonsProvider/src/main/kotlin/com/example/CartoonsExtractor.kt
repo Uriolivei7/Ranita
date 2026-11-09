@@ -7,16 +7,8 @@ package com.example
 */
 
 import android.util.Log
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import android.webkit.JavascriptInterface
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -25,13 +17,8 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.fixUrl
+import org.json.JSONObject
 import java.net.URL
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -42,7 +29,12 @@ open class Cubeembed : ExtractorApi() {
     override val requiresReferer = true
 
     companion object {
-        var pluginContext: Context? = null
+        private const val TAG = "Cubeembed"
+        // Claves extraidas del bundle de Turbovio (codepoints de keyChars/saltChars)
+        private const val KEYBASE = "1d54a1d53c1d56e1d6811d53c1d6831d4da1d4d41d4e81d7d91d7da1d7db"
+        private const val IVBASE = "1f5101f5dd1f5111f6aa1f6e126a1"
+        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+        private val HEX = "0123456789abcdef".toCharArray()
     }
 
     override suspend fun getUrl(
@@ -51,192 +43,172 @@ open class Cubeembed : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        Log.d("Cubeembed", "resolve start host=${try { URL(url).host } catch (_: Exception) { "unknown" }}")
-        val turboResult = resolveTurboEmbed(url)
-        if (turboResult != null && turboResult.streamUrl.isNotBlank()) {
-            Log.d("Cubeembed", "TurboEmbed JW source found host=${try { URL(turboResult.streamUrl).host } catch (_: Exception) { "unknown" }}")
-            callback(newExtractorLink(this.name, "$name [TurboEmbed]", turboResult.streamUrl, ExtractorLinkType.M3U8) {
-                this.referer = turboResult.pageUrl
-                this.quality = Qualities.Unknown.value
-            })
-            return
-        }
-        Log.w("Cubeembed", "TurboEmbed WebView terminó sin fuente JW; intento extractor API legado")
-
-        val hash = url.substringAfterLast("#").substringAfter("/")
-        val baseUrl = getBaseUrl(url)
-        Log.d("Cubeembed", "hash=$hash baseUrl=$baseUrl")
-
-        val headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0")
-        val apiResponse = app.get("$baseUrl/api/v1/video?id=$hash", headers = headers)
-        val encrypted = apiResponse.text.trim()
-        Log.d("Cubeembed", "Legacy API HTTP ${apiResponse.code} contentType=${apiResponse.headers["content-type"]} responseLength=${encrypted.length}")
-        if (encrypted.isEmpty()) {
-            Log.w("Cubeembed", "API devolvió cuerpo vacío para id=$hash")
-            return
-        }
-
-        val key = "kiemtienmua911ca"
-        val ivList = listOf("1234567890oiuytr", "0123456789abcdef")
-
-        val decryptedText = ivList.firstNotNullOfOrNull { iv ->
-            try {
-                decryptAES(encrypted, key, iv)
-            } catch (e: Exception) {
-                Log.w("Cubeembed", "Decrypt failed with IV=$iv: ${e.message}")
-                null
-            }
-        } ?: throw Exception("Failed to decrypt with all IVs")
-
-        Log.d("Cubeembed", "Decrypted payload length=${decryptedText.length}")
-
-        val source = Regex("\"source\":\"(.*?)\"").find(decryptedText)
-            ?.groupValues?.get(1)
-            ?.replace("\\/", "/") ?: ""
-        Log.d("Cubeembed", "parsed source=${source.isNotBlank()} sourceLength=${source.length}")
-
-        val subtitleSection = Regex("\"subtitle\":\\{(.*?)\\}").find(decryptedText)?.groupValues?.get(1)
-        subtitleSection?.let { section ->
-            Regex("\"([^\"]+)\":\\s*\"([^\"]+)\"").findAll(section).forEach { match ->
-                val lang = match.groupValues[1]
-                val rawPath = match.groupValues[2].split("#")[0]
-                if (rawPath.isNotEmpty()) {
-                    val path = rawPath.replace("\\/", "/")
-                    val subUrl = "$baseUrl$path"
-                    subtitleCallback(newSubtitleFile(lang, fixUrl(subUrl)))
-                }
-            }
-        }
-
-        if (source.isNotEmpty()) {
-            val sourceHttp = source.replaceFirst("https://", "http://")
-            Log.d("Cubeembed", "Source M3U8 (HTTP): $sourceHttp")
-            callback.invoke(
-                newExtractorLink(this.name, "$name ", sourceHttp, ExtractorLinkType.M3U8) {
-                    this.referer = url
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            Log.d("Cubeembed", "emitted source M3U8")
-        }
-        val hlsTiktok = Regex("\"hlsVideoTiktok\":\"(.*?)\"").find(decryptedText)
-            ?.groupValues?.get(1)
-            ?.replace("\\/", "/") ?: ""
-        Log.d("Cubeembed", "parsed hlsVideoTiktok=${hlsTiktok.isNotBlank()} pathLength=${hlsTiktok.length}")
-        if (hlsTiktok.isNotEmpty()) {
-            val tiktokUrl = "$baseUrl$hlsTiktok"
-            Log.d("Cubeembed", "TikTok M3U8: $tiktokUrl")
-            callback.invoke(
-                newExtractorLink(this.name, "$name TK", tiktokUrl, ExtractorLinkType.M3U8) {
-                    this.referer = url
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-            Log.d("Cubeembed", "emitted TikTok M3U8")
-        }
-        if (source.isBlank() && hlsTiktok.isBlank()) {
-            Log.w("Cubeembed", "payload descifrado sin sources reconocidos; no se emitieron enlaces")
-        }
-    }
-
-    private suspend fun resolveTurboEmbed(pageUrl: String): TurboEmbedResolved? = withTimeoutOrNull(35_000L) {
-        cubeEmbedWebViewMutex.withLock {
-            withContext(Dispatchers.Main) {
-                val appContext = pluginContext?.applicationContext ?: return@withContext null
-                val handler = Handler(Looper.getMainLooper())
-                val result = CompletableDeferred<TurboEmbedResolved?>()
-                val webView = WebView(appContext)
-                var attempts = 0
-
-                fun poll() {
-                    if (result.isCompleted) return
-                    attempts++
-                    val script = """(function(){try{
-                        var p=window.jwplayer&&window.jwplayer('media-player');
-                        if(p&&p.getPlaylistItem){var it=p.getPlaylistItem();var f=it&&(it.file||(it.sources&&it.sources[0]&&it.sources[0].file));
-                          if(f&&/^https?:/i.test(f)){NativeBridge.onStream(window.location.href,f);return true;}}
-                        if(!window.__csCubeClicked){window.__csCubeClicked=true;var b=document.querySelector('#player-button,.tvp-poster-play,.tvp-center-play');if(b)b.click();else if(p&&p.play)p.play();}
-                        return false;
-                    }catch(e){return false;}})()"""
-                    webView.evaluateJavascript(script, null)
-                    if (attempts < 28) handler.postDelayed({ poll() }, 1000L)
-                    else if (!result.isCompleted) result.complete(null)
-                }
-
-                try {
-                    webView.settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        mediaPlaybackRequiresUserGesture = false
-                        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        cacheMode = WebSettings.LOAD_NO_CACHE
-                        userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
-                    }
-                    webView.addJavascriptInterface(object {
-                        @JavascriptInterface
-                        fun onStream(currentPage: String, stream: String) {
-                            handler.post { if (!result.isCompleted) result.complete(TurboEmbedResolved(currentPage, stream)) }
-                        }
-                    }, "NativeBridge")
-                    webView.webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, currentUrl: String?) {
-                            val safePage = try {
-                                URL(currentUrl ?: "").let { it.host + it.path }
-                            } catch (_: Exception) {
-                                "unknown"
-                            }
-                            Log.d("Cubeembed", "TurboEmbed page loaded: " + safePage)
-                            handler.postDelayed({ poll() }, 500L)
-                        }
-                    }
-                    webView.loadUrl(pageUrl)
-                    result.await()
-                } catch (e: Exception) {
-                    Log.w("Cubeembed", "TurboEmbed WebView failed: " + e::class.simpleName + ": " + e.message)
-                    null
-                } finally {
-                    handler.removeCallbacksAndMessages(null)
-                    webView.stopLoading()
-                    webView.removeJavascriptInterface("NativeBridge")
-                    webView.destroy()
-                }
-            }
-        }
-    }
-
-    private fun getBaseUrl(url: String): String {
-        return try {
-            val parsed = URL(url)
-            "${parsed.protocol}://${parsed.host}"
+        Log.d(TAG, "resolve start host=${try { URL(url).host } catch (_: Exception) { "?" }}")
+        val res = try {
+            resolveTurbovio(url, subtitleCallback)
         } catch (e: Exception) {
-            Log.e("Cubeembed", "getBaseUrl fallback: ${e.message}")
-            mainUrl
+            Log.w(TAG, "resolve err ${e::class.simpleName}: ${e.message}")
+            null
         }
+        if (res == null) {
+            Log.w(TAG, "Turbovio sin fuente")
+            return
+        }
+        val isHls = res.streamUrl.contains(".m3u8") || res.streamUrl.contains(".txt")
+        callback(newExtractorLink(this.name, this.name, res.streamUrl, if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+            this.referer = res.referer
+            this.headers = mapOf(
+                "User-Agent" to UA,
+                "Referer" to res.referer,
+                "Origin" to res.origin,
+                "Accept" to "*/*",
+            )
+            this.quality = Qualities.Unknown.value
+        })
+        Log.d(TAG, "emitted ${res.streamUrl.take(120)}")
     }
 
-    private fun decryptAES(inputHex: String, key: String, iv: String): String {
-        val keySpec = SecretKeySpec(key.encodeToByteArray(), "AES")
-        val ivSpec = IvParameterSpec(iv.encodeToByteArray())
+    private suspend fun resolveTurbovio(inputUrl: String, subtitleCallback: (SubtitleFile) -> Unit): TurbovioResolved? {
+        val parsed = URL(inputUrl)
+        val inHost = parsed.host.lowercase()
+        val pageUrl: String
+        val slug: String
+        val host: String
+
+        if (inHost.contains("cubeembed")) {
+            val file1 = inputUrl.substringAfter("#", "").substringBefore("?").trim()
+            if (file1.isEmpty()) {
+                Log.w(TAG, "cubeembed sin hash en fragmento")
+                return null
+            }
+            val r = app.get(
+                "https://cubeembed.rpmvid.com/api/public/resolve?file1=$file1",
+                headers = mapOf("User-Agent" to UA, "Referer" to "https://cubeembed.rpmvid.com/"),
+                timeout = 20L,
+            )
+            val j = JSONObject(r.text)
+            pageUrl = j.optString("url", "")
+            if (pageUrl.isEmpty()) {
+                Log.w(TAG, "resolve sin url (${r.text.take(120)})")
+                return null
+            }
+            val pu = URL(pageUrl)
+            host = pu.host.lowercase()
+            slug = pu.path.trimEnd('/').substringAfterLast('/')
+        } else if (inHost.contains("turboembed")) {
+            pageUrl = inputUrl
+            host = inHost
+            slug = parsed.path.trimEnd('/').substringAfterLast('/')
+        } else {
+            return null
+        }
+
+        if (slug.isEmpty()) {
+            Log.w(TAG, "slug vacío")
+            return null
+        }
+
+        val c = aesEncrypt(slug, host)
+        val trackingUrl = "https://$host/api/stream/tracking?c=$c"
+        val trackHeaders = mapOf(
+            "User-Agent" to UA,
+            "Referer" to pageUrl,
+            "Origin" to "https://$host",
+            "Accept" to "*/*",
+        )
+        val resp = app.get(trackingUrl, headers = trackHeaders, timeout = 25L)
+        val xt = resp.headers["x-tracking"] ?: resp.headers["X-Tracking"]
+        if (xt.isNullOrBlank()) {
+            Log.w(TAG, "sin x-tracking (http ${resp.code})")
+            return null
+        }
+        val decrypted = aesDecrypt(xt, host)
+        val obj = JSONObject(decrypted)
+        val stream = obj.optJSONObject("stream") ?: obj
+        val src = listOf("hls", "tiktok", "direct")
+            .map { stream.optString(it, "") }
+            .firstOrNull { it.isNotBlank() }
+        if (src.isNullOrBlank()) {
+            Log.w(TAG, "stream sin hls/tiktok/direct")
+            return null
+        }
+        Log.d(TAG, "Turbovio src host=${try { URL(src).host } catch (_: Exception) { "?" }}")
+
+        // Subtitles (si vienen)
+        val subs = stream.optJSONArray("subtitles")
+        if (subs != null) {
+            for (i in 0 until subs.length()) {
+                val s = subs.optJSONObject(i) ?: continue
+                val subUrl = s.optString("url", "")
+                if (subUrl.isBlank()) continue
+                val lang = s.optString("language", s.optString("lang", "es"))
+                subtitleCallback(com.lagradost.cloudstream3.SubtitleFile(lang, subUrl))
+            }
+        }
+
+        return TurbovioResolved(src, referer = "https://$host/", origin = "https://$host")
+    }
+
+    private fun dayHex(): String = (System.currentTimeMillis() / 86_400_000L).toString(16)
+
+    private fun buildKey(): String {
+        val raw = KEYBASE + dayHex()
+        return if (raw.length >= 32) raw.substring(0, 32) else raw.padEnd(32, '0')
+    }
+
+    private fun buildIv(host: String): String {
+        val raw = IVBASE + toHex(host.toByteArray(Charsets.UTF_8))
+        return if (raw.length >= 32) raw.substring(0, 32) else raw.padEnd(32, '0')
+    }
+
+    private fun aesEncrypt(text: String, host: String): String {
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-        val decrypted = cipher.doFinal(hexToBytes(inputHex))
-        return String(decrypted, Charsets.UTF_8)
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            SecretKeySpec(fromHex(buildKey()), "AES"),
+            IvParameterSpec(fromHex(buildIv(host))),
+        )
+        return toHex(cipher.doFinal(text.toByteArray(Charsets.UTF_8)))
     }
 
-    private fun hexToBytes(hex: String): ByteArray {
-        check(hex.length % 2 == 0) { "Hex string must have an even length" }
-        return hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    private fun aesDecrypt(hex: String, host: String): String {
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(fromHex(buildKey()), "AES"),
+            IvParameterSpec(fromHex(buildIv(host))),
+        )
+        return String(cipher.doFinal(fromHex(hex)), Charsets.UTF_8)
     }
+
+    private fun toHex(bytes: ByteArray): String {
+        val sb = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            val v = b.toInt() and 0xFF
+            sb.append(HEX[v ushr 4]).append(HEX[v and 0x0F])
+        }
+        return sb.toString()
+    }
+
+    private fun fromHex(hex: String): ByteArray {
+        val clean = hex.trim()
+        val out = ByteArray(clean.length / 2)
+        for (i in out.indices) {
+            val hi = Character.digit(clean[i * 2], 16)
+            val lo = Character.digit(clean[i * 2 + 1], 16)
+            require(hi >= 0 && lo >= 0) { "hex invalido" }
+            out[i] = ((hi shl 4) + lo).toByte()
+        }
+        return out
+    }
+
+    private data class TurbovioResolved(val streamUrl: String, val referer: String, val origin: String)
 }
 
 class Turboembed : Cubeembed() {
     override var name = "TurboEmbed"
     override var mainUrl = "https://turboembed.com"
 }
-
-private data class TurboEmbedResolved(val pageUrl: String, val streamUrl: String)
-
-private val cubeEmbedWebViewMutex = Mutex()
 
 class Sendvid : ExtractorApi() {
     override var name = "Sendvid"
@@ -251,11 +223,7 @@ class Sendvid : ExtractorApi() {
         val doc = app.get(url).document
         val urlString = doc.select("head meta[property=og:video:secure_url]").attr("content")
         if (urlString.contains("m3u8")) {
-            generateM3u8(
-                name,
-                urlString,
-                mainUrl,
-            ).forEach(callback)
+            generateM3u8(name, urlString, mainUrl).forEach(callback)
         } else {
             callback.invoke(
                 newExtractorLink(
