@@ -598,10 +598,10 @@
         "name": "PoseidonHDProvider"
     },
     {
-        "fileHash": "sha256-01d524c11248da43d3d879e8c887d4cbbc428b6faf87b7f874e9781917841599",
+        "fileHash": "sha256-036b8cd378bf81cee9437cee498ab0588b880520d2c0e4d498dafe9607b39040",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 39106,
+        "fileSize": 39123,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -611,7 +611,7 @@
             "Anime",
             "AnimeMovie"
         ],
-        "version": 1,
+        "version": 2,
         "internalName": "ReanimeProvider",
         "description": "Re:ANIME - Animes con audio dual JA/EN y subt\u00edtulos externos",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/ReanimeProvider.cs3",
