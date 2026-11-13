@@ -698,10 +698,10 @@
         "name": "SeriesmetroProvider"
     },
     {
-        "fileHash": "sha256-a8b2dfa449602f5baa014391c19f6adc6e8909676e0bb5fc1af9fc6bf6f4dd5b",
+        "fileHash": "sha256-bd6d1e85f76c2dced94a9b5d513c31ec9caf64c1f5ff094831afdc55864cefe9",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 136423,
+        "fileSize": 143842,
         "status": 1,
         "language": "es",
         "authors": [
@@ -713,7 +713,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 40,
+        "version": 23,
         "internalName": "SoloLatinoProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/SoloLatinoProvider.cs3",
