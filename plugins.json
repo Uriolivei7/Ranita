@@ -897,20 +897,21 @@
         "name": "UniquestreamProvider"
     },
     {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%",
-        "fileHash": "sha256-902cc785bed72840a0aa0af80ce5ad15bcb96b49f1b6b9991818109b92e12123",
+        "iconUrl": "https://verani.me/favicon.ico",
+        "fileHash": "sha256-ece9c8a6d3db5c30610dcabf517a78690be6e7b6db4a1ad0f4ffa997a7816377",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 76435,
+        "fileSize": 55012,
         "status": 1,
         "language": "es",
         "authors": [
             "Ranita"
         ],
         "tvTypes": [
-            "Anime"
+            "Anime",
+            "AnimeMovie"
         ],
-        "version": 11,
+        "version": 15,
         "internalName": "VeranimeProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/VeranimeProvider.cs3",
         "name": "VeranimeProvider"
