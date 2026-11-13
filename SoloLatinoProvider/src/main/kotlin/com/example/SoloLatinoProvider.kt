@@ -495,19 +495,23 @@ class SoloLatinoProvider : MainAPI() {
                         "Accept" to "*/*",
                         "Referer" to fixedSrc,
                     )
-                    val embedResp = app.get(fixedSrc, headers = embed69Headers, timeout = 30L)
-                    var embedHtml = embedResp.text
-                    var embedDoc = embedResp.document
-                    Log.d("SoloLatino", "embed69 - HTTP ${embedResp.code}, length=${embedHtml.length}")
+                    val fetched = fetchBypassingAnubis(fixedSrc, embed69Headers)
+                    if (fetched == null) {
+                        Log.e("SoloLatino", "embed69 - fetch falló")
+                        return@amap
+                    }
+                    var embedHtml = fetched.first
+                    var embedDoc = fetched.second
+                    Log.d("SoloLatino", "embed69 - length=${embedHtml.length}")
                     var dataLinkScript = embedDoc.select("script")
                         .firstOrNull { it.html().contains("dataLink =") }
-                    if (dataLinkScript == null && (embedResp.code == 502 || embedHtml.contains("Just a moment", true))) {
+                    if (dataLinkScript == null && (embedHtml.length < 10000 || embedHtml.contains("Just a moment", true) || embedHtml.contains("anubis_challenge"))) {
                         Log.w("SoloLatino", "embed69 - respuesta bloqueada; intentando recuperar HTML con WebView")
                         val browserHtml = renderViaWebView(
                             pageUrl = fixedSrc,
                             referer = targetUrl,
                             waitMs = 12000L,
-                            readyJs = "h.includes('dataLink =')&&h.includes('POW_CHALLENGE')&&h.includes('POW_SALT')"
+                            readyJs = "h.includes('dataLink =')&&(h.includes('POW_CHALLENGE')||h.includes('LINK_CHALLENGE'))"
                         )
                         if (!browserHtml.isNullOrBlank()) {
                             embedHtml = browserHtml
@@ -538,25 +542,36 @@ class SoloLatinoProvider : MainAPI() {
                             ?: resolveDataLinkExpr(dataLinkJson)?.let { tryParseJson<List<ServersByLang>>(it) }
 
                         val pageHtml = embedHtml
-                        val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
-                        val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+                        val linkChallenge = Regex("""LINK_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+                        val linkSalt = Regex("""LINK_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+                        val legacyChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+                        val legacySalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+                        val embedChallenge = linkChallenge ?: legacyChallenge
+                        val embedSalt = linkSalt ?: legacySalt
                         if (embedChallenge == null || embedSalt == null) {
-                            Log.e("SoloLatino", "embed69 - No se pudo extraer POW_CHALLENGE/SALT de la página")
+                            Log.e("SoloLatino", "embed69 - No se pudo extraer LINK_CHALLENGE/SALT (ni POW_*) de la página")
                             return@amap
                         }
-                        Log.d("SoloLatino", "embed69 - challenge=$embedChallenge salt=$embedSalt")
+                        Log.d("SoloLatino", "embed69 - challenge=$embedChallenge salt=$embedSalt modo=${if (linkChallenge != null) "LINK" else "POW-legacy"}")
 
                         serversList?.amap { lang ->
                             val encryptedLinks = lang.sortedEmbeds.mapNotNull { it.link }
                             if (encryptedLinks.isEmpty()) return@amap
                             Log.d("SoloLatino", "embed69 - ${encryptedLinks.size} enlaces encriptados para ${lang.videoLanguage}")
 
-                            val aesKey = withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+                            val aesKey = if (linkChallenge != null) {
+
+                                java.security.MessageDigest.getInstance("SHA-256")
+                                    .digest((embedChallenge + embedSalt).toByteArray(Charsets.UTF_8))
+                            } else {
+
+                                withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+                            }
                             if (aesKey == null) {
-                                Log.e("SoloLatino", "embed69 - PoW failed")
+                                Log.e("SoloLatino", "embed69 - fallo al derivar AES key (challenge=${embedChallenge.take(8)}...)")
                                 return@amap
                             }
-                            Log.d("SoloLatino", "embed69 - PoW solved, decrypting ${encryptedLinks.size} links")
+                            Log.d("SoloLatino", "embed69 - AES key derivada, decrypting ${encryptedLinks.size} links")
                             val langTag = when (lang.videoLanguage?.uppercase()) {
                                 "LAT" -> "LATINO"
                                 "SUB", "ENGLISH" -> "SUBTITULADO"
@@ -631,6 +646,157 @@ class SoloLatinoProvider : MainAPI() {
         if (emitted.get() == 0) Log.e("SoloLatino", "loadLinks 0 links emitidos -> 'enlaces no encontrados'")
 
         return true
+    }
+
+    // ------------------------------------------------------------------
+    // Anubis anti-bot (embed69.org)
+    // ------------------------------------------------------------------
+
+    private class TinyResp(
+        val code: Int,
+        val body: String,
+        val headerFields: Map<String, List<String>>
+    )
+
+    private suspend fun tinyGet(
+        url: String,
+        headers: Map<String, String>,
+        cookieHeader: String?,
+        timeoutMs: Int = 30000
+    ): TinyResp {
+        return withContext(Dispatchers.IO) {
+            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            try {
+                conn.requestMethod = "GET"
+                conn.instanceFollowRedirects = false
+                conn.connectTimeout = timeoutMs
+                conn.readTimeout = timeoutMs
+                for ((k, v) in headers) conn.setRequestProperty(k, v)
+                if (cookieHeader != null) conn.setRequestProperty("Cookie", cookieHeader)
+                val code = conn.responseCode
+                val input = try {
+                    conn.inputStream
+                } catch (_: Exception) {
+                    conn.errorStream
+                }
+                val body = input?.readBytes()?.toString(Charsets.UTF_8) ?: ""
+                val fields = conn.headerFields ?: emptyMap()
+                TinyResp(code, body, fields)
+            } finally {
+                try { conn.disconnect() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun setCookieList(r: TinyResp): List<String> =
+        (r.headerFields["Set-Cookie"] ?: r.headerFields["set-cookie"] ?: emptyList())
+
+    private fun cookieMap(headerValues: List<String>, into: MutableMap<String, String>) {
+        for (line in headerValues) {
+            val assignment = line.substringBefore(";")
+            val eq = assignment.indexOf('=')
+            if (eq <= 0) continue
+            val k = assignment.substring(0, eq).trim()
+            val v = assignment.substring(eq + 1).trim()
+            if (k.isNotBlank()) into[k] = v
+        }
+    }
+
+    private fun buildCookieHeader(cookies: Map<String, String>): String =
+        cookies.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+
+    private suspend fun fetchBypassingAnubis(
+        pageUrl: String,
+        headers: Map<String, String>
+    ): Pair<String, org.jsoup.nodes.Document>? {
+        return try {
+            val r1 = tinyGet(pageUrl, headers, null, 30000)
+            if (!r1.body.contains("anubis_challenge")) {
+                Log.d("SoloLatino", "Anubis: no challenge (HTTP ${r1.code} len=${r1.body.length})")
+                return r1.body to Jsoup.parse(r1.body, pageUrl)
+            }
+            Log.d("SoloLatino", "Anubis: challenge detectado en $pageUrl")
+
+            val challengeJson = Regex(
+                """<script id="anubis_challenge" type="application/json">(.*?)</script>""",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(r1.body)?.groupValues?.get(1)
+            if (challengeJson == null) {
+                Log.e("SoloLatino", "Anubis: script de challenge no encontrado")
+                return null
+            }
+            val challengeObj = try { org.json.JSONObject(challengeJson) } catch (_: Exception) { null }
+            val challenge = challengeObj?.optJSONObject("challenge")
+            val rules = challengeObj?.optJSONObject("rules")
+            val id = challenge?.optString("id") ?: ""
+            val randomData = challenge?.optString("randomData") ?: ""
+            val difficulty = challenge?.optInt("difficulty", 0) ?: 0
+            val algorithm = rules?.optString("algorithm", "fast") ?: "fast"
+            if (id.isBlank() || randomData.isBlank() || difficulty <= 0) {
+                Log.e("SoloLatino", "Anubis: challenge incompleto (id=$id diff=$difficulty)")
+                return null
+            }
+            if (algorithm != "fast") {
+                Log.e("SoloLatino", "Anubis: algoritmo no soportado: $algorithm")
+                return null
+            }
+            Log.d("SoloLatino", "Anubis: PoW difficulty=$difficulty")
+            val solved = withContext(Dispatchers.Default) { solveAnubisPow(randomData, difficulty) }
+            if (solved == null) {
+                Log.e("SoloLatino", "Anubis: PoW no resuelto")
+                return null
+            }
+            Log.d("SoloLatino", "Anubis: resuelto nonce=${solved.second}")
+
+            val cookies = linkedMapOf<String, String>()
+            cookieMap(setCookieList(r1), cookies)
+            Log.d("SoloLatino", "Anubis: verificación cookies=[${cookies.keys}]")
+
+            val u = try { java.net.URL(pageUrl) } catch (_: Exception) { null } ?: return null
+            val redir = (u.path ?: "/") + (u.query?.let { "?$it" } ?: "")
+            val passUrl = "${u.protocol}://${u.host}/.within.website/x/cmd/anubis/api/pass-challenge?id=${java.net.URLEncoder.encode(id, "UTF-8")}&response=${java.net.URLEncoder.encode(solved.first, "UTF-8")}&nonce=${solved.second}&redir=${java.net.URLEncoder.encode(redir, "UTF-8")}&elapsedTime=1500"
+            val passHeaders = headers + ("Referer" to pageUrl)
+            val r2 = tinyGet(passUrl, passHeaders, buildCookieHeader(cookies), 20000)
+            Log.d("SoloLatino", "Anubis: pass-challenge HTTP ${r2.code}")
+            cookieMap(setCookieList(r2), cookies)
+            Log.d("SoloLatino", "Anubis: cookies tras pass [${cookies.keys}]")
+
+            val r3 = tinyGet(pageUrl, headers + ("Cookie" to buildCookieHeader(cookies)), null, 30000)
+            val ok = r3.code in 200..299 && !r3.body.contains("anubis_challenge")
+            Log.d("SoloLatino", "Anubis: FINAL HTTP ${r3.code} len=${r3.body.length} dataLink=${r3.body.contains("dataLink =")}")
+            if (!ok) return null
+            r3.body to Jsoup.parse(r3.body, pageUrl)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("SoloLatino", "Anubis: error ${e::class.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private fun solveAnubisPow(randomData: String, difficulty: Int): Pair<String, Long>? {
+        val fullBytes = difficulty / 2
+        val halfNibble = difficulty % 2 == 1
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val t0 = System.currentTimeMillis()
+        var nonce = 0L
+        val data = randomData.toByteArray(Charsets.UTF_8)
+        while (nonce < 100_000_000L) {
+            if (System.currentTimeMillis() - t0 > 60_000L) return null
+            val input = data + nonce.toString().toByteArray(Charsets.UTF_8)
+            val hash = digest.digest(input)
+            var ok = true
+            for (i in 0 until fullBytes) {
+                if (hash[i] != 0.toByte()) { ok = false; break }
+            }
+            if (ok && halfNibble && (hash[fullBytes].toInt() and 0xF0) != 0) ok = false
+            if (ok) {
+                val hex = hash.joinToString("") { "%02x".format(it) }
+                return hex to nonce
+            }
+            nonce++
+        }
+        return null
     }
 }
 
