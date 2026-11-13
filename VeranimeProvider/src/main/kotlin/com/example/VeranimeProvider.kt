@@ -1,13 +1,6 @@
 package com.example
 
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.webkit.JavascriptInterface
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -16,52 +9,39 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.Interceptor
-import okhttp3.Response
-import org.json.JSONArray
 import org.json.JSONObject
-import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
-import java.util.Base64
-import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 private const val TAG = "VerAnime"
 
 class VeranimeProvider : MainAPI() {
     companion object {
-        var pluginContext: Context? = null
-        const val SW_READY_JS = "h.includes('.m3u8')||h.includes('jwplayer')"
-        const val SW_DUMP_JS = "(function(){try{NativeBridge.onHtml(document.documentElement.outerHTML);}catch(e){NativeBridge.onHtml('ERR:'+e);}})()"
+        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        private const val KEYBASE = "1d54a1d53c1d56e1d6811d53c1d6831d4da1d4d41d4e81d7d91d7da1d7db"
+        private const val IVBASE = "1f5101f5dd1f5111f6aa1f6e126a1"
+        private val HEX = "0123456789abcdef".toCharArray()
     }
 
-    override var mainUrl = "https://veranime.ninja"
-    override var name = "AnimeNINJA"
-    override var lang = "es"
+    override var mainUrl = "https://verani.me"
+    override var name = "VerAnime"
+    override var lang = "mx"
     override val hasMainPage = true
     override val hasDownloadSupport = true
-    override val supportedTypes = setOf(TvType.Anime)
+    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie)
 
     override val mainPage = mainPageOf(
-        "anime/" to "Catálogo",
-        "genero/accion/" to "Acción",
-        "genero/aventura/" to "Aventura",
-        "genero/comedia/" to "Comedia",
-        "genero/drama/" to "Drama",
-        "genero/fantasia/" to "Fantasía",
-        "genero/romance/" to "Romance",
+        "ultimos" to "Últimos Animes",
+        "top" to "Top Animes",
+        "peliculas" to "Últimas Películas",
     )
 
     private val browserHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent" to UA,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language" to "es-ES,es;q=0.9,en;q=0.8",
     )
@@ -77,115 +57,78 @@ class VeranimeProvider : MainAPI() {
         "Priority" to "u=1, i",
     )
 
-    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor? {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                val host = request.url.host
-                if (host.contains("zilla-networks.com")) {
-                    val builder = request.newBuilder()
-                    zillaHeaders.forEach { (k, v) -> builder.header(k, v) }
-                    return chain.proceed(builder.build())
-                }
-                if (host.contains("premilkyway")) {
-                    val ref = extractorLink.referer?.takeIf { it.isNotBlank() } ?: "https://streamwish.to/"
-                    val origin = try {
-                        val u = java.net.URL(ref)
-                        "${u.protocol}://${u.host}"
-                    } catch (_: Exception) { "https://streamwish.to" }
-                    Log.d(TAG, "[intercept] SW CDN: ${request.url.toString().take(120)}")
-                    val newRequest = request.newBuilder()
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        .header("Referer", ref)
-                        .header("Origin", origin)
-                        .header("Accept", "*/*")
-                        .build()
-                    val response = chain
-                        .withConnectTimeout(30, TimeUnit.SECONDS)
-                        .withReadTimeout(30, TimeUnit.SECONDS)
-                        .proceed(newRequest)
-                    Log.d(TAG, "[intercept] SW CDN response: ${response.code} ${response.header("content-type", "?")}")
-                    return response
-                }
-                return chain.proceed(request)
-            }
-        }
+    private suspend fun getDoc(
+        url: String,
+        timeout: Long,
+        referer: String? = null,
+        logTag: String = "page"
+    ): Document? {
+        val resp = try {
+            val headers = if (referer.isNullOrBlank()) browserHeaders
+                else browserHeaders + ("Referer" to referer)
+            app.get(url, headers = headers, timeout = timeout)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "[$logTag] app.get falló: ${e.message}")
+            null
+        } ?: return null
+        Log.d(TAG, "[$logTag] HTTP ${resp.code} len=${resp.text.length}")
+        return resp.document
     }
 
     // ------------------------------------------------------------------
-    // Listados: article.item > div.poster img[data-src] + div.data h3 a
+    // Cards y home
     // ------------------------------------------------------------------
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val t0 = System.currentTimeMillis()
-        val path = if (page <= 1) request.data else "${request.data}page/$page/"
-        val document = try {
-            app.get("$mainUrl/$path", headers = browserHeaders, timeout = 60L).document
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "getMainPage ${request.name} falló: ${e.message}")
-            return null
+        if (page > 1) {
+            return newHomePageResponse(HomePageList(request.name, emptyList(), false), hasNext = false)
         }
-        val home = document.select("article.item").mapNotNull { it.toCard() }.distinctBy { it.url }
-        val hasNext = document.selectFirst("a[href\$=\"page/${page + 1}/\"]") != null
-        Log.d(TAG, "getMainPage ${request.name} page=$page -> ${home.size} items hasNext=$hasNext ${System.currentTimeMillis() - t0}ms")
-        if (home.isEmpty()) return null
-        return newHomePageResponse(HomePageList(request.name, home), hasNext = hasNext)
+        val doc = getDoc("$mainUrl/", 60L, logTag = "home") ?: return null
+        val items = when (request.data) {
+            "ultimos" -> doc.select(".animes-section .content-card.anime-card").mapNotNull { it.toCard() }
+            "peliculas" -> doc.select(".peliculas-section .content-card.pelicula-card").mapNotNull { it.toCard(true) }
+            "top" -> parseTop(doc)
+            else -> emptyList()
+        }.distinctBy { it.url }
+        Log.d(TAG, "getMainPage ${request.name} -> ${items.size} items")
+        if (items.isEmpty()) return null
+        return newHomePageResponse(HomePageList(request.name, items, false), hasNext = false)
     }
 
-    private fun Element.toCard(): SearchResponse? {
-        val link = this.selectFirst("div.data h3 a") ?: this.selectFirst("a[href*=/anime/]") ?: return null
-        val href = fixUrlNull(link.attr("href")) ?: return null
-        if (!href.contains("/anime/")) return null
-        val title = link.text().trim().takeIf { !it.isNullOrEmpty() }
-            ?: this.selectFirst("img")?.attr("alt")?.trim()?.takeIf { !it.isNullOrEmpty() }
-            ?: return null
-
-        val img = this.selectFirst("img")
-        val poster = fixUrlNull(img?.attr("data-src")?.takeIf { !it.isNullOrBlank() } ?: img?.attr("src"))
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = poster
+    private fun parseTop(doc: Document): List<SearchResponse> =
+        doc.select("a.home-top-animes-item").mapNotNull { el ->
+            val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
+            if (!href.contains("verani.me")) return@mapNotNull null
+            val title = el.selectFirst(".home-top-animes-item__title")?.text()?.trim()
+                ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val poster = fixUrlNull(el.selectFirst("img.home-top-animes-item__img")?.attr("src"))
+            newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = poster }
         }
-    }
 
-    private fun Element.toSearchCard(): SearchResponse? {
-        val link = this.selectFirst("div.title a") ?: this.selectFirst("a[href*=/anime/]") ?: return null
+    private fun Element.toCard(movie: Boolean = false): SearchResponse? {
+        val link = selectFirst("a.card-link") ?: return null
         val href = fixUrlNull(link.attr("href")) ?: return null
-        if (!href.contains("/anime/")) return null
-        val title = link.text().trim().takeIf { !it.isNullOrEmpty() }
-            ?: this.selectFirst("img")?.attr("alt")?.trim()?.takeIf { !it.isNullOrEmpty() }
+        if (!href.contains("verani.me")) return null
+        val title = selectFirst("span.card-title")?.text()?.trim().takeIf { !it.isNullOrBlank() }
+            ?: selectFirst("img.card-img")?.attr("alt")?.trim().takeIf { !it.isNullOrBlank() }
             ?: return null
-        val img = this.selectFirst(".image img") ?: this.selectFirst("img")
-        val poster = fixUrlNull(img?.attr("data-src")?.takeIf { !it.isNullOrBlank() } ?: img?.attr("src"))
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = poster
+        val poster = fixUrlNull(selectFirst("img.card-img")?.attr("src"))
+        return if (movie || className().contains("pelicula-card")) {
+            newMovieSearchResponse(title, href, TvType.AnimeMovie) { this.posterUrl = poster }
+        } else {
+            newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = poster }
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
         val t0 = System.currentTimeMillis()
-        Log.d(TAG, "search() llamado: '$query'")
-        return try {
-            val encoded = URLEncoder.encode(query, "UTF-8")
-            val doc = app.get("$mainUrl/?s=$encoded", headers = browserHeaders, timeout = 60L).document
-
-            val containers = doc.select("div.result-item")
-            val all = if (containers.isNotEmpty()) {
-                val parsed = containers.mapNotNull { it.toSearchCard() }
-                if (parsed.isEmpty()) Log.w(TAG, "search: ${containers.size} result-item sin parsear (markup cambió?)")
-                parsed
-            } else {
-                doc.select("article.item").mapNotNull { it.toCard() }.distinctBy { it.url }
-            }
-
-            val results = all.filter { matchesQuery(it.name, query) }
-            Log.d(TAG, "search '$query' -> ${all.size} total, ${results.size} filtrados ${System.currentTimeMillis() - t0}ms")
-            results
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "search falló: ${e.message}")
-            null
-        }
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val doc = getDoc("$mainUrl/?s=$encoded", 60L, logTag = "search") ?: return null
+        val all = doc.select("article.content-card").mapNotNull { it.toCard() }.distinctBy { it.url }
+        val results = all.filter { matchesQuery(it.name, query) }
+        Log.d(TAG, "search '$query' -> ${results.size} (de ${all.size}) ${System.currentTimeMillis() - t0}ms")
+        return results
     }
 
     private fun matchesQuery(title: String, query: String): Boolean {
@@ -198,279 +141,117 @@ class VeranimeProvider : MainAPI() {
     }
 
     // ------------------------------------------------------------------
-    // Detalle: #seasons .se-c (multi-temporada) > ul.episodios li > /ver/...-episodio-N/
+    // Detalle
     // ------------------------------------------------------------------
 
-    override suspend fun load(url: String): LoadResponse? {
-        val t0 = System.currentTimeMillis()
-        Log.d(TAG, "load($url)")
-        val doc = try {
-            app.get(url, headers = browserHeaders, timeout = 120L).document
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "load página falló: ${e.message}")
-            return null
-        }
+    private fun isSiteLogo(url: String): Boolean =
+        url.contains("Gemini_Generated_Image_", ignoreCase = true)
 
-        if ("/ver/" in url && "-episodio-" in url) {
-            val epTitle = doc.selectFirst("h1")?.text()?.trim()?.takeIf { !it.isNullOrEmpty() }
-                ?: doc.selectFirst("head meta[property=og:title]")?.attr("content")?.trim()
-                ?: "Episodio"
-            val poster = fixUrlNull(
-                doc.selectFirst("head meta[property=og:image]")?.attr("content")
-            )
-            Log.d(TAG, "load -> Episodio $epTitle ${System.currentTimeMillis() - t0}ms")
-            return newMovieLoadResponse(epTitle, url, TvType.Anime, url) {
-                this.posterUrl = poster
-            }
-        }
+    private fun parseRecommendations(doc: Document): List<SearchResponse> =
+        doc.select(".anime-recommendation-card").mapNotNull { card ->
+            val a = card.selectFirst("a.card-link") ?: return@mapNotNull null
+            val href = fixUrlNull(a.attr("href")) ?: return@mapNotNull null
+            if (!href.contains("verani.me")) return@mapNotNull null
+            val title = a.selectFirst("h3.card-title")?.text()?.trim().takeIf { !it.isNullOrBlank() }
+                ?: a.selectFirst("img.card-img")?.attr("alt")?.trim().takeIf { !it.isNullOrBlank() }
+                ?: return@mapNotNull null
+            val poster = fixUrlNull(a.selectFirst("img.card-img")?.attr("src"))
+            newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = poster }
+        }.distinctBy { it.url }
 
-        val title = doc.selectFirst("h1")?.text()?.trim()?.takeIf { !it.isNullOrEmpty() }
-            ?: doc.selectFirst("head meta[property=og:title]")?.attr("content")
-                ?.substringBefore(" Anime Online")?.trim()?.takeIf { !it.isNullOrEmpty() }
-            ?: return null
-        val plot = doc.selectFirst("#info .wp-content p")?.text()?.trim()?.takeIf { !it.isNullOrEmpty() }
-            ?: doc.selectFirst("head meta[property=og:description]")?.attr("content")?.trim()
-        val posterImg = doc.selectFirst("div.poster img")
-        val poster = fixUrlNull(posterImg?.attr("data-src")?.takeIf { !it.isNullOrBlank() } ?: posterImg?.attr("src"))
-        val year = doc.select("div.custom_fields").firstOrNull { it.text().contains("primera emisi", ignoreCase = true) }
-            ?.selectFirst("span.valor")?.text()?.takeLast(4)?.toIntOrNull()
-        val tags = doc.select("nav.genres a").map { it.text().trim() }.filter { it.isNotEmpty() }
-        val trailer = doc.selectFirst("div#trailer iframe, iframe[src*=youtube.com]")
-            ?.attr("src")?.takeIf { !it.isNullOrBlank() }
-            ?.replaceFirst("https://www.youtube.com/embed/", "https://www.youtube.com/watch?v=")
-            ?.substringBefore("?")
-            .let { if (it?.contains("watch?v=") == true) it else null }
-        val recommendations = doc.select("article.item").mapNotNull { it.toCard() }
-            .filter { it.url != url }
-            .distinctBy { it.url }
-            .take(12)
-
-        val episodes = mutableListOf<Episode>()
-        val seasonBlocks = doc.select("#seasons .se-c")
-        seasonBlocks.forEachIndexed { sIdx, block ->
-            val season = block.selectFirst(".se-t")?.text()?.trim()?.toIntOrNull() ?: (sIdx + 1)
-            block.select("ul.episodios li").forEach { li ->
-                val a = li.selectFirst(".episodiotitle a, a[href*=/ver/]") ?: return@forEach
-                val epUrl = fixUrlNull(a.attr("href")) ?: return@forEach
-
-                val numTxt = li.selectFirst(".numerando")?.text()?.trim()
-                val epNum = numTxt?.split("-")?.getOrNull(1)?.trim()?.toIntOrNull()
-                    ?: Regex("-episodio-(\\d+)").find(epUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: return@forEach
-                val epName = a.text().trim().takeIf { !it.isNullOrEmpty() } ?: "Episodio $epNum"
-                val epImg = li.selectFirst(".imagen img")
-                episodes.add(newEpisode(fixUrl(epUrl)) {
-                    this.name = epName
-                    this.season = season
+    private fun parseEpisodes(doc: Document): List<Episode> {
+        val out = mutableListOf<Episode>()
+        for (group in doc.select(".temporada-group")) {
+            val seasonNum = group.selectFirst(".temporada-name")?.attr("data-season-num")?.toIntOrNull() ?: 1
+            for (card in group.select(".capitulo-card")) {
+                val a = card.selectFirst("a.capitulo-card-link") ?: continue
+                val href = fixUrlNull(a.attr("href")) ?: continue
+                val titleText = card.selectFirst("h3.capitulo-card-title")?.text()?.trim() ?: continue
+                val epNum = Regex("(\\d+)").find(titleText)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+                val subtitle = card.selectFirst("p.capitulo-card-subtitle")?.text()?.trim()?.takeIf { it.isNotBlank() }
+                val poster = fixUrlNull(card.selectFirst("img.capitulo-card-img")?.attr("src"))
+                out.add(newEpisode(href) {
+                    this.name = subtitle ?: "Capítulo $epNum"
                     this.episode = epNum
-                    this.posterUrl = fixUrlNull(epImg?.attr("data-src")?.takeIf { !it.isNullOrBlank() } ?: epImg?.attr("src"))
+                    this.season = seasonNum
+                    this.posterUrl = poster
                 })
             }
         }
-        episodes.sortWith(compareBy({ it.season ?: 0 }, { it.episode ?: 0 }))
-        Log.d(TAG, "load $title temporadas=${seasonBlocks.size} episodios=${episodes.size} ${System.currentTimeMillis() - t0}ms")
+        return out
+    }
 
+    override suspend fun load(url: String): LoadResponse? {
+        val doc = getDoc(url, 120L, logTag = "load") ?: return null
+        val trailer = doc.selectFirst("iframe[src*=youtube]")?.attr("src")?.takeIf { it.isNotBlank() }
+        val recommendations = parseRecommendations(doc)
+
+        if (url.contains("/pelicula/")) {
+            val title = doc.selectFirst("h1.pelicula-title")?.ownText()?.trim()?.takeIf { it.isNotBlank() }
+                ?: doc.selectFirst("h1.pelicula-title")?.text()?.trim()?.substringBefore("(")?.trim()
+                ?: return null
+            val year = Regex("\\d{4}").find(doc.selectFirst(".pelicula-year-line")?.text() ?: "")?.value?.toIntOrNull()
+            val ogPoster = doc.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrlNull(it) }
+
+            val poster = fixUrlNull(doc.selectFirst("img.pelicula-poster-image")?.attr("src"))
+                ?: ogPoster?.takeIf { !isSiteLogo(it) }
+            val backdrop = fixUrlNull(doc.selectFirst("img.pelicula-backdrop-image")?.attr("src"))
+            val plot = doc.selectFirst(".pelicula-overview-text")?.text()?.replace("&hellip;", "…")?.trim()
+            val tags = doc.selectFirst(".pelicula-meta-generos .pelicula-meta-item")?.text()
+                ?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }
+            Log.d(TAG, "load película '$title'")
+            return newMovieLoadResponse(title, url, TvType.AnimeMovie, url) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = backdrop
+                this.plot = plot
+                this.year = year
+                this.tags = tags ?: emptyList()
+                this.recommendations = recommendations.takeIf { it.isNotEmpty() }
+                addTrailer(trailer)
+            }
+        }
+
+        val title = doc.selectFirst("h1.anime-hero-title")?.text()?.trim() ?: return null
+        val backdrop = fixUrlNull(doc.selectFirst("img.anime-hero-bg-image")?.attr("src"))
+        val ogPoster = doc.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrlNull(it) }
+
+        val poster = ogPoster?.takeIf { !isSiteLogo(it) } ?: backdrop
+        val plot = doc.selectFirst("p.anime-hero-description")?.text()?.replace("&hellip;", "…")?.trim()
+        val year = Regex("\\d{4}").find(doc.selectFirst(".anime-hero-year")?.text() ?: "")?.value?.toIntOrNull()
+        val statusText = doc.selectFirst(".anime-hero-status")?.text()?.lowercase() ?: ""
+        val status = when {
+            statusText.contains("finalizado") -> ShowStatus.Completed
+            statusText.contains("emision") || statusText.contains("emisión") -> ShowStatus.Ongoing
+            else -> null
+        }
+        val episodes = parseEpisodes(doc)
+        Log.d(TAG, "load '$title': ${episodes.size} eps")
         return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
             this.posterUrl = poster
-            this.backgroundPosterUrl = poster
+            this.backgroundPosterUrl = backdrop
             this.plot = plot
-            this.tags = tags.takeIf { !it.isNullOrEmpty() }
             this.year = year
-            this.recommendations = recommendations
+            this.showStatus = status
+            this.recommendations = recommendations.takeIf { it.isNotEmpty() }
             addTrailer(trailer)
         }
     }
 
     // ------------------------------------------------------------------
-    // Reproducción: AJAX doo_player_ajax -> saidochesto hub -> mirrors por idioma
+    // Reproducción
     // ------------------------------------------------------------------
 
-    private suspend fun dooPlayerAjax(pageUrl: String, post: String, nume: String, type: String): String? {
-        return try {
-            val body = app.post(
-                "$mainUrl/wp-admin/admin-ajax.php",
-                headers = mapOf(
-                    "Referer" to pageUrl,
-                    "X-Requested-With" to "XMLHttpRequest",
-                    "Origin" to mainUrl,
-                ),
-                data = mapOf(
-                    "action" to "doo_player_ajax",
-                    "post" to post,
-                    "nume" to nume,
-                    "type" to type,
-                ),
-                timeout = 60L,
-            ).text
-            JSONObject(body).optString("embed_url").takeIf { !it.isNullOrBlank() }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "doo_player_ajax falló: ${e.message}")
-            null
-        }
-    }
-
-    private fun decodeMspUrl(encoded: String, pk: String): String? {
-        return try {
-            val bin = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-            val out = StringBuilder()
-            for (i in bin.indices) {
-                out.append((bin[i].toInt() xor pk[i % pk.length].code).toChar())
-            }
-            out.toString()
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun langIdToName(langId: String): String {
-        return when (langId.trim()) {
-            "1" -> "Latino"
-            "2" -> "Castellano"
-            "3" -> "Subtitulado"
-            "4" -> "Japonés"
-            "5" -> "Inglés"
+    private fun langTag(idioma: String, subtitulos: String): String {
+        val i = idioma.lowercase()
+        val s = subtitulos.lowercase()
+        return when {
+            i.contains("latino") -> "LAT"
+            i.contains("cast") || (i.contains("espa") && !i.contains("latino")) -> "CAS"
+            i.contains("japon") -> if (s.isNotBlank()) "SUB" else "JPN"
+            i.contains("coreano") -> if (s.isNotBlank()) "SUB" else "COR"
+            i.contains("ingles") -> "ENG"
+            idioma.isNotBlank() -> idioma.take(12)
             else -> ""
-        }
-    }
-
-    private fun fixMirrorHost(url: String): String {
-        return url
-            .replaceFirst("https://filemoon.link", "https://filemoon.sx")
-            .replaceFirst("https://filemooon.link", "https://filemoon.sx")
-            .replaceFirst("https://filemoon0.top", "https://filemoon.sx")
-            .replaceFirst("https://uqload.io", "https://uqload.cx")
-            .replaceFirst("https://uqload.is", "https://uqload.cx")
-            .replaceFirst("https://uqload.vc", "https://uqload.cx")
-            .replaceFirst("https://uqload.com", "https://uqload.cx")
-            .replaceFirst("https://lulu.st", "https://lulustream.com")
-            .replaceFirst("https://do7go.com", "https://dood.la")
-            .replaceFirst("https://dood.sh", "https://playmogo.com")
-    }
-
-    private suspend fun loadExtractorCollect(
-        url: String,
-        referer: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        label: String,
-    ): Boolean {
-        val collected = mutableListOf<ExtractorLink>()
-        val collector: (ExtractorLink) -> Unit = { link -> collected.add(link) }
-
-        try {
-            withTimeout(25_000L) { loadExtractor(url, referer, subtitleCallback, collector) }
-        } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "loadExtractor timeout 25s para $label (${url.take(80)})")
-            return false
-        }
-        if (collected.isEmpty()) return false
-        for (link in collected) {
-            callback(newExtractorLink(name, "$label ${link.name}".trim(), link.url) {
-                this.referer = link.referer ?: referer
-                this.quality = link.quality
-                this.type = if (link.isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                this.headers = link.headers
-            })
-        }
-        return true
-    }
-
-    private val webViewMutex = Mutex()
-
-    private suspend fun renderViaWebView(pageUrl: String, referer: String?, waitMs: Long = 12000L, readyJs: String? = null): String? {
-        webViewMutex.withLock {
-            return withContext(Dispatchers.Main) {
-            val appCtx = pluginContext?.applicationContext ?: run {
-                Log.w(TAG, "[WebView] sin context")
-                return@withContext null
-            }
-            var webView: WebView? = null
-            val mainHandler = Handler(Looper.getMainLooper())
-            try {
-                webView = WebView(appCtx)
-                webView.settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    mediaPlaybackRequiresUserGesture = false
-                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                    cacheMode = WebSettings.LOAD_NO_CACHE
-                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-                val deferred = CompletableDeferred<String?>()
-                val polls = java.util.concurrent.atomic.AtomicInteger(0)
-                val maxPolls = (waitMs / 2000L).toInt().coerceAtLeast(1)
-                fun dump() {
-                    if (deferred.isCompleted) return
-                    try {
-                        webView?.evaluateJavascript(SW_DUMP_JS, null)
-                    } catch (_: Exception) {
-                        if (!deferred.isCompleted) deferred.complete(null)
-                    }
-                }
-                fun pollOnce() {
-                    if (deferred.isCompleted) return
-                    try {
-                        webView?.evaluateJavascript(
-                            "(function(){try{var h=document.documentElement.outerHTML;NativeBridge.onPoll(($readyJs));}catch(e){NativeBridge.onPoll(false);}})()",
-                            null
-                        )
-                    } catch (_: Exception) {
-                        if (!deferred.isCompleted) deferred.complete(null)
-                    }
-                }
-                webView.addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onHtml(html: String) {
-                        if (!deferred.isCompleted) deferred.complete(html)
-                    }
-
-                    @JavascriptInterface
-                    fun onPoll(ready: Boolean) {
-                        mainHandler.post {
-                            if (deferred.isCompleted) return@post
-                            if (ready) {
-                                Log.d(TAG, "[WebView] listo antes de tiempo, dumpeando")
-                                dump()
-                                return@post
-                            }
-                            if (polls.incrementAndGet() >= maxPolls) {
-                                dump()
-                            } else {
-                                mainHandler.postDelayed({ pollOnce() }, 2000L)
-                            }
-                        }
-                    }
-                }, "NativeBridge")
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        polls.set(0)
-                        if (readyJs != null) {
-                            mainHandler.postDelayed({ pollOnce() }, 2000L)
-                        } else {
-                            mainHandler.postDelayed({ dump() }, waitMs)
-                        }
-                    }
-
-                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                        if (!deferred.isCompleted) deferred.complete(null)
-                    }
-                }
-                if (!referer.isNullOrBlank()) webView.loadUrl(pageUrl, mapOf("Referer" to referer))
-                else webView.loadUrl(pageUrl)
-                Log.d(TAG, "[WebView] renderizando ${pageUrl.take(100)}")
-                withTimeoutOrNull(waitMs + 15000L) { deferred.await() }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                Log.w(TAG, "[WebView] error grave: ${t::class.simpleName}: ${t.message}")
-                null
-            } finally {
-                try { mainHandler.removeCallbacksAndMessages(null) } catch (_: Exception) {}
-                try { webView?.destroy() } catch (_: Exception) {}
-            }
-            }
         }
     }
 
@@ -480,205 +261,110 @@ class VeranimeProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val t0 = System.currentTimeMillis()
         Log.d(TAG, "loadLinks data='$data'")
-        val u = data.trim()
-        if (u.isBlank()) {
-            Log.e(TAG, "loadLinks: data vacía")
-            return false
+        val doc = getDoc(data, 120L, referer = mainUrl, logTag = "loadLinks") ?: return false
+
+        val tabs = doc.select("button.servidor-tab")
+        Log.d(TAG, "loadLinks servidores=${tabs.size}")
+
+        val servers = mutableListOf<Pair<String, String>>()
+        for (tab in tabs) {
+            val u = tab.attr("data-url")
+            if (u.isBlank()) continue
+            val tag = langTag(tab.attr("data-idioma"), tab.attr("data-subtitulos"))
+            val label = tab.attr("data-label").ifBlank { "Servidor" } + if (tag.isNotBlank()) " [$tag]" else ""
+            servers.add(label to u)
+        }
+        if (servers.isEmpty()) {
+            for (iframe in doc.select("iframe[data-src]")) {
+                val src = iframe.attr("data-src")
+                if (src.isNotBlank()) servers.add(iframe.attr("title").ifBlank { "Servidor" } to src)
+            }
+            Log.d(TAG, "loadLinks (iframes) servidores=${servers.size}")
         }
 
-        val pageUrl = u.substringBefore("?")
-        val doc = try {
-            app.get(u, headers = browserHeaders + ("Referer" to mainUrl), timeout = 120L).document
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.e(TAG, "loadLinks página no disponible: ${e.message}")
-            return false
+        var emitted = 0
+        for ((label, url) in servers) {
+            if (resolveServer(url, label, data, subtitleCallback, callback)) emitted++
         }
+        Log.d(TAG, "loadLinks emitted=$emitted/${servers.size}")
+        return emitted > 0
+    }
 
-        val options = doc.select("li.dooplay_player_option")
-        Log.d(TAG, "loadLinks opciones=${options.size}")
-        if (options.isEmpty()) {
-            Log.w(TAG, "loadLinks: no se encontraron opciones de servidor")
-            return false
-        }
-
-        var found = false
-
-        for (opt in options) {
-            val post = opt.attr("data-post").trim()
-            val nume = opt.attr("data-nume").trim()
-            val type = opt.attr("data-type").trim().ifBlank { "tv" }
-            val optTitle = opt.selectFirst(".title")?.text()?.trim().takeIf { !it.isNullOrEmpty() } ?: "Servidor"
-            if (post.isBlank() || nume.isBlank()) {
-                Log.w(TAG, "opción sin ids: $optTitle")
-                continue
+    private suspend fun resolveServer(
+        url: String,
+        label: String,
+        pageReferer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val host = try { java.net.URI(url).host?.lowercase() ?: "" } catch (_: Exception) { "" }
+        Log.d(TAG, "resolveServer $label host=$host")
+        return when {
+            host.contains("zilla-networks.com") -> {
+                callback(newExtractorLink(name, label, url, ExtractorLinkType.M3U8) {
+                    this.referer = url
+                    this.headers = zillaHeaders
+                    this.quality = Qualities.Unknown.value
+                })
+                true
             }
-
-            Log.d(TAG, "procesando opción: $optTitle (post=$post, nume=$nume, type=$type)")
-
-            val embedUrl = dooPlayerAjax(pageUrl, post, nume, type)
-            if (embedUrl.isNullOrBlank()) {
-                Log.w(TAG, "sin embed para $optTitle")
-                continue
-            }
-
-            Log.d(TAG, "loadLinks embed URL: $embedUrl")
-
-            val hub = try {
-                app.get(embedUrl, headers = browserHeaders + ("Referer" to pageUrl), timeout = 60L).text
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Log.w(TAG, "hub falló: ${e.message}")
-                continue
-            }
-
-            if (hub.isEmpty()) {
-                Log.w(TAG, "HTML del embed vacío para $optTitle")
-                continue
-            }
-
-            if ("OD_SUB" in hub || "OD_LAT" in hub || "OD_ES" in hub) {
-                Log.d(TAG, "usando rama saidochesto para $optTitle")
-                if (emitSaidochesto(hub, embedUrl, optTitle, subtitleCallback, callback)) {
-                    Log.d(TAG, "enlace encontrado vía saidochesto para $optTitle")
-                    found = true
+            host.contains("uns.bio") -> {
+                val resolved = resolveUns(url)
+                if (resolved == null) {
+                    Log.w(TAG, "uns sin resolver")
+                    false
+                } else {
+                    resolveServer(resolved, label, pageReferer, subtitleCallback, callback)
                 }
-                continue
             }
-
-            val directLinks = mutableListOf<String>()
-            Regex("""https?://[^"'\s<>]+\.m3u8[^"'\s<>]*""").findAll(hub).forEach { m ->
-                val candidate = m.value.trimEnd(')', ',', ';', '.')
-                val url = if (candidate.startsWith("//")) "https:$candidate" else candidate
-                val host = runCatching { java.net.URL(url).host.lowercase() }.getOrDefault("")
-                if (host != "veranime.ninja" && host != "embed69.org") {
-                    directLinks.add(candidate)
-                    Log.d(TAG, "enlace directo encontrado: $candidate")
-                    callback(newExtractorLink(name, "$optTitle [Directo]", candidate, ExtractorLinkType.M3U8) {
-                        this.referer = embedUrl
+            host.contains("turboembed.com") -> {
+                val res = resolveTurbovio(url, subtitleCallback)
+                if (res == null) {
+                    Log.w(TAG, "turbovio sin fuente")
+                    false
+                } else {
+                    callback(newExtractorLink(name, label, res.streamUrl, if (res.streamUrl.contains(".m3u8") || res.streamUrl.contains(".txt")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                        this.referer = res.referer
+                        this.headers = mapOf(
+                            "User-Agent" to UA,
+                            "Referer" to res.referer,
+                            "Origin" to res.origin,
+                            "Accept" to "*/*",
+                        )
                         this.quality = Qualities.Unknown.value
                     })
-                    found = true
+                    true
                 }
             }
-            if (found) continue
-
-            val mspPk = Regex("\"pk\"\\s*:\\s*\"([^\"]+)\"").find(hub)?.groupValues?.get(1) ?: ""
-            val hubDoc = Jsoup.parse(hub, embedUrl)
-            val mspServers = hubDoc.select("[data-url]")
-            Log.d(TAG, "loadLinks msp-data pk=$mspPk found=${mspServers.size}")
-            if (mspServers.isNotEmpty()) {
-                for (elem in mspServers) {
-                    val enc = elem.attr("data-url")
-                    val langElem = elem.parents().firstOrNull { it.hasAttr("data-lang") }
-                    val langId = langElem?.attr("data-lang") ?: ""
-                    val langName = langIdToName(langId)
-                    val label = if (langName.isNotEmpty()) "$optTitle [$langName] MSP" else "$optTitle MSP"
-                    val decoded = decodeMspUrl(enc, mspPk)
-                    if (decoded == null) {
-                        Log.w(TAG, "loadLinks msp-data no decodificable: $enc")
-                        continue
-                    }
-                    val fixed = fixMirrorHost(decoded)
-                    Log.d(TAG, "loadLinks msp-data decodificado: $fixed ($langName)")
-                    if (fixed.contains("filemoon", ignoreCase = true) || fixed.contains("byse", ignoreCase = true)) {
-                        if (emitByse(fixed, embedUrl, subtitleCallback, callback, label)) {
-                            found = true
-                            continue
-                        }
-                        Log.d(TAG, "loadLinks msp-data byse falló, extractor por defecto: $fixed")
-                    }
-                    if (loadExtractorCollect(fixed, embedUrl, subtitleCallback, callback, label)) {
-                        found = true
-                    }
-                }
-                if (found) continue
-            }
-
-            val iframes = Jsoup.parse(hub, embedUrl).select("iframe[src]")
-            Log.d(TAG, "hub genérico: ${iframes.size} iframes")
-            var hubFound = false
-            for (iframe in iframes) {
-                val src = iframe.attr("abs:src").trim()
-                if (src.isBlank()) continue
-                Log.d(TAG, "hub iframe: $src")
-                if (loadExtractorCollect(fixMirrorHost(src), embedUrl, subtitleCallback, callback, "$optTitle Mirror")) {
-                    hubFound = true
-                    found = true
-                }
-            }
-
-            if (!found) {
-                Log.w(TAG, "hub sin enlaces para $optTitle")
-            }
+            host.contains("byse") -> emitByse(url, pageReferer, subtitleCallback, callback, label)
+            else -> loadExt(url, pageReferer, subtitleCallback, callback, label)
         }
-
-        Log.d(TAG, "loadLinks $pageUrl -> ${if (found) "OK" else "SIN LINKS"} ${System.currentTimeMillis() - t0}ms")
-        return found
     }
 
-    private suspend fun emitSaidochesto(
-        hub: String,
-        embedUrl: String,
-        optTitle: String,
+    private suspend fun loadExt(
+        url: String,
+        referer: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
+        label: String
     ): Boolean {
-        var found = false
-
-        val langs = listOf(
-            "OD_LAT" to "Latino",
-            "OD_ES" to "Castellano",
-            "OD_SUB" to "Subtitulado",
-        )
-        for ((block, langLabel) in langs) {
-            val blockHtml = Regex("<div class=\"OD $block[^\"]*\">(.*?)</div>\\s*</div>", RegexOption.DOT_MATCHES_ALL)
-                .find(hub)?.groupValues?.get(1) ?: continue
-            val mirrors = Regex("go_to_player\\('([^']+)'\\)").findAll(blockHtml)
-                .map { it.groupValues[1] }.distinct().toList()
-            Log.d(TAG, "hub $langLabel: ${mirrors.size} mirrors")
-
-            val results = mirrors.amap { mirror -> resolveSaidoMirror(mirror, optTitle, langLabel, embedUrl, subtitleCallback, callback) }
-            if (results.any { it }) found = true
+        val collected = mutableListOf<ExtractorLink>()
+        try {
+            loadExtractor(url, referer, subtitleCallback) { link -> collected.add(link) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "loadExtractor $label error: ${e.message}")
         }
-        return found
-    }
-
-    private suspend fun resolveSaidoMirror(
-        mirror: String,
-        optTitle: String,
-        langLabel: String,
-        embedUrl: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val fixed = fixMirrorHost(mirror)
-        val label = "$optTitle $langLabel"
-        val isPlaylist = fixed.contains(".m3u8") || fixed.contains("/m3u8/")
-        if (isPlaylist) {
-            callback(newExtractorLink(name, label, fixed, ExtractorLinkType.M3U8) {
-                this.referer = embedUrl
-                this.headers = if (fixed.contains("zilla-networks.com")) zillaHeaders else browserHeaders + ("Referer" to embedUrl)
-                this.quality = Qualities.Unknown.value
+        for (link in collected) {
+            callback(newExtractorLink(name, label, link.url, link.type) {
+                this.referer = link.referer ?: referer
+                this.headers = link.headers ?: browserHeaders
+                this.quality = link.quality
             })
-            Log.d(TAG, "hub playlist directa -> $label")
-            return true
         }
-        if (fixed.contains("filemoon", ignoreCase = true) || fixed.contains("byse", ignoreCase = true)) {
-            if (emitByse(fixed, embedUrl, subtitleCallback, callback, label)) return true
-            if (loadExtractorCollect(fixed, embedUrl, subtitleCallback, callback, label)) return true
-            Log.w(TAG, "sin links para $label (${fixed.take(80)})")
-            return false
-        }
-        if (loadExtractorCollect(fixed, embedUrl, subtitleCallback, callback, label)) return true
-        if (fixed.contains("streamwish", ignoreCase = true)) {
-            if (emitStreamwishFresh(fixed, embedUrl, label, callback)) return true
-            if (emitStreamwishWebView(fixed, embedUrl, label, callback)) return true
-        }
-        Log.w(TAG, "sin links para $label (${fixed.take(80)})")
-        return false
+        Log.d(TAG, "loadExt $label -> emitted=${collected.size}")
+        return collected.isNotEmpty()
     }
 
     private suspend fun emitByse(
@@ -689,19 +375,15 @@ class VeranimeProvider : MainAPI() {
         label: String,
     ): Boolean {
         val html = try {
-            app.get(
-                url,
-                headers = browserHeaders + ("Referer" to hubUrl),
-                timeout = 20L,
-            ).text
+            app.get(url, headers = browserHeaders + ("Referer" to hubUrl), timeout = 20L).text
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "byse embed falló (${e.message}): ${url.take(80)}")
+            Log.w(TAG, "byse embed falló (${e.message})")
             null
         }
         if (html == null || !html.contains("Byse Frontend")) {
             Log.d(TAG, "byse: no es Byse Frontend, extractor por defecto")
-            return false
+            return loadExt(url, hubUrl, subtitleCallback, callback, label)
         }
         return try {
             val hubHost = runCatching { "https://${java.net.URI(hubUrl).host}" }.getOrDefault(mainUrl)
@@ -718,183 +400,161 @@ class VeranimeProvider : MainAPI() {
                 })
                 found = true
             }
-            if (!found) Log.w(TAG, "byse: 0 sources")
-            found
+            if (!found) {
+                Log.w(TAG, "byse: 0 sources")
+                loadExt(url, hubUrl, subtitleCallback, callback, label)
+            } else true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.w(TAG, "byse error: ${e.message}")
-            false
+            loadExt(url, hubUrl, subtitleCallback, callback, label)
         }
     }
 
-    private val freshHttpClient by lazy {
-        okhttp3.OkHttpClient.Builder()
-            .cookieJar(okhttp3.CookieJar.NO_COOKIES)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-    }
-
-    private suspend fun fetchStreamwishFresh(pageUrl: String, hubUrl: String): String? {
-        return try {
-            withTimeoutOrNull(25_000L) {
-                withContext(Dispatchers.IO) {
-                    val req = okhttp3.Request.Builder()
-                        .url(pageUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                        .header("Referer", hubUrl)
-                        .build()
-                    freshHttpClient.newCall(req).execute().use { resp ->
-                        if (!resp.isSuccessful) {
-                            Log.w(TAG, "[SW] fresh fetch code=${resp.code}")
-                            null
-                        } else {
-                            resp.body?.string()
-                        }
-                    }
-                }
-            }
+    private suspend fun resolveUns(url: String): String? {
+        val hash = url.substringAfter("#", "").substringBefore("?").trim()
+        if (hash.isBlank()) return null
+        val base = try {
+            val u = java.net.URL(url)
+            "${u.protocol}://${u.host}"
+        } catch (_: Exception) { "" }
+        if (base.isBlank()) return null
+        val resp = try {
+            app.get("$base/api/public/resolve?file1=$hash", headers = browserHeaders + ("Referer" to url), timeout = 20L)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "[SW] fresh fetch falló: ${e.message}")
+            Log.w(TAG, "uns resolve falló: ${e.message}")
             null
-        }
+        } ?: return null
+        return try { JSONObject(resp.text).optString("url").takeIf { it.isNotBlank() } } catch (_: Exception) { null }
     }
 
-    private suspend fun emitStreamwishFresh(
-        pageUrl: String,
-        hubUrl: String,
-        label: String,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        val html = fetchStreamwishFresh(pageUrl, hubUrl) ?: return false
-        Log.d(TAG, "[SW] fresh fetch len=${html.length}")
-        val urls = try {
-            parseStreamwishHtml(html, pageUrl)
+    private suspend fun resolveTurbovio(
+        inputUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ): TurbovioResolved? {
+        val parsed = try { java.net.URL(inputUrl) } catch (_: Exception) { return null }
+        val host = parsed.host.lowercase()
+        if (!host.contains("turboembed")) return null
+        val slug = parsed.path.trimEnd('/').substringAfterLast('/')
+        if (slug.isBlank()) return null
+        val pageUrl = inputUrl
+
+        val c = aesEncrypt(slug, host)
+        val resp = try {
+            app.get(
+                "https://$host/api/stream/tracking?c=$c",
+                headers = mapOf(
+                    "User-Agent" to UA,
+                    "Referer" to pageUrl,
+                    "Origin" to "https://$host",
+                    "Accept" to "*/*",
+                ),
+                timeout = 25L,
+            )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "[SW] fresh parse falló: ${e.message}")
-            emptyList()
-        }
-        if (urls.isEmpty()) return false
-        for (u in urls) {
-            val isHls = u.contains(".m3u8")
-            callback(newExtractorLink(name, "$label [SW]", u, if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                this.referer = pageUrl
-                this.headers = browserHeaders + ("Referer" to pageUrl)
-                this.quality = Qualities.Unknown.value
-            })
-        }
-        Log.d(TAG, "[SW] fresh OK: ${urls.size} urls -> $label")
-        return true
-    }
-
-    private suspend fun unpackDeanEdwards(packed: String, base: Int, count: Int, dictRaw: String): String? {
-        return try {
-            val k = dictRaw.split("|").toTypedArray()
-            val result = StringBuilder(packed)
-            for (idx in count - 1 downTo 0) {
-                val key = idx.toString(base)
-                val value = k.getOrElse(idx) { "" }
-                if (key.isNotEmpty() && value.isNotEmpty()) {
-                    val replaced = Regex("\\b${Regex.escape(key)}\\b").replace(result, Regex.escapeReplacement(value))
-                    result.clear()
-                    result.append(replaced)
-                }
-            }
-            result.toString().replace("\\'", "'")
-        } catch (_: Exception) { null }
-    }
-
-    private suspend fun parseStreamwishHtml(html: String, pageUrl: String): List<String> {
-        val out = mutableListOf<String>()
-        fun resolveUrl(u: String): String {
-            var r = u.replace("\\/", "/").trim()
-            if (r.startsWith("//")) r = "https:$r"
-            if (r.startsWith("/")) {
-                val base = try {
-                    val uu = java.net.URL(pageUrl)
-                    "${uu.protocol}://${uu.host}"
-                } catch (_: Exception) { "" }
-                r = base + r
-            }
-            return r
-        }
-        val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
-        val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
-        val fileRegex = Regex("""(?:file|src)\s*:\s*["']((?:https?:)?//[^"']+)["']""")
-        for (m in m3u8Regex.findAll(html)) out.add(m.value)
-        if (out.isEmpty()) {
-            for (m in fileRegex.findAll(html)) {
-                val f = resolveUrl(m.groupValues[1])
-                if (f.contains(".m3u8") || f.contains(".mp4") || f.contains(".m4v")) out.add(f)
-            }
-        }
-        if (out.isEmpty()) {
-            for (m in mp4Regex.findAll(html)) out.add(m.value)
-        }
-        if (out.isEmpty()) {
-            val packerRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
-            for (pm in packerRegex.findAll(html)) {
-                try {
-                    val decoded = unpackDeanEdwards(
-                        pm.groupValues[1],
-                        pm.groupValues[2].toIntOrNull() ?: 36,
-                        pm.groupValues[3].toIntOrNull() ?: 0,
-                        pm.groupValues[4]
-                    ) ?: continue
-                    for (m in m3u8Regex.findAll(decoded)) {
-                        Log.d(TAG, "[SW] M3U8 (eval): ${m.value.take(120)}")
-                        out.add(m.value)
-                    }
-                    if (out.isEmpty()) for (m in fileRegex.findAll(decoded)) {
-                        val f = resolveUrl(m.groupValues[1])
-                        if (f.contains(".m3u8") || f.contains(".mp4") || f.contains(".m4v")) out.add(f)
-                    }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                }
-                if (out.isNotEmpty()) break
-            }
-        }
-        if (out.isEmpty()) {
-            Log.w(TAG, "[SW] No M3U8/MP4 pageHasJW=${html.contains("jwplayer")} hasSources=${html.contains("sources")} hasEval=${html.contains("eval(")} len=${html.length}")
-        }
-        return out.distinct()
-    }
-
-    private suspend fun emitStreamwishWebView(
-        pageUrl: String,
-        hubUrl: String,
-        label: String,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
-        Log.d(TAG, "[SW] WebView fallback: $pageUrl")
-        val rendered = try {
-            renderViaWebView(pageUrl, hubUrl, readyJs = SW_READY_JS)
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "[SW] WebView falló: ${e.message}")
+            Log.w(TAG, "turbovio tracking falló: ${e.message}")
             null
-        } ?: return false
-        val urls = try {
-            parseStreamwishHtml(rendered, pageUrl)
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "[SW] parse falló: ${e.message}")
-            emptyList()
+        } ?: return null
+        val xt = resp.headers["x-tracking"] ?: resp.headers["X-Tracking"]
+        if (xt.isNullOrBlank()) {
+            Log.w(TAG, "turbovio sin x-tracking (http ${resp.code})")
+            return null
         }
-        if (urls.isEmpty()) return false
-        for (u in urls) {
-            val isHls = u.contains(".m3u8")
-            callback(newExtractorLink(name, "$label [SW-Web]", u, if (isHls) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                this.referer = pageUrl
-                this.headers = browserHeaders + ("Referer" to pageUrl)
-                this.quality = Qualities.Unknown.value
-            })
+        val decrypted = aesDecrypt(xt, host)
+        val obj = JSONObject(decrypted)
+        val stream = obj.optJSONObject("stream") ?: obj
+        val src = listOf("hls", "tiktok", "direct")
+            .map { stream.optString(it, "") }
+            .firstOrNull { it.isNotBlank() }
+        if (src.isNullOrBlank()) {
+            Log.w(TAG, "turbovio stream sin hls")
+            return null
         }
-        Log.d(TAG, "[SW] WebView OK: ${urls.size} urls -> $label")
-        return true
+        Log.d(TAG, "turbovio src host=${try { java.net.URL(src).host } catch (_: Exception) { "?" }}")
+
+        val subs = stream.optJSONArray("subtitles")
+        if (subs != null) {
+            for (i in 0 until subs.length()) {
+                val s = subs.optJSONObject(i) ?: continue
+                val subUrl = s.optString("url", "")
+                if (subUrl.isBlank()) continue
+                val lang = s.optString("language", s.optString("lang", "es"))
+                subtitleCallback(com.lagradost.cloudstream3.SubtitleFile(lang, subUrl))
+            }
+        }
+        return TurbovioResolved(src, referer = "https://$host/", origin = "https://$host")
+    }
+
+    private fun dayHex(): String = (System.currentTimeMillis() / 86_400_000L).toString(16)
+
+    private fun buildKey(): String {
+        val raw = KEYBASE + dayHex()
+        return if (raw.length >= 32) raw.substring(0, 32) else raw.padEnd(32, '0')
+    }
+
+    private fun buildIv(host: String): String {
+        val raw = IVBASE + toHex(host.toByteArray(Charsets.UTF_8))
+        return if (raw.length >= 32) raw.substring(0, 32) else raw.padEnd(32, '0')
+    }
+
+    private fun aesEncrypt(text: String, host: String): String {
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(fromHex(buildKey()), "AES"), IvParameterSpec(fromHex(buildIv(host))))
+        return toHex(cipher.doFinal(text.toByteArray(Charsets.UTF_8)))
+    }
+
+    private fun aesDecrypt(hex: String, host: String): String {
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(fromHex(buildKey()), "AES"), IvParameterSpec(fromHex(buildIv(host))))
+        return String(cipher.doFinal(fromHex(hex)), Charsets.UTF_8)
+    }
+
+    private fun toHex(bytes: ByteArray): String {
+        val sb = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            val v = b.toInt() and 0xFF
+            sb.append(HEX[v ushr 4]).append(HEX[v and 0x0F])
+        }
+        return sb.toString()
+    }
+
+    private fun fromHex(hex: String): ByteArray {
+        val clean = hex.trim()
+        val out = ByteArray(clean.length / 2)
+        for (i in out.indices) {
+            val hi = Character.digit(clean[i * 2], 16)
+            val lo = Character.digit(clean[i * 2 + 1], 16)
+            require(hi >= 0 && lo >= 0) { "hex invalido" }
+            out[i] = ((hi shl 4) + lo).toByte()
+        }
+        return out
+    }
+
+    private data class TurbovioResolved(val streamUrl: String, val referer: String, val origin: String)
+
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): okhttp3.Interceptor? {
+        return object : okhttp3.Interceptor {
+            override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+                val request = chain.request()
+                val host = request.url.host
+                if (host.contains("zilla-networks.com")) {
+                    val builder = request.newBuilder()
+                    zillaHeaders.forEach { (k, v) -> builder.header(k, v) }
+                    return chain.proceed(builder.build())
+                }
+                val ref = extractorLink.referer?.takeIf { it.isNotBlank() }
+                if (ref != null && (host.contains("northpeakdigitalworks") || host.endsWith(".cfd"))) {
+                    val builder = request.newBuilder()
+                    builder.header("User-Agent", UA)
+                    builder.header("Referer", ref)
+                    builder.header("Origin", ref.trimEnd('/'))
+                    builder.header("Accept", "*/*")
+                    return chain.proceed(builder.build())
+                }
+                return chain.proceed(request)
+            }
+        }
     }
 }

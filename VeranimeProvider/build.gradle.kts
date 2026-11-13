@@ -1,12 +1,10 @@
-// use an integer for version numbers
-version = 11
+﻿// use an integer for version numbers
+version = 15
 
 
 cloudstream {
     language = "es"
-    // All of these properties are optional, you can safely remove them
 
-    //description = "Lorem Ipsum"
     authors = listOf("Ranita")
 
     /**
@@ -19,7 +17,8 @@ cloudstream {
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
         "Anime",
+        "AnimeMovie",
     )
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%"
+    iconUrl = "https://verani.me/favicon.ico"
 }

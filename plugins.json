@@ -732,21 +732,21 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/VeranimeProvider.cs3",
     "status": 0,
-    "version": 3,
+    "version": 1,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-    "name": "AnimeNINJA",
+    "name": "VerAnime",
     "internalName": "VeranimeProvider",
     "authors": [
       "Ranita"
     ],
-    "description": "https://veranime.ninja/",
+    "description": "https://verani.me/",
     "tvTypes": [
       "Anime"
     ],
-    "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=128",
+    "iconUrl": "https://verani.me/wp-content/uploads/2026/01/3cbecfeb-f59b-459d-ab8e-7dff9eecbce9_removalai_preview-150x150.png",
     "language": "mx",
-    "fileSize": 75000
+    "fileSize": 54000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/SeriesdonghuaProvider.cs3",

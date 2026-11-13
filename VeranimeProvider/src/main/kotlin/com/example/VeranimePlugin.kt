@@ -5,9 +5,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class VeranimePlugin: Plugin() {
+class VeranimePlugin : Plugin() {
     override fun load(context: Context) {
-        VeranimeProvider.pluginContext = context
         registerMainAPI(VeranimeProvider())
     }
 }
