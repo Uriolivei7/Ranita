@@ -405,10 +405,10 @@
         "name": "LatanimeProvider"
     },
     {
-        "fileHash": "sha256-0065a8aa9afe70d21a8d9e587e77c15bbc8ce6cf50fc0702761670c6d9ef8cfa",
+        "fileHash": "sha256-45d7c10075ca7c284fa29938f5aef2bd21b9aedeb3777c83b7904f7bc3cdc3c3",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 99493,
+        "fileSize": 103314,
         "status": 1,
         "language": "es",
         "authors": [
@@ -420,7 +420,7 @@
             "Cartoon",
             "Anime"
         ],
-        "version": 21,
+        "version": 22,
         "internalName": "MhdflixProvider",
         "description": "Contenido en Latino",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/MhdflixProvider.cs3",
