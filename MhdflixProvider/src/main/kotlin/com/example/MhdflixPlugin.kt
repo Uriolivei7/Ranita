@@ -22,6 +22,10 @@ class MhdflixPlugin : Plugin() {
         registerExtractorAPI(MhdflixVoeNathan())
         registerExtractorAPI(MhdflixVoeMetagnath())
         registerExtractorAPI(MhdflixVoePamela())
+        registerExtractorAPI(MhdflixUqload())
+        registerExtractorAPI(MhdflixUqloadIo())
+        registerExtractorAPI(MhdflixUqloadcx())
+        registerExtractorAPI(MhdflixUqloadto())
         registerExtractorAPI(Sendvid())
     }
 }

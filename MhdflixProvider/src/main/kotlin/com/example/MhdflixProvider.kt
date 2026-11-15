@@ -490,7 +490,7 @@ class MhdflixProvider : MainAPI() {
     }
 
     private fun isDirectMediaUrl(url: String): Boolean {
-        
+
         val lower = url.lowercase()
         if (lower.contains("/e/") || lower.contains("/v/") || lower.contains("/embed")) return false
         val path = url.substringAfter("://").substringAfter("/")

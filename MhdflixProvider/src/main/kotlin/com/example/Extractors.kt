@@ -578,6 +578,65 @@ class MhdflixVoePamela : MhdflixVoe() {
     override val mainUrl = "https://pamelachangemission.com"
 }
 
+open class MhdflixUqload : ExtractorApi() {
+    override val name = "MhdflixUqload"
+    override val mainUrl = "https://uqload.is"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        try {
+            val ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0"
+            val resp = app.get(
+                url,
+                referer = referer ?: mainUrl,
+                headers = mapOf(
+                    "User-Agent" to ua,
+                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language" to "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Upgrade-Insecure-Requests" to "1"
+                )
+            )
+            val body = resp.text
+            val cookies = resp.cookies
+            val cookieHeader = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
+            Log.d("MhdflixUqload", "[Uqload] URL=$url len=${body.length} cookies=$cookieHeader")
+            val unpacked = getAndUnpack(body)
+            val msgpack = unpacked != body
+            Log.d("MhdflixUqload", "[Uqload] unpacked=$msgpack len=${unpacked.length}")
+            val mp4Urls = Regex("""https?://[^\s"'<>\\]+\.mp4[^\s"'<>\\]*""").findAll(unpacked).map { it.value }.toList()
+            val m3u8Urls = Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).map { it.value }.toList()
+            Log.d("MhdflixUqload", "[Uqload] m3u8=${m3u8Urls.size} mp4=${mp4Urls.size}")
+            val videoUrl = m3u8Urls.firstOrNull() ?: mp4Urls.firstOrNull() ?: return
+            val isM3u8 = videoUrl.contains(".m3u8")
+            val streamHeaders = buildMap {
+                put("User-Agent", ua)
+                put("Accept", "*/*")
+                put("Origin", mainUrl)
+                put("Referer", "$mainUrl/")
+                if (cookieHeader.isNotEmpty()) put("Cookie", cookieHeader)
+            }
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = name,
+                    url = videoUrl,
+                    type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = "$mainUrl/"
+                    this.quality = if (isM3u8) Qualities.Unknown.value else Qualities.P1080.value
+                    this.headers = streamHeaders
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("MhdflixUqload", "[Uqload] error: ${e.message}")
+        }
+    }
+}
+
+class MhdflixUqloadIo : MhdflixUqload() { override val mainUrl = "https://uqload.io" }
+class MhdflixUqloadcx : MhdflixUqload() { override val mainUrl = "https://uqload.cx" }
+class MhdflixUqloadto : MhdflixUqload() { override val mainUrl = "https://uqload.to" }
+
 data class VoeDecrypted(
     @JsonProperty("source") val source: String? = null,
     @JsonProperty("direct_access_url") val directAccessUrl: String? = null,
