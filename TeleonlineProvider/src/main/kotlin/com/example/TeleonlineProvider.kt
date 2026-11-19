@@ -1,15 +1,22 @@
-package com.example
+﻿package com.example
 
 import android.util.Base64
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import org.jsoup.Jsoup
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import com.lagradost.cloudstream3.amap
 
 class TeleonlineProvider : MainAPI() {
     override var mainUrl = "https://teleonline.org"
@@ -24,7 +31,7 @@ class TeleonlineProvider : MainAPI() {
     private val playerUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 
     private data class OptionCandidate(val idx: Int, val url: String, val variant: String)
-    private data class ProxyPlan(val variantUrl: String, val tracks: List<TsTrackInfo>)
+    private data class ProxyPlan(val master: String, val variantUrl: String, val tracks: List<TsTrackInfo>)
     private val countrySections = listOf(
         "Perú" to "/canales/peru/",
         "Argentina" to "/canales/argentina/",
@@ -43,7 +50,7 @@ class TeleonlineProvider : MainAPI() {
         return Regex("""url\s*\(?\s*['"]?\s*([^'")\s]+)""", RegexOption.IGNORE_CASE).find(style)?.groupValues?.get(1)
     }
 
-    private data class ChannelInfo(val name: String, val url: String, val poster: String?)
+    internal data class ChannelInfo(val name: String, val url: String, val poster: String?)
 
     private fun extractChannels(html: String): List<ChannelInfo> {
         val channels = mutableListOf<ChannelInfo>()
@@ -70,12 +77,64 @@ class TeleonlineProvider : MainAPI() {
         return channels
     }
 
+    companion object {
+        private const val SECTION_DISK_KEY = "teleonline_section_cache_v16"
+        @Volatile private var sectionDiskHydrated = false
+        private val sectionDiskSnapshot: MutableMap<String, List<ChannelInfo>> = mutableMapOf()
+
+        private fun hydrateSectionDisk() {
+            if (sectionDiskHydrated) return
+            synchronized(sectionDiskSnapshot) {
+                if (sectionDiskHydrated) return
+                try {
+                    val cur = com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey<Map<String, String>>(SECTION_DISK_KEY)
+                    if (cur != null) {
+                        for ((path, json) in cur) {
+                            sectionDiskSnapshot[path] = AppUtils.parseJson<List<ChannelInfo>>(json)
+                        }
+                        Log.d("Teleonline", "section disk hydrated: ${sectionDiskSnapshot.size} secciones")
+                    }
+                } catch (e: Exception) {
+                    Log.w("Teleonline", "hydrateSectionDisk fallo: ${e.message}")
+                }
+                sectionDiskHydrated = true
+            }
+        }
+
+        private fun persistSectionDisk() {
+            try {
+                val serialized = sectionDiskSnapshot
+                    .filter { it.value.isNotEmpty() }
+                    .mapValues { it.value.toJson() }
+                if (serialized.isNotEmpty()) {
+                    com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey(SECTION_DISK_KEY, serialized)
+                }
+            } catch (e: Exception) {
+                Log.w("Teleonline", "persistSectionDisk fallo: ${e.message}")
+            }
+        }
+
+        private fun snapshotSection(path: String): List<ChannelInfo>? {
+            hydrateSectionDisk()
+            return sectionDiskSnapshot[path]
+        }
+    }
+
+    private val sectionCache = java.util.concurrent.ConcurrentHashMap<String, List<ChannelInfo>>()
+
     private suspend fun fetchSection(name: String, path: String, pages: Int = 1): List<ChannelInfo> {
+        snapshotSection(path)?.let { if (it.isNotEmpty()) return it }
+        sectionCache[path]?.let { return it }
         val channels = mutableListOf<ChannelInfo>()
         for (p in 1..pages) {
             val url = if (p == 1) "$mainUrl$path" else "$mainUrl${path}page/$p/"
             val html = safeGet(url) ?: continue
             channels.addAll(extractChannels(html))
+        }
+        if (channels.isNotEmpty()) {
+            sectionCache[path] = channels
+            sectionDiskSnapshot[path] = channels
+            persistSectionDisk()
         }
         return channels
     }
@@ -83,7 +142,7 @@ class TeleonlineProvider : MainAPI() {
     private suspend fun safeGet(url: String, timeoutSec: Long = 15L): String? {
         for (attempt in 1..2) {
             try {
-                val interceptor = if (attempt > 1) cfKiller else null
+                val interceptor = cfKiller
                 val res = app.get(url, timeout = timeoutSec * attempt, interceptor = interceptor)
                 if (res.isSuccessful) return res.text
             } catch (e: CancellationException) { throw e }
@@ -116,8 +175,124 @@ class TeleonlineProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val html = safeGet("$mainUrl/?s=$query") ?: return emptyList()
-        return extractChannels(html).distinctBy { it.url }.map { it.toSearchResponse() }
+        val q = query.trim()
+        if (q.isBlank()) return emptyList()
+        val enc = java.net.URLEncoder.encode(q, "UTF-8")
+        val out = ArrayList<SearchResponse>()
+        val seen = HashSet<String>()
+
+        val qn = fold(q)
+        val sections0 = fetchAllSections()
+        if (sections0.any { it.second.isNotEmpty() }) {
+            loop@ for ((_, channels) in sections0) {
+                for (ch in channels) {
+                    if (ch.url.isBlank()) continue
+                    if (!fold(ch.name).contains(qn)) continue
+                    if (!seen.add(ch.url)) continue
+                    out.add(ch.toSearchResponse())
+                    if (out.size >= 40) break@loop
+                }
+            }
+            if (out.isNotEmpty()) {
+                Log.d("Teleonline", "local filter '$q' -> ${out.size}")
+                return out
+            }
+        }
+
+        // 2) REST API if local has nothing
+        try {
+            val url = "$mainUrl/wp-json/wp/v2/posts?search=$enc&per_page=20&_fields=id,link,title,featured_media"
+            val res = app.get(url, headers = mapOf("User-Agent" to playerUa, "Accept" to "application/json"), timeout = 12L)
+            if (res.isSuccessful) {
+                val arr = JSONArray(res.text)
+                val posts = ArrayList<JSONObject>()
+                val allMids = HashSet<Long>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    posts.add(o)
+                    val mid = o.optLong("featured_media", 0L)
+                    if (mid > 0) allMids.add(mid)
+                }
+                // 1) posters from local section cache (no network)
+                val local = HashMap<Long, String>()
+                for (o in posts) {
+                    val link = o.optString("link").trim()
+                    val mid = o.optLong("featured_media", 0L)
+                    val lp = posterForUrl(link)
+                    if (!lp.isNullOrBlank() && mid > 0) local[mid] = lp
+                }
+                // 2) only fetch posters for missing mids, short timeout
+                val missing = allMids.filterNot { local.containsKey(it) }
+                val remote = if (missing.isNotEmpty()) fetchPosters(missing) else emptyMap<Long, String>()
+                for (o in posts) {
+                    val link = o.optString("link").trim()
+                    val title = cleanHtml((o.optJSONObject("title")?.optString("rendered"))?.takeIf { it.isNotBlank() } ?: o.optString("title"))
+                    if (title.isBlank() || link.isBlank()) continue
+                    if (!seen.add(link)) continue
+                    val mid = o.optLong("featured_media", 0L)
+                    val poster = local[mid]
+                        ?: remote[mid]?.takeIf { it.isNotBlank() }
+                        ?: posterForUrl(link)
+                    out.add(newLiveSearchResponse(title, link, TvType.Live) { this.posterUrl = poster })
+                }
+                Log.d("Teleonline", "rest search '$q' -> ${out.size}")
+            } else {
+                Log.w("Teleonline", "rest search HTTP ${res.code}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("Teleonline", "rest search fallo: ${e.message}")
+        }
+
+
+        return out
+    }
+
+    private fun fold(s: String): String =
+        java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+
+    private fun cleanHtml(s: String): String {
+        if (s.isBlank()) return ""
+        return s.replace(Regex("<[^>]*>"), "")
+            .replace("&#8211;", "-").replace("&#8212;", "-")
+            .replace("&amp;", "&").replace("&quot;", "\"")
+            .replace("&#039;", "'").replace("&nbsp;", " ")
+            .trim()
+    }
+
+    private fun posterForUrl(url: String): String? {
+        for (list in sectionCache.values) {
+            for (ch in list) {
+                if (ch.url == url) return ch.poster
+            }
+        }
+        return null
+    }
+
+    private suspend fun fetchPosters(mediaIds: List<Long>): Map<Long, String> {
+        if (mediaIds.isEmpty()) return emptyMap()
+        return mediaIds.amap { id ->
+            id to try {
+                val r = app.get("$mainUrl/wp-json/wp/v2/media/$id?_fields=source_url", headers = mapOf("User-Agent" to playerUa, "Accept" to "application/json"), timeout = 6L)
+                if (r.isSuccessful) {
+                    JSONObject(r.text).optString("source_url", "")
+                } else {
+                    Log.w("Teleonline", "media $id -> HTTP ${r.code}")
+                    ""
+                }
+            } catch (e: Exception) {
+                Log.w("Teleonline", "media $id fallo: ${e.message}")
+                ""
+            }
+        }.toMap()
+    }
+
+    private suspend fun fetchAllSections(): List<Pair<String, List<ChannelInfo>>> = coroutineScope {
+        val jobs = listOf("Canales" to async { fetchSection("Canales", "/", maxPagesGeneral) }) +
+            countrySections.map { (name, path) -> name to async { fetchSection(name, path) } }
+        jobs.map { (n, d) -> n to d.await() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -297,7 +472,7 @@ class TeleonlineProvider : MainAPI() {
                 val tracks = plan.tracks.sortedBy { if (isSpanish(it.lang)) 0 else 1 }
                 for (t in tracks) {
                     val proxyUrl = withContext(Dispatchers.IO) {
-                        TeleonlineTsProxy.playlistUrl(plan.variantUrl, t.pid)
+                        TeleonlineTsProxy.playlistUrl(plan.master, t.pid)
                     } ?: continue
                     emitLink("$label [${langTag(t)}]", proxyUrl, referer, callback)
                     proxied = true
@@ -333,7 +508,7 @@ class TeleonlineProvider : MainAPI() {
         val segment = TeleonlineTsProxy.firstSegment(c.variant, 15000L) ?: return@withContext null
         val tracks = TeleonlineTsProxy.probeTracks(segment) ?: return@withContext null
         Log.d("Teleonline", "opción ${c.idx} probe ok: ${tracks.joinToString { "${it.pid}:${it.lang}" }}")
-        ProxyPlan(c.variant, tracks)
+        ProxyPlan(c.url, c.variant, tracks)
     }
 
     private suspend fun emitLink(label: String, url: String, referer: String, callback: (ExtractorLink) -> Unit) {

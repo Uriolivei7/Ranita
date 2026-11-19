@@ -1,4 +1,4 @@
-package com.example
+﻿package com.example
 
 import android.util.Log
 import org.jsoup.nodes.Element
@@ -8,6 +8,8 @@ import com.lagradost.cloudstream3.utils.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.ConcurrentHashMap
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 
 class OkruProvider : MainAPI() {
     override var mainUrl = "https://ok.ru"
@@ -18,6 +20,35 @@ class OkruProvider : MainAPI() {
 
     companion object {
         private val posterCache = ConcurrentHashMap<String, String>()
+        private const val POSTER_DISK_KEY = "okru_poster_cache"
+
+        private fun loadPersistedPosters(): MutableMap<String, String> {
+            return try {
+                getKey<Map<String, String>>(POSTER_DISK_KEY)?.toMutableMap() ?: mutableMapOf()
+            } catch (e: Exception) {
+                Log.w("OKRU", "poster persist load fallo: ${e.message}")
+                mutableMapOf()
+            }
+        }
+
+        private fun persistPoster(id: String, url: String) {
+            if (id.isBlank() || url.isBlank()) return
+            posterCache[id] = url
+            try {
+                val cur = loadPersistedPosters()
+                cur[id] = url
+                setKey(POSTER_DISK_KEY, cur)
+            } catch (e: Exception) {
+                Log.w("OKRU", "poster persist save fallo: ${e.message}")
+            }
+        }
+
+        fun persistedPoster(id: String): String? = posterCache[id] ?: try {
+            getKey<Map<String, String>>(POSTER_DISK_KEY)?.get(id)
+        } catch (e: Exception) {
+            Log.w("OKRU", "poster persist read fallo: ${e.message}")
+            null
+        }
     }
 
     override val mainPage = mainPageOf(
@@ -127,7 +158,7 @@ class OkruProvider : MainAPI() {
             val title = item.movie?.title ?: item.name ?: return@mapNotNull null
             val id = item.movie?.id ?: return@mapNotNull null
             val poster = item.movie.thumbnail?.big ?: item.movie?.thumbnail?.small ?: item.imageUrl
-            poster?.takeIf { it.isNotBlank() }?.let { posterCache[id] = fixUrl(it) }
+            poster?.takeIf { it.isNotBlank() }?.let { persistPoster(id, fixUrl(it)) }
             newMovieSearchResponse(title, "$mainUrl/video/$id", TvType.Movie) {
                 this.posterUrl = fixUrlNull(poster) }
         } ?: emptyList()
@@ -216,7 +247,7 @@ class OkruProvider : MainAPI() {
             ?: doc.selectFirst("meta[property='og:image:url']")?.attr("content")
         val isDefaultPoster = ogPoster?.contains("/res/i/anonym/def_1200x630-r.png") == true
         val poster = if (ogPoster.isNullOrBlank() || isDefaultPoster) {
-            videoId?.let { posterCache[it] }
+            videoId?.let { persistedPoster(it) } ?: videoId?.let { posterCache[it] }
         } else {
             fixUrlNull(ogPoster)
         }
