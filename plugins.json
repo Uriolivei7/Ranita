@@ -490,10 +490,10 @@
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=ok.ru&sz=%size%",
-        "fileHash": "sha256-e9f73f9c661b4b71351364ac83b716c3d6d17b5d59f14bacb0f8eb539c7f1399",
+        "fileHash": "sha256-88d9cd17ff52fa517a68c548f643dffb2af4469fd2e5cf6bd5c77312d3cfafb6",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 42694,
+        "fileSize": 45192,
         "status": 1,
         "language": "es",
         "authors": [
@@ -503,7 +503,7 @@
             "Movie",
             "TvSeries"
         ],
-        "version": 7,
+        "version": 4,
         "internalName": "OkruProvider",
         "description": "Proveedor + extractor OK.ru",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/OkruProvider.cs3",
@@ -759,10 +759,10 @@
     },
     {
         "iconUrl": "https://teleonline.org/wp-content/uploads/2025/12/teleonline-logo-base.png",
-        "fileHash": "sha256-3e8c6261457e4a99ac2295068f44ad55ac3dffffe2a83b743d602ac27df12769",
+        "fileHash": "sha256-c67c605400a48d84807d52d7bb485f4c6f1ad33a011898ed5a8fd44de1ed84fb",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 49490,
+        "fileSize": 62845,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -771,7 +771,7 @@
         "tvTypes": [
             "Live"
         ],
-        "version": 13,
+        "version": 3,
         "internalName": "TeleonlineProvider",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/TeleonlineProvider.cs3",
         "name": "TeleonlineProvider"
