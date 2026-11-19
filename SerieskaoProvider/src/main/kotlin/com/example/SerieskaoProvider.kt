@@ -504,7 +504,9 @@ class SerieskaoProvider : MainAPI() {
         }
 
         var rawMatch = extractDataLink(playerHtml)
-        if (rawMatch == null || !playerHtml.contains("POW_CHALLENGE") || !playerHtml.contains("POW_SALT")) {
+        val hasPowFields = playerHtml.contains("POW_CHALLENGE") && playerHtml.contains("POW_SALT")
+        val hasLinkFields = playerHtml.contains("LINK_CHALLENGE") && playerHtml.contains("LINK_SALT")
+        if (rawMatch == null || !(hasPowFields || hasLinkFields)) {
             Log.d(TAG, "loadLinks player sin dataLink/PoW; intentando WebView: $playerUrl")
             val renderedHtml = renderViaWebView(
                 pageUrl = playerUrl,
@@ -513,13 +515,13 @@ class SerieskaoProvider : MainAPI() {
                 readyJs = if (playerHtml.contains("EMBED69", true)) {
                     "h.includes('dood')&&h.includes('vidhide')&&h.includes('streamwish')&&h.includes('voe')"
                 } else {
-                    "h.includes('dataLink')&&h.includes('POW_CHALLENGE')&&h.includes('POW_SALT')"
+                    "h.includes('dataLink')&&(h.includes('POW_CHALLENGE')||h.includes('LINK_CHALLENGE'))"
                 },
                 renderInIframe = playerHtml.contains("EMBED69", true)
             )
             if (!renderedHtml.isNullOrBlank()) {
                 val renderedMatch = extractDataLink(renderedHtml)
-                Log.d(TAG, "loadLinks player WebView len=${renderedHtml.length} dataLink=${renderedMatch != null} pow=${renderedHtml.contains("POW_CHALLENGE") && renderedHtml.contains("POW_SALT")}")
+                Log.d(TAG, "loadLinks player WebView len=${renderedHtml.length} dataLink=${renderedMatch != null} pow=${renderedHtml.contains("POW_CHALLENGE") && renderedHtml.contains("POW_SALT")} link=${renderedHtml.contains("LINK_CHALLENGE") && renderedHtml.contains("LINK_SALT")}")
                 logPlayerShape("player WebView", renderedHtml)
                 if (renderedMatch != null) {
                     playerHtml = renderedHtml
@@ -561,10 +563,15 @@ class SerieskaoProvider : MainAPI() {
         }
         Log.d(TAG, "loadLinks items=${items.size} resumen=${items.map { it.videoLanguage to (it.sortedEmbeds?.size ?: 0) }}")
 
-        val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
-        val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
+        val linkChallenge = Regex("""LINK_CHALLENGE\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
+        val linkSalt = Regex("""LINK_SALT\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
+        val legacyChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
+        val legacySalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(playerHtml)?.groupValues?.get(1)
+        val embedChallenge = linkChallenge ?: legacyChallenge
+        val embedSalt = linkSalt ?: legacySalt
+        Log.d(TAG, "loadLinks challenge keys: link=${linkChallenge != null} legacy=${legacyChallenge != null} mode=${if (linkChallenge != null) "LINK" else "POW"}")
         if (embedChallenge == null || embedSalt == null) {
-            Log.e(TAG, "loadLinks sin POW_CHALLENGE/SALT -> loadExtractor directo")
+            Log.e(TAG, "loadLinks sin LINK_CHALLENGE/LINK_SALT (ni POW_*) -> loadExtractor directo")
             loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
@@ -573,9 +580,13 @@ class SerieskaoProvider : MainAPI() {
         val langMap = mapOf("LAT" to "LATINO", "ESP" to "CASTELLANO", "SUB" to "SUBTITULADO")
         Log.d(TAG, "loadLinks resolviendo PoW...")
         val aesKey = try {
-
-            withTimeout(30000L) {
-                withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+            if (linkChallenge != null) {
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest((embedChallenge + embedSalt).toByteArray(Charsets.UTF_8))
+            } else {
+                withTimeout(30000L) {
+                    withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks PoW error/timeout (${e.message}) -> loadExtractor directo")
@@ -586,7 +597,7 @@ class SerieskaoProvider : MainAPI() {
             loadExtractor(fixHostsTitle(playerUrl), data, subtitleCallback, emitTracked)
             return@coroutineScope true
         }
-        Log.d(TAG, "loadLinks PoW solved, items=${items.size}")
+        Log.d(TAG, "loadLinks PoW solved/LINK derived, items=${items.size}")
 
         var decryptedCount = 0
         items.forEach { item ->

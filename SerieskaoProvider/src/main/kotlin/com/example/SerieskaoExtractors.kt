@@ -1370,10 +1370,14 @@ suspend fun extractKaoEmbed69(
         Log.d(KAO_TAG, "embed69 - dataLink JSON: ${dataLinkJson.take(300)}")
 
         val pageHtml = embedResp.text
-        val embedChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
-        val embedSalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+        val linkChallenge = Regex("""LINK_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+        val linkSalt = Regex("""LINK_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+        val legacyChallenge = Regex("""POW_CHALLENGE\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+        val legacySalt = Regex("""POW_SALT\s*=\s*'([^']+)'""").find(pageHtml)?.groupValues?.get(1)
+        val embedChallenge = linkChallenge ?: legacyChallenge
+        val embedSalt = linkSalt ?: legacySalt
         if (embedChallenge == null || embedSalt == null) {
-            Log.e(KAO_TAG, "embed69 - No se pudo extraer POW_CHALLENGE/SALT")
+            Log.e(KAO_TAG, "embed69 - No se pudo extraer LINK_CHALLENGE/LINK_SALT (ni POW_*) de la página")
             return
         }
         Log.d(KAO_TAG, "embed69 - challenge=$embedChallenge salt=$embedSalt")
@@ -1383,7 +1387,12 @@ suspend fun extractKaoEmbed69(
             if (encryptedLinks.isEmpty()) return@amap
             Log.d(KAO_TAG, "embed69 - ${encryptedLinks.size} enlaces encriptados para ${lang.videoLanguage}")
 
-            val aesKey = withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+            val aesKey = if (linkChallenge != null) {
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest((embedChallenge + embedSalt).toByteArray(Charsets.UTF_8))
+            } else {
+                withContext(Dispatchers.Default) { solveEmbed69PoW(embedChallenge, embedSalt) }
+            }
             if (aesKey == null) {
                 Log.e(KAO_TAG, "embed69 - PoW failed")
                 return@amap
