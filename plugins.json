@@ -447,6 +447,26 @@
         "name": "MonoschinosProvider"
     },
     {
+        "fileHash": "sha256-f9f5303251427725e246d3202e443792fc9175da16e764172fc36a813d18eb21",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 69282,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 4,
+        "internalName": "MoviePlusProvider",
+        "description": "Movie! Plus \u00e2\u20ac\u201d cat\u00c3\u00a1logo de pel\u00c3\u00adculas, series, animes y m\u00c3\u00a1s",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/MoviePlusProvider.cs3",
+        "name": "MoviePlusProvider"
+    },
+    {
         "iconUrl": "https://www.google.com/s2/favicons?domain=mundodonghua.com&sz=%size%",
         "fileHash": "sha256-4155e7692a211c0442b2d96fe1e68694d585ee1d65db461f739e8521409a05ec",
         "apiVersion": 1,
