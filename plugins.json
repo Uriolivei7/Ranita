@@ -904,5 +904,25 @@
     "iconUrl": "https://devxploit.xyz/img/favicon.ico",
     "language": "mx",
     "fileSize": 68000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NinjaProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "AnimeNINJA",
+    "internalName": "NinjaProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "https://veranime.ninja/",
+    "tvTypes": [
+      "Anime",
+      "AnimeMovie"
+    ],
+    "iconUrl": "https://veranime.ninja/wp-content/uploads/2026/03/cropped-cropped-485dd3a5-d9ff-4223-a66c-26688335c706-scaled-1-1-32x32.png",
+    "language": "mx",
+    "fileSize": 76000
   }
 ]
