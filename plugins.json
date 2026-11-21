@@ -120,6 +120,25 @@
         "name": "Atalayas21Provider"
     },
     {
+        "fileHash": "sha256-008478848608308337237344b09d7e097cce81cd94a43fcca83d2199cbb796ce",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 18690,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Live"
+        ],
+        "version": 1,
+        "internalName": "ClowniptvProvider",
+        "description": "Clown IPTV \u00e2\u20ac\u201d canales en vivo del mundo (M3U p\u00c3\u00bablico)",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/ClowniptvProvider.cs3",
+        "name": "ClowniptvProvider"
+    },
+    {
         "iconUrl": "https://danimados.cc/favicon.ico",
         "fileHash": "sha256-f05e53a2340bbdfa3a72bac103460418ceb28321a4f73e3cda2173b15cec90f4",
         "apiVersion": 1,
@@ -596,10 +615,10 @@
         "name": "PlushdProvider"
     },
     {
-        "fileHash": "sha256-99ce54f2a37548d753986112d4d21fe9b168cf30d6c789149947cd4cfd2dbeb4",
+        "fileHash": "sha256-b444c2f55842078d7f3a6ddd7cc7cffd8cb6d2c70475a2831e450506c0d06be4",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
-        "fileSize": 50518,
+        "fileSize": 51777,
         "status": 1,
         "language": "mx",
         "authors": [
@@ -610,7 +629,7 @@
             "TvSeries",
             "Live"
         ],
-        "version": 1,
+        "version": 4,
         "internalName": "PlutotvProvider",
         "description": "Plugin de PlutoTV",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/PlutotvProvider.cs3",
