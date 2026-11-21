@@ -447,7 +447,7 @@
         "name": "MonoschinosProvider"
     },
     {
-        "fileHash": "sha256-f9f5303251427725e246d3202e443792fc9175da16e764172fc36a813d18eb21",
+        "fileHash": "sha256-393519e2ce0e0c8c3fed818e977b4245a8c6f417f545fdf5cb85c2d9e9e2071a",
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
         "fileSize": 69282,
@@ -460,7 +460,7 @@
             "Movie",
             "TvSeries"
         ],
-        "version": 4,
+        "version": 1,
         "internalName": "MoviePlusProvider",
         "description": "Movie! Plus \u00e2\u20ac\u201d cat\u00c3\u00a1logo de pel\u00c3\u00adculas, series, animes y m\u00c3\u00a1s",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/MoviePlusProvider.cs3",
@@ -507,6 +507,26 @@
         "description": "Netflix and PrimeVideo Content in Multiple Languages",
         "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/NetflixmirrorProvider.cs3",
         "name": "NetflixmirrorProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=veranime.ninja&sz=%size%",
+        "fileHash": "sha256-657532a34d487847555860139690fff58944f2aa3912b6f7e6e6f187d05ad9dc",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+        "fileSize": 77393,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Ranita"
+        ],
+        "tvTypes": [
+            "Anime"
+        ],
+        "version": 1,
+        "internalName": "NinjaProvider",
+        "description": "AnimeNINJA - veranime.ninja (DooPlay)",
+        "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/builds/NinjaProvider.cs3",
+        "name": "NinjaProvider"
     },
     {
         "iconUrl": "https://www.google.com/s2/favicons?domain=ok.ru&sz=%size%",
