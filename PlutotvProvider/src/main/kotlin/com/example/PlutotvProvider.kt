@@ -186,6 +186,7 @@ open class PlutotvProvider : MainAPI() {
         Log.d("PLUTOTV", "load: url=$url")
         val (_, servers) = obtainSessionData()
 
+        // 1. Intentar parsear si viene como JSON estructurado (Búsqueda/Navegación directa)
         val channel = AppUtils.tryParseJson<Channel>(url)
         channel?.let { channel ->
             Log.d("PLUTOTV", "load: it's a LIVE channel (JSON): ${channel.name} (id=${channel.id})")
@@ -232,7 +233,7 @@ open class PlutotvProvider : MainAPI() {
                 "${servers.vod}/v4/vod/items",
                 headers = authHeaders(),
                 params = mapOf("ids" to idFromUrl)
-            ).parsedSafe<SearchDetailsResponse>()?.firstOrNull()
+            ).parsedSafe<SearchDetailsResponse>()?.firstOrNull() // Usamos parsedSafe por seguridad también aquí
 
             if (item != null) {
                 Log.d("PLUTOTV", "load: resolved id=$idFromUrl to item=${item.name}")
@@ -266,8 +267,9 @@ open class PlutotvProvider : MainAPI() {
             Log.d("PLUTOTV", "load: got ${seasonInfo.seasons.size} seasons, name=${seasonInfo.name}")
 
             val episodes = seasonInfo.seasons.flatMap { season ->
-                season.episodes.map { episode ->
-                    newEpisode(episode.stitched) {
+                season.episodes.mapNotNull { episode ->
+                    val stitched = episode.stitched ?: return@mapNotNull null
+                    newEpisode(stitched) {
                         this.name = episode.name
                         this.posterUrl = episode.covers.firstOrNull()?.url
                         this.runTime = (episode.originalContentDuration / 1000 / 60).toInt()
@@ -284,7 +286,7 @@ open class PlutotvProvider : MainAPI() {
                 type = TvType.TvSeries,
                 episodes = episodes
             ) {
-                this.posterUrl = seasonInfo.featuredImage.path
+                this.posterUrl = seasonInfo.featuredImage?.path
                 this.plot = seasonInfo.summary
             }
         } else {
@@ -489,7 +491,7 @@ open class PlutotvProvider : MainAPI() {
     )
 
     data class FeaturedImage(
-        val path: String,
+        val path: String? = null,
     )
 
     data class Clip(
@@ -504,19 +506,19 @@ open class PlutotvProvider : MainAPI() {
     data class SeasonInfo(
         @JsonProperty("_id")
         val id: String,
-        val name: String,
-        val summary: String,
-        val description: String,
-        val slug: String,
-        val type: String,
-        val rating: String,
-        val featuredImage: FeaturedImage,
-        val genre: String,
-        val offset: Long,
-        val page: Long,
-        val seasons: List<Season>,
-        val covers: List<Cover2>,
-        val avail: Map<String, Any>,
+        val name: String = "",
+        val summary: String = "",
+        val description: String = "",
+        val slug: String = "",
+        val type: String = "",
+        val rating: String = "",
+        val featuredImage: FeaturedImage? = null,
+        val genre: String = "",
+        val offset: Long = 0,
+        val page: Long = 0,
+        val seasons: List<Season> = emptyList(),
+        val covers: List<Cover2> = emptyList(),
+        val avail: Map<String, Any> = emptyMap(),
     )
 
     data class Season(
@@ -526,26 +528,26 @@ open class PlutotvProvider : MainAPI() {
 
     data class Episode(
         @JsonProperty("_id")
-        val id: String,
-        val name: String,
-        val description: String,
-        val allotment: Long,
-        val rating: String,
-        val slug: String,
-        val duration: Long,
-        val originalContentDuration: Long,
-        val genre: String,
-        val type: String,
-        val number: Long,
-        val season: Long,
-        val stitched: Stitched,
-        val covers: List<Cover>,
-        val clip: Clip,
+        val id: String = "",
+        val name: String = "",
+        val description: String = "",
+        val allotment: Long = 0,
+        val rating: String = "",
+        val slug: String = "",
+        val duration: Long = 0,
+        val originalContentDuration: Long = 0,
+        val genre: String = "",
+        val type: String = "",
+        val number: Long = 0,
+        val season: Long = 0,
+        val stitched: Stitched? = null,
+        val covers: List<Cover> = emptyList(),
+        val clip: Clip? = null,
     )
 
     data class Cover(
-        val aspectRatio: String,
-        val url: String,
+        val aspectRatio: String = "",
+        val url: String? = null,
     )
 
     data class Cover2(

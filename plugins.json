@@ -514,7 +514,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/PlutotvProvider.cs3",
     "status": 1,
-    "version": 3,
+    "version": 4,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "PlutoTV",
@@ -531,7 +531,7 @@
     ],
     "iconUrl": "https://pluto.tv/favicon/large.png",
     "language": "mx",
-    "fileSize": 48000
+    "fileSize": 51000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/Atalayas21Provider.cs3",
@@ -924,5 +924,24 @@
     "iconUrl": "https://veranime.ninja/wp-content/uploads/2026/03/cropped-cropped-485dd3a5-d9ff-4223-a66c-26688335c706-scaled-1-1-32x32.png",
     "language": "mx",
     "fileSize": 76000
+  },
+  {
+    "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/ClowniptvProvider.cs3",
+    "status": 1,
+    "version": 1,
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
+    "name": "IPTVGlobal",
+    "internalName": "ClowniptvProvider",
+    "authors": [
+      "Ranita"
+    ],
+    "description": "Canales en vivo del mundo - playlist M3U publica",
+    "tvTypes": [
+      "Live"
+    ],
+    "iconUrl": "https://i.pinimg.com/736x/05/77/13/057713e1cdd9f3c53049d79f27067a97.jpg",
+    "language": "en",
+    "fileSize": 19000
   }
 ]
