@@ -62,6 +62,13 @@ class ClowniptvProvider(
 
         private val LOGO = Regex("""tvg-logo="([^"]*)"""")
         private val BLOCK = Regex("""XXX|ADULT|18[+]|[+]18|PORN|EROTIC|NSFW""", RegexOption.IGNORE_CASE)
+        private val ALLOW = Regex("""ADULT\s*SWIM""", RegexOption.IGNORE_CASE)
+
+        private fun isBlocked(name: String, section: String): Boolean {
+            if (ALLOW.containsMatchIn(name)) return false
+            if (ALLOW.containsMatchIn(section)) return false
+            return BLOCK.containsMatchIn(name) || BLOCK.containsMatchIn(section)
+        }
 
         data class Channel(
             val name: String = "",
@@ -97,7 +104,7 @@ class ClowniptvProvider(
                     section = name.replace("✦●✦", "").replace("◆◆◆", "").trim(' ', '|')
                     continue
                 }
-                if (name.isNotEmpty() && !BLOCK.containsMatchIn(name) && !BLOCK.containsMatchIn(section)) {
+                if (name.isNotEmpty() && !isBlocked(name, section)) {
                     out.add(Channel(name, line, logo, section))
                 }
             }
