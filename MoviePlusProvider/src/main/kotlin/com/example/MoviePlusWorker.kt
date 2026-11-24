@@ -122,7 +122,8 @@ object MoviePlusWorker {
             val headers = if (hybrid && session != null) hybridHeaders(session, path, body) else emptyMap()
             last = post(path, body, headers)
             if (last.first == 200 || last.first in noRetry) return last
-            delay(2500L)
+
+            delay(2000L + i * 1000L)
         }
         return last
     }
@@ -204,14 +205,20 @@ object MoviePlusWorker {
             "issuedAtMs" to (System.currentTimeMillis() - 1000),
             "resolveProvider" to true
         ).toByteArray(Charsets.UTF_8)
-        val (code, text) = postRetry(session, "/v2/client/playback", body, hybrid = true, tries = 3, noRetry = setOf(503, 429))
-        if (code != 200) return null
+
+        val (code, text) = postRetry(session, "/v2/client/playback", body, hybrid = true, tries = 4)
+        if (code != 200) {
+            Log.w("MoviePlusWorker", "playback HTTP $code len=${text.length} body=${text.take(200)}")
+            return null
+        }
         return try {
             val o = JSONObject(text)
-            if (o.optString("status") == "resolved" && o.optBoolean("ok")) {
+            val st = o.optString("status"); val okv = o.optBoolean("ok")
+            if (st == "resolved" && okv) {
                 val v = o.optString("value")
+                Log.d("MoviePlusWorker", "playback resolved url=${v.take(100)}")
                 if (v.startsWith("http")) v else null
-            } else null
+            } else { Log.w("MoviePlusWorker", "playback status=$st ok=$okv body=${text.take(150)}"); null }
         } catch (e: Exception) {
             null
         }
@@ -221,6 +228,7 @@ object MoviePlusWorker {
         val s = newSession() ?: return null
         playback(s, envelope)
     } catch (t: Throwable) {
+        Log.w("MoviePlusWorker", "resolveFresh error ${t::class.simpleName}: ${t.message}")
         null
     }
 
@@ -243,11 +251,12 @@ object MoviePlusWorker {
             "movieId" to movieId
         ).toByteArray(Charsets.UTF_8)
         val (code, text) = postRetry(s, "/v2/client/movie-variants", body, hybrid = true, tries = 3)
-        if (code != 200) return emptyList()
+        if (code != 200) { Log.w("MoviePlusWorker", "movie-variants HTTP $code len=${text.length}"); return emptyList() }
         val variants = mutableListOf<String>()
         val arr = JSONObject(text).optJSONObject("movieLinks")?.optJSONArray("variants")
         if (arr != null) for (i in 0 until arr.length()) arr.optString(i)?.let { variants.add(it) }
         val effective = if (variants.isEmpty()) fallback else variants
+        Log.d("MoviePlusWorker", "resolveMovie $movieId variants=${variants.size} effective=${effective.size}")
         val byQuality = LinkedHashMap<String, Triple<String, String, String>>()
         for (v in effective) {
             val parts = v.split(",_,", limit = 3)
@@ -261,7 +270,8 @@ object MoviePlusWorker {
             val jobs = byQuality.values.map { (quality, size, envelope) ->
                 async(Dispatchers.IO) {
                     try {
-                        val url = resolveFresh(envelope) ?: return@async null
+
+                        val url = playback(s, envelope) ?: resolveFresh(envelope) ?: return@async null
                         if (!seen.add(url)) return@async null
                         val link = ResolvedLink(quality, size, url)
                         onLink?.invoke(link)
@@ -273,7 +283,9 @@ object MoviePlusWorker {
             }
             jobs.awaitAll()
         }
-        results.filterNotNull().distinctBy { it.url }
+        val distinct = results.filterNotNull().distinctBy { it.url }
+        Log.d("MoviePlusWorker", "resolveMovie $movieId resolved=${distinct.size}")
+        distinct
     } catch (e: Exception) {
         emptyList()
     }
@@ -287,6 +299,7 @@ object MoviePlusWorker {
             val inner = json("deviceKey" to s.deviceId, "appVersion" to "17.3", "platform" to "android")
             val authBody = outer.replace("\"__PAYLOAD__\"", inner).toByteArray(Charsets.UTF_8)
             val (code, text) = postRetry(s, "/v2/client/auth", authBody, hybrid = true, tries = 4)
+            Log.d("MoviePlusWorker", "auth HTTP $code len=${text.length}")
             if (code != 200) return@withLock null
             val customToken = JSONObject(text).optString("token")
             if (customToken.isBlank()) return@withLock null
@@ -296,6 +309,7 @@ object MoviePlusWorker {
             val r = app.post(url, headers = ANDROID_HEADERS, requestBody = body, timeout = 25L)
             if (r.code != 200) return@withLock null
             val idToken = JSONObject(r.text).optString("idToken")
+            Log.d("MoviePlusWorker", "firebase signIn HTTP ${r.code} idToken=${idToken.isNotBlank()}")
             if (idToken.isBlank()) return@withLock null
             firebaseIdToken = idToken
             idTokenAtMs = System.currentTimeMillis()
@@ -309,7 +323,7 @@ object MoviePlusWorker {
         val token = ensureFirebaseToken() ?: return emptyList()
         val url = "https://firestore.googleapis.com/v1/projects/dev-movieplus/databases/(default)/documents/tv/$seriesId"
         val r = app.get(url, headers = ANDROID_HEADERS + ("Authorization" to "Bearer $token"), timeout = 25L)
-        if (r.code != 200) return emptyList()
+        if (r.code != 200) { Log.w("MoviePlusWorker", "episodeEnvelopes HTTP ${r.code}"); return emptyList() }
         val fields = JSONObject(r.text).optJSONObject("fields") ?: return emptyList()
         val out = mutableListOf<EpisodeLink>()
         val keys = fields.keys()
@@ -329,8 +343,10 @@ object MoviePlusWorker {
                 out.add(EpisodeLink(season, ep, quality, envelope))
             }
         }
+        Log.d("MoviePlusWorker", "episodeEnvelopes $seriesId -> ${out.size}")
         out
     } catch (e: Exception) {
+        Log.w("MoviePlusWorker", "episodeEnvelopes error: ${e.message}")
         emptyList()
     }
 
@@ -344,12 +360,14 @@ object MoviePlusWorker {
             "documentId" to "db"
         ).toByteArray(Charsets.UTF_8)
         val (code, text) = postRetry(s, "/v2/client/document", body, hybrid = true, tries = 4)
-        if (code != 200) return emptyList()
+        if (code != 200) { Log.w("MoviePlusWorker", "document HTTP $code len=${text.length}"); return emptyList() }
         val urls = JSONObject(text)
             .optJSONObject("data")?.optJSONObject("config_gz")?.optJSONObject("prod")?.optJSONObject("urls")
             ?: return emptyList()
-        listOf("github", "server1", "server2")
+        val result = listOf("github", "server1", "server2")
             .mapNotNull { urls.optString(it)?.takeIf { v -> v.startsWith("http") } }
+        Log.d("MoviePlusWorker", "currentCatalogUrls -> ${result.size}")
+        result
     } catch (e: Exception) {
         emptyList()
     }
@@ -381,6 +399,7 @@ object MoviePlusWorker {
                 val url = "https://firestore.googleapis.com/v1/projects/dev-movieplus/databases/(default)/documents:batchGet"
                 val r = app.post(url, headers = ANDROID_HEADERS + ("Authorization" to "Bearer $token"), requestBody = body, timeout = 25L)
                 if (r.code != 200) {
+                    Log.w("MoviePlusWorker", "batchGet HTTP ${r.code} -> fail-open ${chunk.size}")
                     chunk.forEach { result.add(it.first) }
                     continue
                 }

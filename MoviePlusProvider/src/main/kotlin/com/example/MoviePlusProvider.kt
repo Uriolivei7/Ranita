@@ -10,7 +10,7 @@ import java.util.Locale
 class MoviePlusProvider : MainAPI() {
     override var mainUrl = "https://api.appsxploit.dev"
     override var name = "MoviePlus"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.Cartoon)
     override var lang = "mx"
     override val hasMainPage = true
 
@@ -89,9 +89,11 @@ class MoviePlusProvider : MainAPI() {
         val id = url.substringAfterLast('/').substringBefore('?').toIntOrNull() ?: return null
         val isMovie = url.contains("/movie/")
         val item = if (isMovie) MoviePlusCatalog.findMovie(id) else MoviePlusCatalog.findSeries(id)
+        Log.d("MoviePlus", "load id=$id isMovie=$isMovie catalogItem=${item?.name}")
 
         return if (isMovie) {
             val tmdb = MoviePlusTmdb.movie(id)
+            Log.d("MoviePlus", "load movie tmdb=${tmdb != null} title=${tmdb?.title}")
             val title = item?.name ?: tmdb?.title ?: "Movie! Plus $id"
             newMovieLoadResponse(title, movieUrl(id), TvType.Movie, "mp|$id") {
                 this.posterUrl = MoviePlusTmdb.poster(item?.image?.ifBlank { null } ?: tmdb?.posterPath)
@@ -118,6 +120,7 @@ class MoviePlusProvider : MainAPI() {
             }
         } else {
             val tmdb = MoviePlusTmdb.tv(id)
+            Log.d("MoviePlus", "load series tmdb=${tmdb != null} name=${tmdb?.name} seasons=${tmdb?.seasons?.size ?: 0}")
             val title = item?.name ?: tmdb?.name ?: "Movie! Plus $id"
             val episodes = mutableListOf<Episode>()
             val seasons = tmdb?.seasons.orEmpty().filter { it.seasonNumber > 0 }.sortedBy { it.seasonNumber }
@@ -146,6 +149,7 @@ class MoviePlusProvider : MainAPI() {
                     })
                 }
             }
+            Log.d("MoviePlus", "load series episodes=${episodes.size}")
             newTvSeriesLoadResponse(title, seriesUrl(id), TvType.TvSeries, episodes) {
                 this.posterUrl = MoviePlusTmdb.poster(item?.image?.ifBlank { null } ?: tmdb?.posterPath)
                 this.backgroundPosterUrl = MoviePlusTmdb.backdrop(tmdb?.backdropPath)
@@ -198,10 +202,12 @@ class MoviePlusProvider : MainAPI() {
         var found = false
 
         if (parts.size < 4) {
+            Log.d("MoviePlus", "loadLinks mode=movie id=$id")
             val urls = MoviePlusCatalog.findMovie(id)?.urls ?: emptyList()
             MoviePlusWorker.resolveMovie(id, urls) { entry ->
                 val label = (entry.quality.takeIf { it.isNotBlank() } ?: "Movie! Plus") +
                     (if (entry.size.isNotBlank()) " · ${entry.size}" else "")
+                Log.d("MoviePlus", "loadLinks EMIT movie q=${entry.quality} size=${entry.size} host=${entry.url.take(60)}")
                 callback(newExtractorLink(name, "$name $label", entry.url, ExtractorLinkType.VIDEO) {
                     this.quality = qualityFromLabel(entry.quality)
                 })
@@ -210,12 +216,15 @@ class MoviePlusProvider : MainAPI() {
         } else {
             val season = parts[2].toIntOrNull() ?: return false
             val episode = parts[3].toIntOrNull() ?: return false
+            Log.d("MoviePlus", "loadLinks mode=episode id=$id s=$season e=$episode")
             val envelopes = MoviePlusWorker.episodeEnvelopes(id)
             val eps = envelopes.filter { it.season == season && it.episode == episode }
+            Log.d("MoviePlus", "loadLinks envelopes=${envelopes.size} matching=${eps.size}")
             val seen = HashSet<String>()
             for (e in eps) {
                 val link = MoviePlusWorker.resolveEnvelope(e.envelope) ?: continue
                 if (!seen.add(link)) continue
+                Log.d("MoviePlus", "loadLinks EMIT episode q=${e.quality} host=${link.take(60)}")
                 callback(newExtractorLink(name, "$name ${e.quality}".trim(), link, ExtractorLinkType.VIDEO) {
                     this.quality = qualityFromLabel(e.quality)
                 })

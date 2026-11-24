@@ -886,7 +886,7 @@
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/MoviePlusProvider.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Uriolivei7/Ranita",
     "name": "MoviePlus",
@@ -903,7 +903,7 @@
     ],
     "iconUrl": "https://devxploit.xyz/img/favicon.ico",
     "language": "mx",
-    "fileSize": 68000
+    "fileSize": 70000
   },
   {
     "url": "https://raw.githubusercontent.com/Uriolivei7/Ranita/master/plugins/NinjaProvider.cs3",
