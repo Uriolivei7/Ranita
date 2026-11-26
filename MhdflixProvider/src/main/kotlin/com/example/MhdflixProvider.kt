@@ -1,20 +1,37 @@
 package com.example
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
 
 class MhdflixProvider : MainAPI() {
+    companion object {
+        var pluginContext: Context? = null
+    }
+
     override var mainUrl = "https://ww1.mhdflix.com"
     override var name = "MHDFLIX"
     override val hasMainPage = true
@@ -656,20 +673,45 @@ class MhdflixProvider : MainAPI() {
                 "Referer" to url,
             )
             val reachable = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
+            val redirectFallback = java.util.Collections.synchronizedSet(mutableSetOf<Variant>())
             coroutineScope {
                 resolved.map { v ->
                     async {
                         try {
-                            val r = app.get(v.url, headers = probeHeaders, timeout = 10L)
-                            val ok = r.isSuccessful && r.text.trimStart().startsWith("#EXTM3U")
-                            Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} -> ${r.code} m3u8=$ok")
-                            if (ok) reachable.add(v)
+
+                            val r = app.get(v.url, headers = probeHeaders, timeout = 10L, allowRedirects = false)
+                            val code = r.code
+                            if (code in 200..299) {
+                                val ok = r.text.trimStart().startsWith("#EXTM3U")
+                                Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} -> $code m3u8=$ok")
+                                if (ok) reachable.add(v)
+                            } else if (code in 300..399) {
+                                val target = r.headers["Location"]?.let {
+                                    runCatching { java.net.URL(java.net.URL(v.url), it).toString() }.getOrNull()
+                                }
+                                var targetOk = false
+                                if (!target.isNullOrBlank() && target != v.url) {
+                                    val tr = app.get(target, headers = probeHeaders, timeout = 10L, allowRedirects = false)
+                                    val tok = tr.code in 200..299 && tr.text.trimStart().startsWith("#EXTM3U")
+                                    Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} redirect -> ${tr.code} m3u8=$tok ${target.take(100)}")
+                                    if (tok) {
+                                        reachable.add(Variant(v.key, target))
+                                        targetOk = true
+                                    }
+                                }
+                                if (!targetOk) redirectFallback.add(v)
+                            } else {
+                                Log.d("Mhdflix-Links", "[VH-Pro] probe ${v.key} -> $code")
+                            }
                         } catch (_: Exception) { }
                     }
                 }.awaitAll()
             }
-            val toEmit = if (reachable.isNotEmpty()) {
-                orderedKeys.mapNotNull { k -> reachable.firstOrNull { it.key == k } }
+            val reachableOrdered = orderedKeys.mapNotNull { k -> reachable.firstOrNull { it.key == k } }
+            val toEmit = if (reachableOrdered.isNotEmpty()) {
+                reachableOrdered + orderedKeys.mapNotNull { k ->
+                    redirectFallback.firstOrNull { it.key == k && reachableOrdered.none { ready -> ready.key == k } }
+                }
             } else {
                 Log.w("Mhdflix-Links", "[VH-Pro] ningún master responde, emitiendo todos igual")
                 resolved
@@ -714,8 +756,7 @@ class MhdflixProvider : MainAPI() {
             val html = resp.text
 
             val m3u8Regex = Regex("""(https?://[^"'<>\s]+\.(?:m3u8|mp4)[^"'<>\s]*)""")
-            // Nunca emitir la propia página embed como media (su slug puede
-            // terminar en .mp4) → 3003 garantizado en ExoPlayer.
+
             val directMatch = m3u8Regex.findAll(html).map { it.value }
                 .firstOrNull { isMediaCandidate(it, url) }
             if (directMatch != null) {
@@ -798,6 +839,175 @@ class MhdflixProvider : MainAPI() {
             }
         } catch (_: Exception) { }
         return found
+    }
+
+    private fun isVoeFamily(url: String): Boolean {
+        val h = try { java.net.URL(url).host.lowercase() } catch (_: Exception) { url.lowercase() }
+        return h.contains("voe") || MhdflixVoe.voeMirrors.any { mirror ->
+            h.contains(mirror.removePrefix("https://"))
+        }
+    }
+
+    private fun isStreamWishFamily(url: String): Boolean {
+        val h = try { java.net.URL(url).host.lowercase() } catch (_: Exception) { url.lowercase() }
+        return h.contains("streamwish") || h.contains("hglink") || h.contains("swdyu") ||
+               h.contains("dumbalag") || h.contains("cybervynx") || h.contains("awish")
+    }
+
+    private suspend fun parseMhStreamWishHtml(
+        html: String,
+        pageUrl: String,
+        linkReferer: String,
+        emit: suspend (ExtractorLink) -> Unit
+    ): Boolean {
+        val m3u8Regex = Regex("""(https?://[^"'\s<>]+\.m3u8[^"'\s<>]*)""")
+        val mp4Regex = Regex("""(https?://[^"'\s<>]+\.(?:mp4|m4v)[^"'\s<>]*)""")
+        val fileRegex = Regex("""(?:file|src)\s*:\s*["']((?:https?:)?//[^"']+)["']""")
+        fun resolve(u: String): String {
+            var r = u.replace("\\/", "/").trim()
+            if (r.startsWith("//")) r = "https:$r"
+            if (r.startsWith("/")) {
+                val base = runCatching { java.net.URL(pageUrl).let { "${it.protocol}://${it.host}" } }.getOrDefault("")
+                r = base + r
+            }
+            return r
+        }
+        var found = false
+        suspend fun link(u: String) {
+            if (u.contains(".m3u8") || u.contains(".mp4") || u.contains(".m4v")) {
+                Log.d("Mhdflix-Links", "[SW] parse: ${u.take(120)}")
+                emit(newExtractorLink("MHDFLIX", "StreamWish", u, INFER_TYPE) { this.referer = linkReferer })
+                found = true
+            }
+        }
+        for (m in m3u8Regex.findAll(html)) link(m.value)
+        if (!found) for (m in fileRegex.findAll(html)) link(resolve(m.groupValues[1]))
+        if (!found) for (m in mp4Regex.findAll(html)) link(m.value)
+        if (!found) {
+            val packerRegex = Regex("""\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""", RegexOption.DOT_MATCHES_ALL)
+            for (pm in packerRegex.findAll(html)) {
+                val decoded = unpackDeanEdwards(
+                    pm.groupValues[1],
+                    pm.groupValues[2].toIntOrNull() ?: 36,
+                    pm.groupValues[3].toIntOrNull() ?: 0,
+                    pm.groupValues[4]
+                ) ?: continue
+                for (m in m3u8Regex.findAll(decoded)) link(m.value)
+                if (!found) for (m in fileRegex.findAll(decoded)) link(resolve(m.groupValues[1]))
+                if (found) break
+            }
+        }
+        if (!found) {
+            val iframes = Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).map { it.groupValues[1] }
+                .filter { it.contains("streamwish") || it.contains("/e/") }.take(2).toList()
+            for (src in iframes) {
+                try {
+                    val ihtml = app.get(resolve(src), headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Referer" to pageUrl,
+                    ), timeout = 15L).text
+                    for (m in m3u8Regex.findAll(ihtml)) link(m.value)
+                    if (!found) for (m in fileRegex.findAll(ihtml)) link(resolve(m.groupValues[1]))
+                } catch (_: Exception) {}
+                if (found) break
+            }
+        }
+        if (!found) {
+            Log.w("Mhdflix-Links", "[SW] sin m3u8: pageHasJW=${html.contains("jwplayer")} hasSources=${html.contains("sources")} hasEval=${html.contains("eval(")}")
+        }
+        return found
+    }
+
+    private val mhWebViewMutex = Mutex()
+
+    private suspend fun renderMhWebView(pageUrl: String, waitMs: Long = 14000L): String? = mhWebViewMutex.withLock {
+        withContext(Dispatchers.Main) {
+            val ctx = pluginContext ?: run {
+                Log.w("Mhdflix-Links", "[SW-Web] sin context")
+                return@withContext null
+            }
+            var webView: WebView? = null
+            try {
+                webView = WebView(ctx)
+                webView.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    mediaPlaybackRequiresUserGesture = false
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    cacheMode = WebSettings.LOAD_NO_CACHE
+                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+                }
+                val deferred = CompletableDeferred<String?>()
+                val handler = Handler(Looper.getMainLooper())
+                class Bridge {
+                    @JavascriptInterface
+                    fun onHtml(html: String) {
+                        if (!deferred.isCompleted) deferred.complete(html)
+                    }
+                }
+                webView.addJavascriptInterface(Bridge(), "MhBridge")
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        val ready = "(function(){var h=document.documentElement.outerHTML;" +
+                            "return h.includes('.m3u8')||h.includes('jwplayer')||h.includes('sources');})()"
+                        view?.evaluateJavascript(ready) { r ->
+                            if (r == "true") {
+                                view.evaluateJavascript(
+                                    "(function(){MhBridge.onHtml(document.documentElement.outerHTML);})()", null
+                                )
+                            }
+                        }
+                    }
+                }
+                webView.loadUrl(pageUrl)
+                val result = withTimeoutOrNull(waitMs) { deferred.await() }
+                if (result != null) Log.d("Mhdflix-Links", "[SW-Web] HTML len=${result.length}")
+                result
+            } catch (t: Throwable) {
+                Log.w("Mhdflix-Links", "[SW-Web] error: ${t::class.simpleName}: ${t.message}")
+                null
+            } finally {
+                try { webView?.destroy() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private suspend fun tryStreamWishMh(
+        url: String,
+        referer: String,
+        linkName: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Int {
+        var count = 0
+        suspend fun emit(link: ExtractorLink) {
+            if (link.url.isBlank()) return
+            callback(newExtractorLink("MHDFLIX", "$linkName [StreamWish]", link.url, link.type) {
+                this.referer = link.referer.ifBlank { referer }
+                this.quality = link.quality
+                this.headers = link.headers
+            })
+            count++
+        }
+        try {
+            val html = app.get(url, headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+                "Referer" to referer,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ), timeout = 15L).text
+            Log.d("Mhdflix-Links", "[SW] fetch len=${html.length} challenge=${html.contains("Loading...")}")
+            parseMhStreamWishHtml(html, url, referer) { emit(it) }
+            if (count == 0) {
+                val rendered = renderMhWebView(url)
+                if (rendered != null) parseMhStreamWishHtml(rendered, url, referer) { emit(it) }
+            }
+        } catch (e: Exception) {
+            Log.w("Mhdflix-Links", "[SW] error: ${e.message}")
+        }
+        Log.d("Mhdflix-Links", "[SW] emitted=$count")
+        return count
     }
 
     @Suppress("DEPRECATION")
@@ -887,6 +1097,43 @@ class MhdflixProvider : MainAPI() {
                                 }
                             } catch (e: Exception) {
                                 Log.e("Mhdflix-Links", "StreamTape custom falló: ${e.message}")
+                            }
+                        }
+
+                        if (!foundByExtractor && isVoeFamily(fixedUrl)) {
+                            try {
+                                val voeLinks = mutableListOf<ExtractorLink>()
+                                withTimeout(45000L) {
+                                    MhdflixVoe().getUrl(fixedUrl, referer, subtitleCallback) { link ->
+                                        if (link.url.isNotBlank()) voeLinks.add(link)
+                                    }
+                                }
+
+                                for (link in voeLinks) {
+                                    callback(newExtractorLink(name, "$linkName [Voe]", link.url, link.type) {
+                                        this.referer = link.referer.ifBlank { referer }
+                                        this.quality = link.quality
+                                        this.headers = link.headers
+                                    })
+                                    found = true
+                                    foundByExtractor = true
+                                }
+                                if (foundByExtractor) Log.d("Mhdflix-Links", "VOE directo OK: $serverName")
+                            } catch (e: TimeoutCancellationException) {
+                                Log.w("Mhdflix-Links", "VOE directo timeout (45s): $serverName")
+                            } catch (e: Exception) {
+                                Log.e("Mhdflix-Links", "VOE directo falló: ${e.message}")
+                            }
+                        }
+                        if (!foundByExtractor && isStreamWishFamily(fixedUrl)) {
+                            try {
+                                if (tryStreamWishMh(fixedUrl, referer, linkName, subtitleCallback, callback) > 0) {
+                                    foundByExtractor = true
+                                    found = true
+                                    Log.d("Mhdflix-Links", "StreamWish directo OK: $serverName")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("Mhdflix-Links", "StreamWish directo falló: ${e.message}")
                             }
                         }
                         if (!foundByExtractor) {

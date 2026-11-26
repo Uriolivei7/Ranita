@@ -1,5 +1,6 @@
 package com.example
 
+import android.util.Base64
 import android.util.Log
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -9,10 +10,23 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import okhttp3.FormBody
 import java.net.URL
+import java.net.URLEncoder
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+
+internal val mhdPowMutex = Mutex()
 
 class ByseExtractor : ExtractorApi() {
     override var mainUrl = "https://bysedikamoum.com"
@@ -371,6 +385,11 @@ open class MhdflixVoe : ExtractorApi() {
     override val requiresReferer = true
 
     companion object {
+        val voeHeaders = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "en-US,en;q=0.9",
+        )
         val voeMirrors = listOf(
             "https://yip.su",
             "https://tubelessceliolymph.com",
@@ -381,16 +400,13 @@ open class MhdflixVoe : ExtractorApi() {
             "https://metagnathtuggers.com",
             "https://pamelachangemission.com",
             "https://eugenemakedraw.com",
+            "https://caseyseemavoid.com",
+            "https://teresapoliticallearn.com",
         )
     }
 
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         Log.d("MhdflixVoe", "[Voe] URL: $url")
-        val voeHeaders = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language" to "en-US,en;q=0.9",
-        )
         val redirectRegex = Regex("""(?:window\.)?location(?:\.href)?\s*=\s*'([^']+)'""")
         var currentUrl = url
         var currentReferer = referer ?: url
@@ -411,7 +427,8 @@ open class MhdflixVoe : ExtractorApi() {
         }
 
         val pageText = res.text
-        if (parseHtml(pageText, currentUrl, subtitleCallback, callback)) return
+
+        if (parseHtml(pageText, currentUrl, subtitleCallback, callback, res.cookies)) return
 
         val id = Regex("""/e/([A-Za-z0-9_-]+)""").find(url)?.groupValues?.get(1)
         if (!id.isNullOrBlank()) {
@@ -421,8 +438,8 @@ open class MhdflixVoe : ExtractorApi() {
                     val mUrl = "$mirror/e/$id"
                     if (mUrl == currentUrl) continue
                     try {
-                        val mHtml = app.get(mUrl, headers = voeHeaders + ("Referer" to currentUrl), timeout = 10L).text
-                        if (parseHtml(mHtml, mUrl, subtitleCallback, callback)) {
+                        val mResp = app.get(mUrl, headers = voeHeaders + ("Referer" to currentUrl), timeout = 10L)
+                        if (parseHtml(mResp.text, mUrl, subtitleCallback, callback, mResp.cookies)) {
                             Log.d("MhdflixVoe", "[Voe] mirror OK: $mirror")
                             return@withTimeoutOrNull
                         }
@@ -438,10 +455,15 @@ open class MhdflixVoe : ExtractorApi() {
         pageUrl: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
+        cookies: Map<String, String>? = null,
     ): Boolean {
-        if (html.contains("altcha-widget") || html.contains("Confirm you&#039;re human")) {
-            Log.w("MhdflixVoe", "[Voe] CAPTCHA page, no parse: ${pageUrl.take(100)}")
-            return false
+        var workHtml = html
+        if (html.contains("altcha-widget") || html.contains("Confirm you&#039;re human") || html.contains("Confirm you're human")) {
+            Log.d("MhdflixVoe", "[Voe] ALTCHA detectado, resolviendo PoW: ${pageUrl.take(100)}")
+            workHtml = solveAltcha(html, pageUrl, cookies) ?: run {
+                Log.w("MhdflixVoe", "[Voe] ALTCHA no resuelto, sin links")
+                return false
+            }
         }
         val pageOrigin = try {
             val u = java.net.URL(pageUrl)
@@ -452,13 +474,13 @@ open class MhdflixVoe : ExtractorApi() {
         Regex(
             """<script[^>]*type=["']application/json["'][^>]*>(.*?)</script>""",
             RegexOption.DOT_MATCHES_ALL
-        ).find(html)?.groupValues?.get(1)?.trim()
+        ).find(workHtml)?.groupValues?.get(1)?.trim()
             ?.takeIf { it.contains("[\"") }
             ?.substringAfter("[\"")
             ?.substringBeforeLast("\"]")
             ?.let { candidates.add(it) }
         val scripts = Regex("""<script[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
-            .findAll(html).map { it.groupValues[1] }
+            .findAll(workHtml).map { it.groupValues[1] }
         for (body in scripts) {
             for (m in Regex("""["']([A-Za-z0-9+/=@\^~\*\?&#!%$]{100,})["']""").findAll(body)) {
                 val cand = m.groupValues[1]
@@ -500,6 +522,186 @@ open class MhdflixVoe : ExtractorApi() {
         }
         if (!emitted) Log.w("MhdflixVoe", "[Voe] No source found after decryption")
         return emitted
+    }
+
+    private suspend fun solveAltcha(
+        html: String,
+        pageUrl: String,
+        cookies: Map<String, String>?,
+    ): String? {
+        return try {
+            val inputTag = Regex("""<input[^>]*name=["']?_token["']?[^>]*>""").find(html)?.value
+            if (inputTag == null) {
+                Log.w("MhdflixVoe", "[Voe] ALTCHA sin input _token")
+                return null
+            }
+            val token = Regex("""value=["']?([^"'\s>]+)""").find(inputTag)?.groupValues?.get(1)
+                ?.takeIf { it.isNotBlank() }
+            if (token == null) {
+                Log.w("MhdflixVoe", "[Voe] ALTCHA sin token")
+                return null
+            }
+            val challengeUrl = Regex("""<altcha-widget[^>]*challenge=["']?([^"'\s>]+)""").find(html)
+                ?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+            if (challengeUrl == null) {
+                Log.w("MhdflixVoe", "[Voe] ALTCHA sin challenge URL")
+                return null
+            }
+
+            var jar = cookies ?: emptyMap()
+            if (jar.isEmpty()) {
+                val fresh = app.get(pageUrl, headers = voeHeaders, referer = pageUrl, timeout = 30L)
+                jar = fresh.cookies
+            }
+            fun cookieHeader(): String = jar.entries.joinToString("; ") { "${it.key}=${it.value}" }
+
+            var chalResp = app.get(
+                challengeUrl,
+                headers = voeHeaders + ("Referer" to pageUrl) + ("Cookie" to cookieHeader()),
+                timeout = 30L,
+            )
+            var chalText = try { chalResp.text } catch (_: Exception) { "" }
+            Log.d("MhdflixVoe", "[Voe] challenge -> code=${chalResp.code} len=${chalText.length} cookies=${jar.keys}")
+            if (!chalText.trimStart().startsWith("{")) {
+                chalResp = app.get(challengeUrl, headers = voeHeaders + ("Referer" to pageUrl), timeout = 30L)
+                chalText = try { chalResp.text } catch (_: Exception) { "" }
+                Log.d("MhdflixVoe", "[Voe] challenge retry -> code=${chalResp.code} len=${chalText.length}")
+                if (!chalText.trimStart().startsWith("{")) {
+                    Log.w("MhdflixVoe", "[Voe] challenge no-JSON: ${chalText.take(160)}")
+                    return null
+                }
+            }
+            val solution = solveAltchaPow(chalText) ?: return null
+            val params = Regex(""""parameters"\s*:\s*(\{[^{}]*\})""").find(chalText)
+                ?.groupValues?.get(1) ?: return null
+            val sig = Regex(""""signature"\s*:\s*"([^"]+)"""").find(chalText)
+                ?.groupValues?.get(1) ?: return null
+            val payload = "{\"challenge\":{\"parameters\":$params,\"signature\":\"$sig\"}," +
+                "\"solution\":{\"counter\":${solution.first},\"derivedKey\":\"${solution.second}\",\"time\":1}}"
+            val encoded = URLEncoder.encode(
+                Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP), "UTF-8"
+            )
+            val origin = try {
+                java.net.URL(pageUrl).let { "${it.protocol}://${it.host}" }
+            } catch (_: Exception) { pageUrl }
+            val postResp = app.post(
+                pageUrl,
+                headers = voeHeaders + ("Origin" to origin) + ("Referer" to pageUrl) + ("Cookie" to cookieHeader()),
+                data = mapOf("_token" to token, "access" to "0", "altcha" to encoded),
+                timeout = 30L,
+            )
+            val postBody = try { postResp.text } catch (_: Exception) { "" }
+            Log.d("MhdflixVoe", "[Voe] POST solucion -> code=${postResp.code} len=${postBody.length} gate=${postBody.contains("altcha-widget")}")
+            postBody.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w("MhdflixVoe", "[Voe] ALTCHA error: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun solveAltchaPow(challengeText: String, maxAttempts: Int = 1024): Pair<Long, String>? {
+        fun hexToBytes(hex: String): ByteArray? {
+            if (hex.isEmpty() || hex.length % 2 != 0) return null
+            return try {
+                ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            } catch (_: Exception) { null }
+        }
+        fun ByteArray.toHex(): String {
+            val hexChars = "0123456789abcdef".toCharArray()
+            val out = CharArray(size * 2)
+            for (i in indices) {
+                val v = this[i].toInt() and 0xFF
+                out[i * 2] = hexChars[v ushr 4]
+                out[i * 2 + 1] = hexChars[v and 0x0F]
+            }
+            return String(out)
+        }
+        val nonceHex = Regex(""""nonce"\s*:\s*"([0-9a-fA-F]+)"""").find(challengeText)?.groupValues?.get(1)
+        val saltHex = Regex(""""salt"\s*:\s*"([0-9a-fA-F]+)"""").find(challengeText)?.groupValues?.get(1)
+        val prefix = Regex(""""keyPrefix"\s*:\s*"([0-9a-fA-F]+)"""").find(challengeText)?.groupValues?.get(1)?.lowercase()
+        val cost = Regex(""""cost"\s*:\s*(\d+)""").find(challengeText)?.groupValues?.get(1)?.toIntOrNull()
+        val keyLength = Regex(""""keyLength"\s*:\s*(\d+)""").find(challengeText)?.groupValues?.get(1)?.toIntOrNull() ?: 32
+        if (nonceHex == null || saltHex == null || prefix == null || cost == null) {
+            Log.w("MhdflixVoe", "[Voe] ALTCHA params incompletos (nonce=${nonceHex != null} salt=${saltHex != null} prefix=$prefix cost=$cost): ${challengeText.take(160)}")
+            return null
+        }
+        val nonce = hexToBytes(nonceHex) ?: return null
+        val salt = hexToBytes(saltHex) ?: return null
+        if (prefix.isEmpty() || cost <= 0) return null
+
+        val t0 = System.currentTimeMillis()
+        val nThreads = 2
+        val winner = AtomicLong(-1)
+        val winnerHex = AtomicReference<String?>(null)
+        mhdPowMutex.withLock {
+            coroutineScope {
+                (0 until nThreads).map { t ->
+                    async(Dispatchers.Default) {
+                        val mac = Mac.getInstance("HmacSHA256")
+                        var counter = t
+                        while (counter < maxAttempts && winner.get() < 0) {
+                            ensureActive()
+                            val password = ByteArray(nonce.size + 4)
+                            System.arraycopy(nonce, 0, password, 0, nonce.size)
+                            password[nonce.size] = (counter ushr 24).toByte()
+                            password[nonce.size + 1] = (counter ushr 16).toByte()
+                            password[nonce.size + 2] = (counter ushr 8).toByte()
+                            password[nonce.size + 3] = counter.toByte()
+                            val derivedHex = pbkdf2Sha256(password, salt, cost, keyLength, mac).toHex()
+                            if (derivedHex.startsWith(prefix)) {
+                                if (winner.compareAndSet(-1, counter.toLong())) winnerHex.set(derivedHex)
+                                return@async
+                            }
+                            counter += nThreads
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+        val w = winner.get()
+        val wh = winnerHex.get()
+        if (w >= 0 && wh != null) {
+            Log.d("MhdflixVoe", "[Voe] ALTCHA resuelto en $w intentos (${System.currentTimeMillis() - t0}ms, ${nThreads}h)")
+            return w to wh
+        }
+        Log.w("MhdflixVoe", "[Voe] ALTCHA PoW agotado ($maxAttempts)")
+        return null
+    }
+
+    private fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, keyLength: Int, mac: Mac): ByteArray {
+        mac.init(SecretKeySpec(password, "HmacSHA256"))
+        val hashLength = 32
+        val output = ByteArray(keyLength)
+        val mixed = ByteArray(hashLength)
+        val blockIndex = ByteArray(4)
+        var current = ByteArray(hashLength)
+        var next = ByteArray(hashLength)
+        var offset = 0
+        var block = 1
+        while (offset < keyLength) {
+            blockIndex[0] = (block ushr 24).toByte()
+            blockIndex[1] = (block ushr 16).toByte()
+            blockIndex[2] = (block ushr 8).toByte()
+            blockIndex[3] = block.toByte()
+            mac.reset()
+            mac.update(salt)
+            mac.update(blockIndex)
+            mac.doFinal(current, 0)
+            System.arraycopy(current, 0, mixed, 0, hashLength)
+            for (i in 1 until iterations) {
+                mac.update(current)
+                mac.doFinal(next, 0)
+                for (j in 0 until hashLength) mixed[j] = (mixed[j].toInt() xor next[j].toInt()).toByte()
+                val swap = current
+                current = next
+                next = swap
+            }
+            val length = minOf(hashLength, keyLength - offset)
+            System.arraycopy(mixed, 0, output, offset, length)
+            offset += length
+            block++
+        }
+        return output
     }
 
     private fun decryptVoeF7(p8: String, quiet: Boolean = false): VoeDecrypted? {

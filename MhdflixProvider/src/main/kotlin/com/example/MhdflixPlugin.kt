@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.plugins.Plugin
 @CloudstreamPlugin
 class MhdflixPlugin : Plugin() {
     override fun load(context: Context) {
+        MhdflixProvider.pluginContext = context.applicationContext
         registerMainAPI(MhdflixProvider())
         registerExtractorAPI(ByseExtractor())
         registerExtractorAPI(MhdflixCubeembed())
